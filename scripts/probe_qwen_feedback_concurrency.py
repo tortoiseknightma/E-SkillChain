@@ -45,8 +45,8 @@ from skillchain.synthesis.store import atomic_create_file, canonical_json_bytes
 
 
 DEFAULT_LEVELS = (2, 4, 8, 16, 32, 64)
-DEFAULT_ERROR_RATE_LIMIT = config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE
-DEFAULT_SERVICE_ERROR_RATE_LIMIT = config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE
+DEFAULT_ERROR_RATE_LIMIT = config.LEGACY_QWEN37_FEEDBACK_ACCEPTABLE_ERROR_RATE
+DEFAULT_SERVICE_ERROR_RATE_LIMIT = config.LEGACY_QWEN37_FEEDBACK_SERVICE_ERROR_RATE
 DEFAULT_COST_CAP_CNY = Decimal("9.500000")
 OFFICIAL_SNAPSHOT_RPM = 600
 OFFICIAL_SNAPSHOT_TPM = 1_000_000
@@ -208,7 +208,7 @@ def _one_call_active(*, ordinal: int, level: int, image: Path) -> ProbeResult:
         response = llm.chat(
             "qwen",
             _prompt(ordinal),
-            model=config.FEEDBACK_JUDGE_MODEL,
+            model=config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
             images=[str(image)],
             thinking=True,
             thinking_budget=2048,
@@ -407,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--requests-per-second",
         type=float,
-        default=config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND,
+        default=config.LEGACY_QWEN37_FEEDBACK_REQUESTS_PER_SECOND,
     )
     parser.add_argument("--error-rate-limit", type=float, default=DEFAULT_ERROR_RATE_LIMIT)
     parser.add_argument(
@@ -518,7 +518,7 @@ def main() -> int:
         "started_at": started_at.isoformat(),
         "completed_at": completed_at.isoformat(),
         "provider": "qwen",
-        "model": config.FEEDBACK_JUDGE_MODEL,
+        "model": config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
         "endpoint": config.PROVIDER_ENDPOINTS["qwen"],
         "credential_source_name": credential_source,
         "credential_value_persisted": False,

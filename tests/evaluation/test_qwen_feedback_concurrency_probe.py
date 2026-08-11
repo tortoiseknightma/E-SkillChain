@@ -28,10 +28,10 @@ def _result(*, ordinal: int, level: int, error: str | None = None) -> ProbeResul
 
 
 def test_forward_capacity_constants_bind_the_measured_240_call_profile() -> None:
-    assert config.FEEDBACK_JUDGE_MAX_CONCURRENCY == 240
-    assert config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND == 8.0
-    assert config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE == 0.02
-    assert config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE == 0.0
+    assert config.LEGACY_QWEN37_FEEDBACK_MAX_CONCURRENCY == 240
+    assert config.LEGACY_QWEN37_FEEDBACK_REQUESTS_PER_SECOND == 8.0
+    assert config.LEGACY_QWEN37_FEEDBACK_ACCEPTABLE_ERROR_RATE == 0.02
+    assert config.LEGACY_QWEN37_FEEDBACK_SERVICE_ERROR_RATE == 0.0
 
 
 def test_summary_separates_payload_and_service_failures() -> None:
