@@ -17,7 +17,12 @@ strict JSON-Schema Round3 Feedback after the terminated JSON-object canary.  It
 binds the terminated-canary cost into prior actual spend.  Live authority is
 limited to canary12 plus three global retries under a fresh CNY10 stage cap;
 the full243/CNY137 envelope is non-live planning and prior CNY150 authority is
-not inherited.  Phase60 requires a new owner approval.
+not inherited.  Phase60 requires a new owner approval.  The forward
+source-v5/pricing-v8/role-v15 triad records the completed strict-schema
+canary as an immutable 12-result/15-call prefix and freezes a *pending*,
+zero-call phase60 envelope.  It deliberately grants no live authority: the
+fresh CNY28 budget stop and twelve new retry tokens require a separate owner
+decision before an authorized successor lock can exist.
 
 No function in this module calls a model provider.
 """
@@ -149,9 +154,7 @@ QWEN38_FEEDBACK_RESULT_SCHEMA_VERSION_V2 = 6
 QWEN38_FEEDBACK_RESULT_SCHEMA_VERSION_V3 = 7
 QWEN38_FEEDBACK_RESULT_SCHEMA_VERSION_V4 = 8
 QWEN38_FEEDBACK_BOUND_ARTIFACT_SCHEMA_VERSION_V2 = 5
-QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V2 = (
-    "portfolio-s1-bound-feedback-v5"
-)
+QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V2 = "portfolio-s1-bound-feedback-v5"
 QWEN38_FEEDBACK_BOUND_ARTIFACT_SCHEMA_VERSION_V3 = 1
 QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V3 = (
     "portfolio-s1-bound-feedback-round3-v1"
@@ -172,6 +175,9 @@ QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V3 = (
 QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V4 = (
     "portfolio-s1-qwen38-feedback-model-source-lock-v4"
 )
+QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V5 = (
+    "portfolio-s1-qwen38-feedback-model-source-lock-v5"
+)
 QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V3 = (
     "portfolio-s1-qwen38-feedback-pricing-lock-v3"
 )
@@ -186,6 +192,9 @@ QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V6 = (
 )
 QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V7 = (
     "portfolio-s1-qwen38-feedback-pricing-lock-v7"
+)
+QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V8 = (
+    "portfolio-s1-qwen38-feedback-pricing-lock-v8"
 )
 QWEN38_FEEDBACK_SELECTED_COUNT = 240
 QWEN38_FEEDBACK_PROVIDER_CALL_CEILING = 240
@@ -217,21 +226,38 @@ QWEN38_FEEDBACK_ROUND3_SCHEMA_PRIOR_ACTUAL_COST_CNY = "24.319500000000"
 # This full-run envelope is planning-only until the owner separately approves
 # phase60 or beyond.  It is not live authority for the current wire change.
 QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_MAXIMUM_CNY = "136.474692000000"
-QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_TECHNICAL_HARD_CAP_CNY = (
-    "137.000000000000"
-)
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_TECHNICAL_HARD_CAP_CNY = "137.000000000000"
 QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTED_COUNT = 12
 QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_PROVIDER_CALL_CEILING = 15
 QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_FRESH_RESERVATION_CNY = "6.923160000000"
-QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_FRESH_STAGE_HARD_CAP_CNY = (
-    "10.000000000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_FRESH_STAGE_HARD_CAP_CNY = "10.000000000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_MAXIMUM_CNY = "31.242660000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_HARD_CAP_CNY = "34.319500000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ACTUAL_COST_CNY = "1.944600000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_ACTUAL_CNY = "26.264100000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256 = (
+    "46bc2bb477acae1d367f2e4200b41ad8c2194aa0c5044667a414fb47d371d40b"
 )
-QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_MAXIMUM_CNY = (
-    "31.242660000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256 = (
+    "2d40e9ee4d9cc0d3d92585f1126ddcb1362ee7ef32c35f60c86593d668c0cd72"
 )
-QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_HARD_CAP_CNY = (
-    "34.319500000000"
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256 = (
+    "98b1185b163230998bbc760600ff62f44561d99346f3dd6e66d0c3f8d4730503"
 )
+QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256 = (
+    "ce55b4d47d57a8313aabf014947c85a05150d3a6a4d3338d53548f4a4b983674"
+)
+QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT = 12
+QWEN38_FEEDBACK_PHASE60_PREFIX_PROVIDER_CALL_COUNT = 15
+QWEN38_FEEDBACK_PHASE60_PREFIX_RETRY_COUNT = 3
+QWEN38_FEEDBACK_PHASE60_NEW_FIRST_CALL_COUNT = 48
+QWEN38_FEEDBACK_PHASE60_NEW_RETRY_TOKEN_COUNT = 12
+QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING = 60
+QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING = 75
+QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY = "27.692640000000"
+QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY = "28.000000000000"
+QWEN38_FEEDBACK_PHASE60_CUMULATIVE_MAXIMUM_CNY = "53.956740000000"
+QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY = "54.264100000000"
 QWEN38_FEEDBACK_JSON_SCHEMA_POLICY_VERSION = QWEN37_FEEDBACK_JSON_SCHEMA_POLICY_VERSION
 QWEN38_FEEDBACK_JSON_SCHEMA_NAME = QWEN37_FEEDBACK_JSON_SCHEMA_NAME
 QWEN38_FEEDBACK_JSON_SCHEMA_SHA256 = QWEN37_FEEDBACK_JSON_SCHEMA_SHA256
@@ -267,9 +293,7 @@ QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6 = (
 QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6 = (
     "c4c6a0afcc472de09a1c8c27c1eaa276590b60ecfceb348b3b634a56f24a2f3f"
 )
-QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3 = (
-    "visual-feedback-free-text-trim-v3"
-)
+QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3 = "visual-feedback-free-text-trim-v3"
 QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3 = (
     "d2858a1aa2db6efc524c6f826817b0787e7506a67273066fbf2e891cbb1c5016"
 )
@@ -284,6 +308,9 @@ QWEN38_FEEDBACK_ROUND3_RETRY_POLICY_VERSION_V2 = (
 )
 QWEN38_FEEDBACK_ROUND3_RETRY_POLICY_SHA256_V2 = (
     "f19c1d78e5d6604a9fa8d54bc0e13493d23b05f21b66af89353c9691dd92d31b"
+)
+ROUND3_PHASE60_RETRY_POLICY_VERSION_V1 = (
+    "portfolio-s1-feedback-round3-phase60-global-retry-v1"
 )
 QWEN38_FEEDBACK_GLOBAL_RETRY_POLICY_VERSION_V1 = (
     "portfolio-s1-feedback-global-schema-retry-v1"
@@ -327,6 +354,15 @@ QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V4 = (
 QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V4 = (
     "68e4f1fe7c48cb2f89bb9b58d8d2fb00f2ad088d3ef51f3139c09575c06d62b9"
 )
+QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V5 = (
+    "specs/authoring/qwen3.8-max-feedback-source-lock-v5.json"
+)
+QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V5 = (
+    "fd0941a28b393ac4fa208bbd48e9fe53b7f699f7393e95e7e61f9f0ed558cda1"
+)
+QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V5 = (
+    "47ae9607c7ac2ee3833996ec8c7eaee8d1aa17931e0f55c465023cbcea383747"
+)
 QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V3 = (
     "bd04d13702052f553ec643818ea7b0cf752d90dce700b2cfcd7996f17e4dfdf8"
 )
@@ -362,6 +398,15 @@ QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V7 = (
 )
 QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V7 = (
     "b295abe255e5e76945ef38df4305bacd7a8983d36bf2d360ca53a72e6de72c89"
+)
+QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V8 = (
+    "specs/authoring/price-qwen3.8-max-feedback-v8.json"
+)
+QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V8 = (
+    "c01cee0b2e2526113ab891ae9dfef35b0c766a8330848145be4e29989c0b769c"
+)
+QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V8 = (
+    "7d2fff3bbe33a3af250de3dd5362297cadf9c51f4ad025450922f972af636fdb"
 )
 QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256 = (
     "39e8d099f0b303725ee0be59f758560627ecbc3ce156524da4f2a2d3d20f3501"
@@ -399,6 +444,15 @@ QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V14 = (
 QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V14 = (
     "d126ee787952486e796f122676dc9eb641cdf200caf39bfe3b78568c210079a9"
 )
+QWEN38_FEEDBACK_ROLE_SELECTION_RELATIVE_PATH_V15 = (
+    "specs/authoring/model-role-selection-v15.json"
+)
+QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V15 = (
+    "66e1ac0e4168b6a910056cb8a4dec91ecd58e067ade9dd471814f5c03a4986ff"
+)
+QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V15 = (
+    "8738bdeb963c1d63678b30a714c5df4b0466ae4db6c159a403605d06208e40a8"
+)
 
 _AUTHORIZATION_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
@@ -421,6 +475,54 @@ def _canonical_text(value: str, label: str) -> str:
     if not value or value != value.strip():
         raise ValueError(f"{label} must be non-blank and trimmed")
     return value
+
+
+def round3_phase60_retry_policy_v1() -> dict[str, object]:
+    """Return the frozen pending retry policy for the phase60 overlay."""
+
+    return {
+        "policy_version": ROUND3_PHASE60_RETRY_POLICY_VERSION_V1,
+        "scope": "schema-canary-prefix12-plus-fresh-selection-ordinals-13-through-60",
+        "prefix_selected_count": QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT,
+        "prefix_provider_call_count": (
+            QWEN38_FEEDBACK_PHASE60_PREFIX_PROVIDER_CALL_COUNT
+        ),
+        "prefix_retry_claims_consumed": QWEN38_FEEDBACK_PHASE60_PREFIX_RETRY_COUNT,
+        "prefix_retry_claims_reusable": False,
+        "new_first_calls": QWEN38_FEEDBACK_PHASE60_NEW_FIRST_CALL_COUNT,
+        "new_global_retry_ceiling": QWEN38_FEEDBACK_PHASE60_NEW_RETRY_TOKEN_COUNT,
+        "new_provider_call_ceiling": (
+            QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING
+        ),
+        "cumulative_provider_call_ceiling": (
+            QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING
+        ),
+        "max_lifetime_attempts_per_new_entry": 2,
+        "provider_internal_max_attempts": 1,
+        "retry_eligibility": [
+            "strict-parser-failure-without-policy-label-only-failure",
+            "length-parser-failure",
+            "reasoning-present-empty-assistant-content",
+        ],
+        "terminal_without_retry": [
+            "provider-error",
+            "timeout",
+            "refusal",
+            "tool-call",
+            "input-echo",
+            "privacy-failure",
+            "orphan",
+            "thirteenth-new-eligible-failure",
+        ],
+        "live_provider_calls_authorized": False,
+        "owner_phase60_budget_and_retry_approval_status": "pending",
+        "phase120_requires_new_owner_approval": True,
+    }
+
+
+ROUND3_PHASE60_RETRY_POLICY_SHA256_V1 = sha256_bytes(
+    canonical_json_bytes(round3_phase60_retry_policy_v1())
+)
 
 
 class _SelectionEntry(Protocol):
@@ -635,26 +737,24 @@ class Qwen38FeedbackModelSourceLockV2(Qwen38FeedbackModelSourceLockV1):
     """Forward wire lock for the fresh-v3 6,144-token Feedback run."""
 
     schema_version: Literal[2] = 2
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-model-source-lock-v2"
-    ] = QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V2
+    policy_version: Literal["portfolio-s1-qwen38-feedback-model-source-lock-v2"] = (
+        QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V2
+    )
     enable_thinking: Literal[True] = True
     thinking_budget: Literal[2048] = QWEN38_FEEDBACK_THINKING_BUDGET
     requested_response_format: Literal["json_schema"] = "json_schema"
     requested_json_schema_policy_version: Literal[
         "visual-feedback-output-json-schema-v1"
     ] = QWEN38_FEEDBACK_JSON_SCHEMA_POLICY_VERSION
-    requested_json_schema_name: Literal[
-        "visual_feedback_output_v1"
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_NAME
-    requested_json_schema_sha256: Literal[
+    requested_json_schema_name: Literal["visual_feedback_output_v1"] = (
+        QWEN38_FEEDBACK_JSON_SCHEMA_NAME
+    )
+    requested_json_schema_sha256: Literal[QWEN38_FEEDBACK_JSON_SCHEMA_SHA256] = (
         QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
+    )
     requested_json_schema_strict: Literal[True] = True
     max_tokens: None = None
-    max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
-    )
+    max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -663,9 +763,9 @@ class Qwen38FeedbackModelSourceLockV2(Qwen38FeedbackModelSourceLockV1):
     transport_policy_version: Literal[
         "visual-feedback-qwen38-dashscope-json-schema-v7"
     ] = QWEN38_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
-    transport_policy_sha256: Literal[
+    transport_policy_sha256: Literal[QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256_V7] = (
         QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
-    ] = QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
+    )
     cache_namespace: Literal["feedback-evaluator-v12"] = (
         QWEN38_FEEDBACK_CACHE_NAMESPACE_V2
     )
@@ -673,18 +773,18 @@ class Qwen38FeedbackModelSourceLockV2(Qwen38FeedbackModelSourceLockV1):
     bound_artifact_schema_version: Literal[5] = (
         QWEN38_FEEDBACK_BOUND_ARTIFACT_SCHEMA_VERSION_V2
     )
-    bound_artifact_policy_version: Literal[
-        "portfolio-s1-bound-feedback-v5"
-    ] = QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V2
+    bound_artifact_policy_version: Literal["portfolio-s1-bound-feedback-v5"] = (
+        QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V2
+    )
 
 
 class Qwen38FeedbackModelSourceLockV3(Qwen38FeedbackModelSourceLockV1):
     """Forward-only source/wire lock for the wholly fresh Round3 run."""
 
     schema_version: Literal[3] = 3
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-model-source-lock-v3"
-    ] = QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V3
+    policy_version: Literal["portfolio-s1-qwen38-feedback-model-source-lock-v3"] = (
+        QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V3
+    )
     structured_output_json_object_supported: Literal[True] = True
     structured_output_response_format: Literal["json_object"] = "json_object"
     structured_output_json_schema_used: Literal[False] = False
@@ -695,9 +795,7 @@ class Qwen38FeedbackModelSourceLockV3(Qwen38FeedbackModelSourceLockV1):
     requested_json_schema: Literal[False] = False
     requested_json_schema_strict: Literal[False] = False
     max_tokens: None = None
-    max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
-    )
+    max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -713,21 +811,21 @@ class Qwen38FeedbackModelSourceLockV3(Qwen38FeedbackModelSourceLockV1):
     transport_policy_version: Literal[
         "visual-feedback-qwen38-dashscope-json-object-round3-primary-v1"
     ] = ROUND3_PRIMARY_TRANSPORT_POLICY_VERSION_V1
-    transport_policy_sha256: Literal[
+    transport_policy_sha256: Literal[ROUND3_PRIMARY_TRANSPORT_POLICY_SHA256_V1] = (
         ROUND3_PRIMARY_TRANSPORT_POLICY_SHA256_V1
-    ] = ROUND3_PRIMARY_TRANSPORT_POLICY_SHA256_V1
-    prompt_policy_version: Literal[
-        "visual-feedback-gcs-policy-labels-prompt-v6"
-    ] = QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
-    prompt_policy_sha256: Literal[
+    )
+    prompt_policy_version: Literal["visual-feedback-gcs-policy-labels-prompt-v6"] = (
+        QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
+    )
+    prompt_policy_sha256: Literal[QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6] = (
         QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6
-    ] = QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6
+    )
     parser_policy_version: Literal["visual-feedback-free-text-trim-v3"] = (
         QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3
     )
-    parser_policy_sha256: Literal[
+    parser_policy_sha256: Literal[QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3] = (
         QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3
-    ] = QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3
+    )
     cache_namespace: Literal["feedback-evaluator-v13"] = (
         QWEN38_FEEDBACK_CACHE_NAMESPACE_V3
     )
@@ -735,9 +833,9 @@ class Qwen38FeedbackModelSourceLockV3(Qwen38FeedbackModelSourceLockV1):
     bound_artifact_schema_version: Literal[1] = (
         QWEN38_FEEDBACK_BOUND_ARTIFACT_SCHEMA_VERSION_V3
     )
-    bound_artifact_policy_version: Literal[
-        "portfolio-s1-bound-feedback-round3-v1"
-    ] = QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V3
+    bound_artifact_policy_version: Literal["portfolio-s1-bound-feedback-round3-v1"] = (
+        QWEN38_FEEDBACK_BOUND_ARTIFACT_POLICY_VERSION_V3
+    )
     fixed_selected_query_count: Literal[240] = QWEN38_FEEDBACK_SELECTED_COUNT
     provider_call_ceiling: Literal[243] = QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3
     live_call_authority: Literal[True] = True
@@ -764,9 +862,9 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
     """Strict JSON-Schema wire lock after the terminated Round3 canary."""
 
     schema_version: Literal[4] = 4
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-model-source-lock-v4"
-    ] = QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V4
+    policy_version: Literal["portfolio-s1-qwen38-feedback-model-source-lock-v4"] = (
+        QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V4
+    )
     structured_output_json_object_supported: Literal[True] = True
     structured_output_response_format: Literal["json_schema"] = "json_schema"
     structured_output_json_schema_used: Literal[True] = True
@@ -778,17 +876,15 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
     requested_json_schema_policy_version: Literal[
         "visual-feedback-output-json-schema-v1"
     ] = QWEN38_FEEDBACK_JSON_SCHEMA_POLICY_VERSION
-    requested_json_schema_name: Literal[
-        "visual_feedback_output_v1"
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_NAME
-    requested_json_schema_sha256: Literal[
+    requested_json_schema_name: Literal["visual_feedback_output_v1"] = (
+        QWEN38_FEEDBACK_JSON_SCHEMA_NAME
+    )
+    requested_json_schema_sha256: Literal[QWEN38_FEEDBACK_JSON_SCHEMA_SHA256] = (
         QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
+    )
     requested_json_schema_strict: Literal[True] = True
     max_tokens: None = None
-    max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
-    )
+    max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -814,18 +910,18 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
     outer_orchestration_policy_sha256: Literal[
         QWEN38_FEEDBACK_ROUND3_RETRY_POLICY_SHA256_V2
     ] = QWEN38_FEEDBACK_ROUND3_RETRY_POLICY_SHA256_V2
-    prompt_policy_version: Literal[
-        "visual-feedback-gcs-policy-labels-prompt-v6"
-    ] = QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
-    prompt_policy_sha256: Literal[
+    prompt_policy_version: Literal["visual-feedback-gcs-policy-labels-prompt-v6"] = (
+        QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
+    )
+    prompt_policy_sha256: Literal[QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6] = (
         QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6
-    ] = QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6
+    )
     parser_policy_version: Literal["visual-feedback-free-text-trim-v3"] = (
         QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3
     )
-    parser_policy_sha256: Literal[
+    parser_policy_sha256: Literal[QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3] = (
         QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3
-    ] = QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3
+    )
     cache_namespace: Literal["feedback-evaluator-v14"] = (
         QWEN38_FEEDBACK_CACHE_NAMESPACE_V4
     )
@@ -847,9 +943,9 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
         QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3
     )
     live_call_authority: Literal[True] = True
-    live_call_authority_scope: Literal[
+    live_call_authority_scope: Literal["canary12_plus_three_global_retries_only"] = (
         "canary12_plus_three_global_retries_only"
-    ] = "canary12_plus_three_global_retries_only"
+    )
     full_run_live_authorized: Literal[False] = False
     future_full_owner_budget_authorization_status: Literal["not_granted"] = (
         "not_granted"
@@ -885,6 +981,108 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
             raise ValueError("Qwen3.8 Feedback Round3 schema source lock drifted")
         if self.source_lock_sha256 != _self_hash(self, "source_lock_sha256"):
             raise ValueError("Qwen3.8 Feedback model source lock v4 self hash mismatch")
+        return self
+
+
+class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
+    """Pending phase60 source/runtime identity over the completed canary prefix."""
+
+    schema_version: Literal[5] = 5
+    policy_version: Literal["portfolio-s1-qwen38-feedback-model-source-lock-v5"] = (
+        QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V5
+    )
+    outer_orchestration_policy_version: Literal[
+        "portfolio-s1-feedback-round3-phase60-global-retry-v1"
+    ] = ROUND3_PHASE60_RETRY_POLICY_VERSION_V1
+    outer_orchestration_policy_sha256: Literal[
+        ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+    ] = ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+    provider_call_ceiling: Literal[60] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING
+    )
+    cumulative_provider_call_ceiling: Literal[75] = (
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING
+    )
+    phase60_selected_query_count: Literal[60] = 60
+    phase60_prefix_selected_count: Literal[12] = (
+        QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT
+    )
+    phase60_new_first_call_count: Literal[48] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_FIRST_CALL_COUNT
+    )
+    phase60_new_retry_token_count: Literal[12] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_RETRY_TOKEN_COUNT
+    )
+    canary_prefix_provider_call_count: Literal[15] = (
+        QWEN38_FEEDBACK_PHASE60_PREFIX_PROVIDER_CALL_COUNT
+    )
+    canary_prefix_retry_count: Literal[3] = QWEN38_FEEDBACK_PHASE60_PREFIX_RETRY_COUNT
+    canary_prefix_retry_tokens_reusable: Literal[False] = False
+    canary_prefix_run_file_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256
+    canary_prefix_run_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256
+    canary_prefix_artifact_set_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256
+    canary_prefix_selection_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
+    live_call_authority: Literal[False] = False
+    live_provider_calls_authorized: Literal[False] = False
+    live_call_authority_scope: Literal[
+        "phase60_prefix12_plus_48_first_plus_12_retries_pending_owner_approval"
+    ] = "phase60_prefix12_plus_48_first_plus_12_retries_pending_owner_approval"
+    owner_phase60_budget_authorization_status: Literal["pending"] = "pending"
+    owner_phase60_retry_authorization_status: Literal["pending"] = "pending"
+    phase60_requires_new_owner_approval: Literal[True] = True
+    phase120_requires_new_owner_approval: Literal[True] = True
+    full_run_live_authorized: Literal[False] = False
+    future_full_owner_budget_authorization_status: Literal["not_granted"] = (
+        "not_granted"
+    )
+    historical_feedback_outputs_imported: Literal[12] = 12
+    terminated_json_object_canary_outputs_imported: Literal[0] = 0
+    round3_live_authority_requires_exact_v4_v7_v14_triad: Literal[False] = False
+    phase60_pending_identity_requires_exact_v5_v8_v15_triad: Literal[True] = True
+
+    @model_validator(mode="after")
+    def _validate_v4_lock(self) -> Self:
+        if (
+            self.requested_response_format != "json_schema"
+            or self.structured_output_response_format != "json_schema"
+            or not self.structured_output_json_schema_used
+            or not self.requested_json_schema
+            or not self.requested_json_schema_strict
+            or self.requested_json_schema_sha256 != QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
+            or self.outer_orchestration_policy_sha256
+            != ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+            or self.concurrency != 2
+            or self.phase60_prefix_selected_count + self.phase60_new_first_call_count
+            != self.phase60_selected_query_count
+            or self.phase60_new_first_call_count + self.phase60_new_retry_token_count
+            != self.provider_call_ceiling
+            or self.canary_prefix_provider_call_count + self.provider_call_ceiling
+            != self.cumulative_provider_call_ceiling
+            or self.canary_prefix_retry_count != 3
+            or self.canary_prefix_retry_tokens_reusable
+            or self.live_call_authority
+            or self.live_provider_calls_authorized
+            or self.owner_phase60_budget_authorization_status != "pending"
+            or self.owner_phase60_retry_authorization_status != "pending"
+            or not self.phase60_requires_new_owner_approval
+            or not self.phase120_requires_new_owner_approval
+            or self.full_run_live_authorized
+            or self.historical_feedback_outputs_imported != 12
+            or self.terminated_json_object_canary_outputs_imported != 0
+            or not self.old_remote_auth_does_not_authorize_round3_transport
+            or self.round3_live_authority_requires_exact_v4_v7_v14_triad
+        ):
+            raise ValueError("Qwen3.8 Feedback phase60 pending source lock drifted")
+        if self.source_lock_sha256 != _self_hash(self, "source_lock_sha256"):
+            raise ValueError("Qwen3.8 Feedback model source lock v5 self hash mismatch")
         return self
 
 
@@ -1109,9 +1307,9 @@ class Qwen38FeedbackPricingLockV4(Qwen38FeedbackPricingLockV3):
     """Exact240 budget plus one owner-approved global schema retry token."""
 
     schema_version: Literal[4] = 4
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-pricing-lock-v4"
-    ] = QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V4
+    policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v4"] = (
+        QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V4
+    )
     provider_call_ceiling: Literal[241] = QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V2
     selected_query_count: Literal[240] = QWEN38_FEEDBACK_SELECTED_COUNT
     normal_attempts_per_selected_query: Literal[1] = 1
@@ -1141,9 +1339,7 @@ class Qwen38FeedbackPricingLockV4(Qwen38FeedbackPricingLockV3):
     )
     owner_budget_authorization_status: Literal[
         "granted_for_exact_discovery_selected240_plus_one_global_invalid_json_retry"
-    ] = (
-        "granted_for_exact_discovery_selected240_plus_one_global_invalid_json_retry"
-    )
+    ] = "granted_for_exact_discovery_selected240_plus_one_global_invalid_json_retry"
 
     @field_validator("retry_eligible_error_codes", mode="before")
     @classmethod
@@ -1163,12 +1359,10 @@ class Qwen38FeedbackPricingLockV5(Qwen38FeedbackPricingLockV3):
     """Live fresh-v3 envelope under CNY150 authority and a CNY113 stop."""
 
     schema_version: Literal[5] = 5
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-pricing-lock-v5"
-    ] = QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V5
-    wire_max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
+    policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v5"] = (
+        QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V5
     )
+    wire_max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -1180,9 +1374,9 @@ class Qwen38FeedbackPricingLockV5(Qwen38FeedbackPricingLockV3):
     normal_attempts_per_selected_query: Literal[1] = 1
     global_retry_token_count: Literal[3] = 3
     max_attempts_per_retried_query: Literal[2] = 2
-    retry_policy: Literal[
+    retry_policy: Literal["three_global_same_entry_schema_or_length_retries_v2"] = (
         "three_global_same_entry_schema_or_length_retries_v2"
-    ] = "three_global_same_entry_schema_or_length_retries_v2"
+    )
     retry_eligible_error_codes: tuple[Literal["invalid_feedback_json"], ...] = (
         "invalid_feedback_json",
     )
@@ -1212,9 +1406,7 @@ class Qwen38FeedbackPricingLockV5(Qwen38FeedbackPricingLockV3):
         QWEN38_FEEDBACK_TECHNICAL_PHASE_HARD_CAP_CNY_V2
     )
     fresh_run_and_retry_scope_owner_approved: Literal[True] = True
-    fresh_run_and_retry_scope_owner_approved_on: Literal["2026-08-10"] = (
-        "2026-08-10"
-    )
+    fresh_run_and_retry_scope_owner_approved_on: Literal["2026-08-10"] = "2026-08-10"
     live_provider_calls_authorized: Literal[True] = True
     live_use_requires_separate_owner_budget_authorization: Literal[False] = False
     owner_budget_authorization_scope: Literal[
@@ -1267,12 +1459,10 @@ class Qwen38FeedbackPricingLockV6(Qwen38FeedbackPricingLockV3):
     """Cumulative Round3 envelope for a wholly fresh fixed-240 run."""
 
     schema_version: Literal[6] = 6
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-pricing-lock-v6"
-    ] = QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V6
-    wire_max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
+    policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v6"] = (
+        QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V6
     )
+    wire_max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -1387,12 +1577,10 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
     """Live schema-canary budget plus a non-live future full-run envelope."""
 
     schema_version: Literal[7] = 7
-    policy_version: Literal[
-        "portfolio-s1-qwen38-feedback-pricing-lock-v7"
-    ] = QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V7
-    wire_max_completion_tokens: Literal[6144] = (
-        QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
+    policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v7"] = (
+        QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V7
     )
+    wire_max_completion_tokens: Literal[6144] = QWEN38_FEEDBACK_MAX_COMPLETION_TOKENS_V2
     output_token_reservation_ceiling_per_call: Literal[6154] = (
         QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
     )
@@ -1418,9 +1606,7 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
     max_lifetime_attempts_per_retried_query: Literal[2] = 2
     retry_policy: Literal[
         "three_global_same_entry_json_schema_parser_or_length_retries_round3_v2"
-    ] = (
-        "three_global_same_entry_json_schema_parser_or_length_retries_round3_v2"
-    )
+    ] = "three_global_same_entry_json_schema_parser_or_length_retries_round3_v2"
     retry_eligible_error_codes: tuple[Literal["invalid_feedback_json"], ...] = (
         "invalid_feedback_json",
     )
@@ -1444,12 +1630,12 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
     requested_json_schema_policy_version: Literal[
         "visual-feedback-output-json-schema-v1"
     ] = QWEN38_FEEDBACK_JSON_SCHEMA_POLICY_VERSION
-    requested_json_schema_name: Literal[
-        "visual_feedback_output_v1"
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_NAME
-    requested_json_schema_sha256: Literal[
+    requested_json_schema_name: Literal["visual_feedback_output_v1"] = (
+        QWEN38_FEEDBACK_JSON_SCHEMA_NAME
+    )
+    requested_json_schema_sha256: Literal[QWEN38_FEEDBACK_JSON_SCHEMA_SHA256] = (
         QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
-    ] = QWEN38_FEEDBACK_JSON_SCHEMA_SHA256
+    )
     requested_json_schema_strict: Literal[True] = True
     attempt_transport_retry_policy: Literal[
         "no_internal_retry_each_provider_attempt"
@@ -1472,21 +1658,21 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
     future_full_fresh_maximum_reservation_cny: Literal["112.155192000000"] = (
         QWEN38_FEEDBACK_MAXIMUM_RESERVATION_CNY_V3
     )
-    future_full_cumulative_maximum_reservation_cny: Literal[
-        "136.474692000000"
-    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_MAXIMUM_CNY
-    future_full_technical_cumulative_hard_cap_cny: Literal[
-        "137.000000000000"
-    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+    future_full_cumulative_maximum_reservation_cny: Literal["136.474692000000"] = (
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_MAXIMUM_CNY
+    )
+    future_full_technical_cumulative_hard_cap_cny: Literal["137.000000000000"] = (
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+    )
     future_full_envelope_live_authorized: Literal[False] = False
     future_full_owner_budget_authorization_status: Literal["not_granted"] = (
         "not_granted"
     )
     phase60_requires_new_owner_approval: Literal[True] = True
     full_run_and_retry_scope_owner_approved: Literal[False] = False
-    live_call_authority_scope: Literal[
+    live_call_authority_scope: Literal["canary12_plus_three_global_retries_only"] = (
         "canary12_plus_three_global_retries_only"
-    ] = "canary12_plus_three_global_retries_only"
+    )
     technical_cap_scope: Literal["prior_actual_plus_fresh_reservations"] = (
         "prior_actual_plus_fresh_reservations"
     )
@@ -1567,6 +1753,169 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
         return self
 
 
+class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
+    """Pending, zero-call phase60 reservation plan over the completed prefix."""
+
+    schema_version: Literal[8] = 8
+    policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v8"] = (
+        QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V8
+    )
+    provider_call_ceiling: Literal[60] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING
+    )
+    cumulative_provider_call_ceiling: Literal[75] = (
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING
+    )
+    live_authorized_selected_query_count: Literal[0] = 0
+    planned_phase_selected_query_count: Literal[60] = 60
+    live_authorized_phase_counts: tuple[int, ...] = ()
+    phase60_prefix_selected_count: Literal[12] = (
+        QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT
+    )
+    phase60_new_first_call_count: Literal[48] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_FIRST_CALL_COUNT
+    )
+    global_retry_token_count: Literal[12] = (
+        QWEN38_FEEDBACK_PHASE60_NEW_RETRY_TOKEN_COUNT
+    )
+    prefix_global_retry_token_count: Literal[3] = (
+        QWEN38_FEEDBACK_PHASE60_PREFIX_RETRY_COUNT
+    )
+    prefix_global_retry_tokens_reusable: Literal[False] = False
+    retry_policy: Literal[
+        "twelve_global_same_entry_json_schema_parser_or_length_retries_phase60_v1"
+    ] = "twelve_global_same_entry_json_schema_parser_or_length_retries_phase60_v1"
+    outer_orchestration_policy_version: Literal[
+        "portfolio-s1-feedback-round3-phase60-global-retry-v1"
+    ] = ROUND3_PHASE60_RETRY_POLICY_VERSION_V1
+    outer_orchestration_policy_sha256: Literal[
+        ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+    ] = ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+    maximum_reservation_cny: Literal["27.692640000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+    )
+    prior_cumulative_actual_cost_cny: Literal["26.264100000000"] = (
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_ACTUAL_CNY
+    )
+    canary_prefix_actual_cost_cny: Literal["1.944600000000"] = (
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ACTUAL_COST_CNY
+    )
+    cumulative_maximum_reservation_cny: Literal["53.956740000000"] = (
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_MAXIMUM_CNY
+    )
+    technical_phase_hard_cap_cny: Literal["28.000000000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+    )
+    live_cumulative_hard_cap_cny: Literal["54.264100000000"] = (
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+    )
+    future_full_cumulative_maximum_reservation_cny: Literal["138.419292000000"] = (
+        "138.419292000000"
+    )
+    future_full_technical_cumulative_hard_cap_cny: Literal["139.000000000000"] = (
+        "139.000000000000"
+    )
+    fresh_run_and_retry_scope_owner_approved: Literal[False] = False
+    live_provider_calls_authorized: Literal[False] = False
+    live_use_requires_separate_owner_budget_authorization: Literal[True] = True
+    owner_budget_authorization_decision_source: Literal[
+        "owner_instruction_not_yet_received"
+    ] = "owner_instruction_not_yet_received"
+    owner_budget_authorization_scope: Literal[
+        "phase60-prefix12-plus-48-new-firsts-plus-up-to-12-new-global-retries"
+    ] = "phase60-prefix12-plus-48-new-firsts-plus-up-to-12-new-global-retries"
+    owner_budget_authorization_status: Literal[
+        "pending_phase60_budget_and_retry_approval"
+    ] = "pending_phase60_budget_and_retry_approval"
+    owner_budget_authorized_cap_cny: Literal["0.000000000000"] = "0.000000000000"
+    owner_budget_authorized_on: None = None
+    planned_owner_budget_cap_cny: Literal["28.000000000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+    )
+    owner_phase60_retry_authorization_status: Literal["pending"] = "pending"
+    future_full_envelope_live_authorized: Literal[False] = False
+    future_full_owner_budget_authorization_status: Literal["not_granted"] = (
+        "not_granted"
+    )
+    full_run_and_retry_scope_owner_approved: Literal[False] = False
+    phase60_requires_new_owner_approval: Literal[True] = True
+    phase120_requires_new_owner_approval: Literal[True] = True
+    historical_feedback_outputs_imported: Literal[12] = 12
+    terminated_json_object_canary_outputs_imported: Literal[0] = 0
+    prior_actual_includes_terminated_json_object_canary: Literal[True] = True
+    prior_actual_includes_completed_schema_canary: Literal[True] = True
+    canary_prefix_run_file_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256
+    canary_prefix_run_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256
+    canary_prefix_artifact_set_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256
+    canary_prefix_selection_sha256: Literal[
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
+    ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
+
+    @model_validator(mode="after")
+    def _validate_v7_lock(self) -> Self:
+        if (
+            self.phase_counts != (12, 60, 120, 240)
+            or self.live_authorized_phase_counts
+            or self.live_authorized_selected_query_count != 0
+            or self.concurrency != 2
+            or self.retry_eligible_error_codes != ("invalid_feedback_json",)
+            or self.retry_eligible_finish_reasons != ("stop", "length")
+            or self.attempt_response_format != "json_schema"
+            or not self.requested_json_schema_strict
+            or self.phase60_prefix_selected_count + self.phase60_new_first_call_count
+            != self.planned_phase_selected_query_count
+            or self.phase60_new_first_call_count + self.global_retry_token_count
+            != self.provider_call_ceiling
+            or QWEN38_FEEDBACK_PHASE60_PREFIX_PROVIDER_CALL_COUNT
+            + self.provider_call_ceiling
+            != self.cumulative_provider_call_ceiling
+            or self.prefix_global_retry_tokens_reusable
+            or Decimal(self.per_call_reservation_cny) * self.provider_call_ceiling
+            != Decimal(self.maximum_reservation_cny)
+            or Decimal(self.maximum_reservation_cny)
+            >= Decimal(self.technical_phase_hard_cap_cny)
+            or Decimal(self.prior_cumulative_actual_cost_cny)
+            + Decimal(self.maximum_reservation_cny)
+            != Decimal(self.cumulative_maximum_reservation_cny)
+            or Decimal(self.prior_cumulative_actual_cost_cny)
+            + Decimal(self.technical_phase_hard_cap_cny)
+            != Decimal(self.live_cumulative_hard_cap_cny)
+            or Decimal(self.prior_cumulative_actual_cost_cny)
+            != Decimal(QWEN38_FEEDBACK_ROUND3_SCHEMA_PRIOR_ACTUAL_COST_CNY)
+            + Decimal(self.canary_prefix_actual_cost_cny)
+            or Decimal(self.future_full_fresh_maximum_reservation_cny)
+            + Decimal(self.prior_cumulative_actual_cost_cny)
+            != Decimal(self.future_full_cumulative_maximum_reservation_cny)
+            or Decimal(self.future_full_cumulative_maximum_reservation_cny)
+            >= Decimal(self.future_full_technical_cumulative_hard_cap_cny)
+            or self.fresh_run_and_retry_scope_owner_approved
+            or self.live_provider_calls_authorized
+            or not self.live_use_requires_separate_owner_budget_authorization
+            or self.owner_budget_authorization_status
+            != "pending_phase60_budget_and_retry_approval"
+            or self.owner_budget_authorized_cap_cny != "0.000000000000"
+            or self.owner_budget_authorized_on is not None
+            or self.owner_phase60_retry_authorization_status != "pending"
+            or self.future_full_envelope_live_authorized
+            or self.full_run_and_retry_scope_owner_approved
+            or not self.phase60_requires_new_owner_approval
+            or not self.phase120_requires_new_owner_approval
+            or self.historical_feedback_outputs_imported != 12
+            or self.terminated_json_object_canary_outputs_imported != 0
+            or not self.prior_actual_includes_completed_schema_canary
+        ):
+            raise ValueError("Qwen3.8 Feedback pricing v8 pending envelope drifted")
+        if self.pricing_lock_sha256 != _self_hash(self, "pricing_lock_sha256"):
+            raise ValueError("Qwen3.8 Feedback pricing lock v8 self hash mismatch")
+        return self
+
+
 class Qwen38FeedbackRoleSelectionV12(_StrictFrozenModel):
     """Typed active-role lock for the live fresh-v3 Feedback plan."""
 
@@ -1613,13 +1962,9 @@ class Qwen38FeedbackRoleSelectionV12(_StrictFrozenModel):
             "output_token_reservation_ceiling_per_call": (
                 QWEN38_FEEDBACK_OUTPUT_RESERVATION_TOKENS_V2
             ),
-            "per_call_reservation_cny": (
-                QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2
-            ),
+            "per_call_reservation_cny": (QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2),
             "provider_call_ceiling": QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3,
-            "worst_case_reservation_cny": (
-                QWEN38_FEEDBACK_MAXIMUM_RESERVATION_CNY_V3
-            ),
+            "worst_case_reservation_cny": (QWEN38_FEEDBACK_MAXIMUM_RESERVATION_CNY_V3),
             "technical_phase_hard_cap_cny": (
                 QWEN38_FEEDBACK_TECHNICAL_PHASE_HARD_CAP_CNY_V2
             ),
@@ -1629,9 +1974,7 @@ class Qwen38FeedbackRoleSelectionV12(_StrictFrozenModel):
             "normal_attempts_per_selected_query": 1,
             "global_retry_token_count": 3,
             "max_attempts_per_retried_query": 2,
-            "retry_policy": (
-                "three_global_same_entry_schema_or_length_retries_v2"
-            ),
+            "retry_policy": ("three_global_same_entry_schema_or_length_retries_v2"),
             "retry_eligible_error_codes": ["invalid_feedback_json"],
             "retry_eligible_finish_reasons": ["stop", "length"],
             "outer_orchestration_policy_version": (
@@ -1646,28 +1989,21 @@ class Qwen38FeedbackRoleSelectionV12(_StrictFrozenModel):
             "attempt_transport_policy_sha256": (
                 QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
             ),
-            "transport_policy_version": (
-                QWEN38_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
-            ),
+            "transport_policy_version": (QWEN38_FEEDBACK_TRANSPORT_POLICY_VERSION_V7),
             "transport_policy_sha256": QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256_V7,
             "model_source_lock_file_sha256": (
                 QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V2
             ),
             "model_source_lock_sha256": QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V2,
-            "pricing_lock_file_sha256": (
-                QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V5
-            ),
+            "pricing_lock_file_sha256": (QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V5),
             "pricing_lock_sha256": QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V5,
             "control_policy_version": "portfolio-s1-feedback-control-v12",
-            "launch_policy_version": (
-                "portfolio-s1-qwen38-feedback-launch-lock-v5"
-            ),
+            "launch_policy_version": ("portfolio-s1-qwen38-feedback-launch-lock-v5"),
             "fresh_run_and_retry_scope_owner_approved": True,
             "live_provider_calls_authorized": True,
             "budget_authorization_decision_source": "current_user_instruction",
             "budget_authorization_status": (
-                "fresh_v3_live_authorized_cny150_owner_ceiling_cny113_"
-                "technical_stop"
+                "fresh_v3_live_authorized_cny150_owner_ceiling_cny113_technical_stop"
             ),
             "budget_authorized_on": "2026-08-10",
         }
@@ -1709,9 +2045,7 @@ class Qwen38FeedbackRoleSelectionV13(_StrictFrozenModel):
     selected_on: Literal["2026-08-11"] = "2026-08-11"
     status: Literal[
         "owner_selected_portfolio_qwen38_feedback_round3_json_object_live_authorized"
-    ] = (
-        "owner_selected_portfolio_qwen38_feedback_round3_json_object_live_authorized"
-    )
+    ] = "owner_selected_portfolio_qwen38_feedback_round3_json_object_live_authorized"
     supersedes_for_active_portfolio: Literal[
         "specs/authoring/model-role-selection-v12.json"
     ] = "specs/authoring/model-role-selection-v12.json"
@@ -1757,8 +2091,7 @@ class Qwen38FeedbackRoleSelectionV13(_StrictFrozenModel):
             "max_lifetime_attempts_per_retried_query": 2,
             "provider_call_ceiling": QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3,
             "retry_policy": (
-                "three_global_same_entry_json_object_parser_or_length_retries_"
-                "round3_v1"
+                "three_global_same_entry_json_object_parser_or_length_retries_round3_v1"
             ),
             "retry_eligible_error_codes": ["invalid_feedback_json"],
             "retry_eligible_finish_reasons": ["stop", "length"],
@@ -1776,13 +2109,9 @@ class Qwen38FeedbackRoleSelectionV13(_StrictFrozenModel):
             ),
             "transport_policy_version": ROUND3_PRIMARY_TRANSPORT_POLICY_VERSION_V1,
             "transport_policy_sha256": ROUND3_PRIMARY_TRANSPORT_POLICY_SHA256_V1,
-            "prompt_policy_version": (
-                QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
-            ),
+            "prompt_policy_version": (QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6),
             "prompt_policy_sha256": QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6,
-            "parser_policy_version": (
-                QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3
-            ),
+            "parser_policy_version": (QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3),
             "parser_policy_sha256": QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3,
             "model_source_lock_file": QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V3,
             "model_source_lock_file_sha256": (
@@ -1790,9 +2119,7 @@ class Qwen38FeedbackRoleSelectionV13(_StrictFrozenModel):
             ),
             "model_source_lock_sha256": QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V3,
             "pricing_lock_file": QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V6,
-            "pricing_lock_file_sha256": (
-                QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V6
-            ),
+            "pricing_lock_file_sha256": (QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V6),
             "pricing_lock_sha256": QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V6,
             "input_token_reservation_ceiling_per_call": (
                 QWEN38_FEEDBACK_INPUT_RESERVATION_TOKENS
@@ -1872,9 +2199,7 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
     selected_on: Literal["2026-08-11"] = "2026-08-11"
     status: Literal[
         "owner_selected_portfolio_qwen38_feedback_round3_json_schema_canary_authorized"
-    ] = (
-        "owner_selected_portfolio_qwen38_feedback_round3_json_schema_canary_authorized"
-    )
+    ] = "owner_selected_portfolio_qwen38_feedback_round3_json_schema_canary_authorized"
     supersedes_for_active_portfolio: Literal[
         "specs/authoring/model-role-selection-v13.json"
     ] = "specs/authoring/model-role-selection-v13.json"
@@ -1935,8 +2260,7 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
                 QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3
             ),
             "retry_policy": (
-                "three_global_same_entry_json_schema_parser_or_length_retries_"
-                "round3_v2"
+                "three_global_same_entry_json_schema_parser_or_length_retries_round3_v2"
             ),
             "retry_eligible_error_codes": ["invalid_feedback_json"],
             "retry_eligible_finish_reasons": ["stop", "length"],
@@ -1962,13 +2286,9 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
             "transport_policy_sha256": (
                 ROUND3_PRIMARY_JSON_SCHEMA_TRANSPORT_POLICY_SHA256_V1
             ),
-            "prompt_policy_version": (
-                QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6
-            ),
+            "prompt_policy_version": (QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_VERSION_V6),
             "prompt_policy_sha256": QWEN38_FEEDBACK_ROUND3_PROMPT_POLICY_SHA256_V6,
-            "parser_policy_version": (
-                QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3
-            ),
+            "parser_policy_version": (QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_VERSION_V3),
             "parser_policy_sha256": QWEN38_FEEDBACK_ROUND3_PARSER_POLICY_SHA256_V3,
             "model_source_lock_file": QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V4,
             "model_source_lock_file_sha256": (
@@ -1976,9 +2296,7 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
             ),
             "model_source_lock_sha256": QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V4,
             "pricing_lock_file": QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V7,
-            "pricing_lock_file_sha256": (
-                QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V7
-            ),
+            "pricing_lock_file_sha256": (QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V7),
             "pricing_lock_sha256": QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V7,
             "input_token_reservation_ceiling_per_call": (
                 QWEN38_FEEDBACK_INPUT_RESERVATION_TOKENS
@@ -2014,9 +2332,7 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
             "owner_authorized_budget_ceiling_cny": (
                 QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_FRESH_STAGE_HARD_CAP_CNY
             ),
-            "live_call_authority_scope": (
-                "canary12_plus_three_global_retries_only"
-            ),
+            "live_call_authority_scope": ("canary12_plus_three_global_retries_only"),
             "future_full_envelope_live_authorized": False,
             "future_full_owner_budget_authorization_status": "not_granted",
             "full_run_and_retry_scope_owner_approved": False,
@@ -2066,6 +2382,117 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
 
     def canonical_bytes(self) -> bytes:
         return canonical_json_bytes(self.model_dump(mode="json"))
+
+
+class Qwen38FeedbackRoleSelectionV15(Qwen38FeedbackRoleSelectionV14):
+    """Active planning role for phase60; deliberately grants zero live calls."""
+
+    schema_version: Literal[15] = 15
+    status: Literal[
+        "portfolio_qwen38_feedback_phase60_pending_owner_budget_and_retry_approval"
+    ] = "portfolio_qwen38_feedback_phase60_pending_owner_budget_and_retry_approval"
+    supersedes_for_active_portfolio: Literal[
+        "specs/authoring/model-role-selection-v14.json"
+    ] = "specs/authoring/model-role-selection-v14.json"
+
+    @model_validator(mode="after")
+    def _validate_selection(self) -> Self:
+        expected_feedback = {
+            "provider": QWEN38_FEEDBACK_PROVIDER,
+            "model": QWEN38_FEEDBACK_MODEL,
+            "cache_namespace": QWEN38_FEEDBACK_CACHE_NAMESPACE_V4,
+            "wire_kind": QWEN38_FEEDBACK_ROUND3_WIRE_KIND_V2,
+            "requested_response_format": "json_schema",
+            "requested_json_schema": True,
+            "requested_json_schema_sha256": QWEN38_FEEDBACK_JSON_SCHEMA_SHA256,
+            "requested_json_schema_strict": True,
+            "transport_policy_version": (
+                ROUND3_PRIMARY_JSON_SCHEMA_TRANSPORT_POLICY_VERSION_V1
+            ),
+            "transport_policy_sha256": (
+                ROUND3_PRIMARY_JSON_SCHEMA_TRANSPORT_POLICY_SHA256_V1
+            ),
+            "outer_orchestration_policy_version": (
+                ROUND3_PHASE60_RETRY_POLICY_VERSION_V1
+            ),
+            "outer_orchestration_policy_sha256": (
+                ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
+            ),
+            "model_source_lock_file": QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V5,
+            "model_source_lock_file_sha256": (
+                QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V5
+            ),
+            "model_source_lock_sha256": QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V5,
+            "pricing_lock_file": QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V8,
+            "pricing_lock_file_sha256": (QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V8),
+            "pricing_lock_sha256": QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V8,
+            "phase60_prefix_selected_count": 12,
+            "phase60_new_first_call_count": 48,
+            "new_global_retry_token_count": 12,
+            "new_provider_call_ceiling": 60,
+            "cumulative_provider_call_ceiling": 75,
+            "prefix_global_retry_token_count": 3,
+            "prefix_global_retry_tokens_reusable": False,
+            "prior_cumulative_actual_cost_cny": (
+                QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_ACTUAL_CNY
+            ),
+            "fresh_maximum_reservation_cny": (
+                QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+            ),
+            "fresh_stage_hard_cap_cny": (
+                QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+            ),
+            "cumulative_maximum_reservation_cny": (
+                QWEN38_FEEDBACK_PHASE60_CUMULATIVE_MAXIMUM_CNY
+            ),
+            "live_cumulative_hard_cap_cny": (
+                QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+            ),
+            "canary_prefix_run_file_sha256": (
+                QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256
+            ),
+            "canary_prefix_run_sha256": (
+                QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256
+            ),
+            "canary_prefix_artifact_set_sha256": (
+                QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256
+            ),
+            "canary_prefix_selection_sha256": (
+                QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
+            ),
+            "historical_feedback_outputs_imported": 12,
+            "terminated_json_object_canary_outputs_imported": 0,
+            "live_call_authority": False,
+            "live_provider_calls_authorized": False,
+            "live_use_requires_separate_owner_budget_authorization": True,
+            "owner_phase60_budget_authorization_status": "pending",
+            "owner_phase60_retry_authorization_status": "pending",
+            "phase60_requires_new_owner_approval": True,
+            "phase120_requires_new_owner_approval": True,
+            "creator_authorized": False,
+            "bundle_v11_publishable": False,
+        }
+        if any(
+            self.feedback_evaluator.get(key) != value
+            for key, value in expected_feedback.items()
+        ):
+            raise ValueError("Qwen3.8 Feedback role v15 pending identity drifted")
+        if (
+            self.authorization_status.get(
+                "historical_authorizations_reusable_for_new_roles"
+            )
+            is not False
+            or self.authorization_status.get("dashscope_qwen38_feedback")
+            != (
+                "phase60 is a zero-call pending plan: CNY28 fresh budget and "
+                "twelve new global retry tokens require separate owner approval"
+            )
+            or self.evaluator_isolation.get("cache_namespaces")
+            != [QWEN38_FEEDBACK_CACHE_NAMESPACE_V4, "final-evaluator-v11"]
+            or self.selection_sha256 != _self_hash(self, "selection_sha256")
+        ):
+            raise ValueError("Qwen3.8 Feedback role v15 governance drifted")
+        return self
 
 
 class SelectedQwenFeedbackAssetV1(_StrictFrozenModel):
@@ -2822,8 +3249,7 @@ def require_qwen38_feedback_pre_call_budget_v2(
     if (
         type(provider_calls_already_reserved) is not int
         or provider_calls_already_reserved < 0
-        or provider_calls_already_reserved
-        >= QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V2
+        or provider_calls_already_reserved >= QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V2
     ):
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8 Feedback 241-call provider ceiling is exhausted"
@@ -2870,8 +3296,7 @@ def require_qwen38_feedback_pre_call_budget_v3(
     if (
         type(provider_calls_already_reserved) is not int
         or provider_calls_already_reserved < 0
-        or provider_calls_already_reserved
-        >= QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3
+        or provider_calls_already_reserved >= QWEN38_FEEDBACK_PROVIDER_CALL_CEILING_V3
     ):
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8 Feedback 243-call provider ceiling is exhausted"
@@ -2928,9 +3353,8 @@ def require_qwen38_feedback_pre_call_budget_v4(
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8 Feedback cumulative committed cost is invalid"
         ) from error
-    if (
-        not committed.is_finite()
-        or committed < Decimal(QWEN38_FEEDBACK_ROUND3_SCHEMA_PRIOR_ACTUAL_COST_CNY)
+    if not committed.is_finite() or committed < Decimal(
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_PRIOR_ACTUAL_COST_CNY
     ):
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8 Feedback cumulative committed cost is invalid"
@@ -2943,6 +3367,56 @@ def require_qwen38_feedback_pre_call_budget_v4(
             "Qwen3.8 Feedback schema-canary CNY10 fresh stage hard cap would be exceeded"
         )
     return QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2
+
+
+def require_qwen38_feedback_pre_call_budget_v5(
+    *,
+    estimated_input_tokens_including_images: int,
+    provider_calls_already_reserved: int,
+    committed_cumulative_cost_cny: str,
+) -> str:
+    """Fail closed for the pending phase60 envelope before any provider call."""
+
+    if (
+        type(estimated_input_tokens_including_images) is not int
+        or estimated_input_tokens_including_images <= 0
+        or estimated_input_tokens_including_images
+        > QWEN38_FEEDBACK_INPUT_RESERVATION_TOKENS
+    ):
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback input estimate exceeds the 20,000-token reservation"
+        )
+    if (
+        type(provider_calls_already_reserved) is not int
+        or provider_calls_already_reserved < 0
+        or provider_calls_already_reserved
+        >= QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING
+    ):
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback pending phase60 60-call provider ceiling is exhausted"
+        )
+    try:
+        committed = Decimal(committed_cumulative_cost_cny)
+    except (InvalidOperation, TypeError) as error:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback phase60 cumulative committed cost is invalid"
+        ) from error
+    if not committed.is_finite() or committed < Decimal(
+        QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_ACTUAL_CNY
+    ):
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback phase60 cumulative committed cost is invalid"
+        )
+    reservation = Decimal(QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2)
+    if committed + reservation > Decimal(
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+    ):
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback phase60 CNY28 fresh technical cap would be exceeded"
+        )
+    raise PortfolioS1QwenFeedbackGovernanceError(
+        "Qwen3.8 Feedback phase60 owner budget and retry approval is pending"
+    )
 
 
 def load_qwen37_feedback_launch_lock(
@@ -3087,9 +3561,7 @@ def load_qwen38_feedback_model_source_lock_v2(
             "Qwen3.8-Max Feedback model source lock v2 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackModelSourceLockV2.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackModelSourceLockV2.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback model source lock v2 is invalid"
@@ -3116,9 +3588,7 @@ def load_qwen38_feedback_model_source_lock_v3(
             "Qwen3.8-Max Feedback model source lock v3 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackModelSourceLockV3.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackModelSourceLockV3.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback model source lock v3 is invalid"
@@ -3145,9 +3615,7 @@ def load_qwen38_feedback_model_source_lock_v4(
             "Qwen3.8-Max Feedback model source lock v4 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackModelSourceLockV4.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackModelSourceLockV4.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback model source lock v4 is invalid"
@@ -3155,6 +3623,33 @@ def load_qwen38_feedback_model_source_lock_v4(
     if lock.canonical_bytes() != content:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback model source lock v4 is not canonical JSON"
+        )
+    return lock
+
+
+def load_qwen38_feedback_model_source_lock_v5(
+    path: str | Path,
+    *,
+    expected_file_sha256: str,
+) -> Qwen38FeedbackModelSourceLockV5:
+    content = read_stable_regular_file(
+        path,
+        label="Qwen3.8-Max Feedback phase60 pending model source lock v5",
+        max_bytes=1024 * 1024,
+    )
+    if sha256_bytes(content) != expected_file_sha256:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback model source lock v5 file SHA-256 mismatch"
+        )
+    try:
+        lock = Qwen38FeedbackModelSourceLockV5.model_validate_json(content, strict=True)
+    except ValueError as error:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback model source lock v5 is invalid"
+        ) from error
+    if lock.canonical_bytes() != content:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback model source lock v5 is not canonical JSON"
         )
     return lock
 
@@ -3253,9 +3748,7 @@ def load_qwen38_feedback_pricing_lock_v6(
             "Qwen3.8-Max Feedback pricing lock v6 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackPricingLockV6.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackPricingLockV6.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback pricing lock v6 is invalid"
@@ -3282,9 +3775,7 @@ def load_qwen38_feedback_pricing_lock_v7(
             "Qwen3.8-Max Feedback pricing lock v7 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackPricingLockV7.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackPricingLockV7.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback pricing lock v7 is invalid"
@@ -3292,6 +3783,33 @@ def load_qwen38_feedback_pricing_lock_v7(
     if lock.canonical_bytes() != content:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback pricing lock v7 is not canonical JSON"
+        )
+    return lock
+
+
+def load_qwen38_feedback_pricing_lock_v8(
+    path: str | Path,
+    *,
+    expected_file_sha256: str,
+) -> Qwen38FeedbackPricingLockV8:
+    content = read_stable_regular_file(
+        path,
+        label="Qwen3.8-Max Feedback phase60 pending pricing lock v8",
+        max_bytes=1024 * 1024,
+    )
+    if sha256_bytes(content) != expected_file_sha256:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback pricing lock v8 file SHA-256 mismatch"
+        )
+    try:
+        lock = Qwen38FeedbackPricingLockV8.model_validate_json(content, strict=True)
+    except ValueError as error:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback pricing lock v8 is invalid"
+        ) from error
+    if lock.canonical_bytes() != content:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback pricing lock v8 is not canonical JSON"
         )
     return lock
 
@@ -3311,9 +3829,7 @@ def load_qwen38_feedback_role_selection_v12(
             "Qwen3.8-Max Feedback role selection v12 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackRoleSelectionV12.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackRoleSelectionV12.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback role selection v12 is invalid"
@@ -3340,9 +3856,7 @@ def load_qwen38_feedback_role_selection_v13(
             "Qwen3.8-Max Feedback role selection v13 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackRoleSelectionV13.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackRoleSelectionV13.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback role selection v13 is invalid"
@@ -3369,9 +3883,7 @@ def load_qwen38_feedback_role_selection_v14(
             "Qwen3.8-Max Feedback role selection v14 file SHA-256 mismatch"
         )
     try:
-        lock = Qwen38FeedbackRoleSelectionV14.model_validate_json(
-            content, strict=True
-        )
+        lock = Qwen38FeedbackRoleSelectionV14.model_validate_json(content, strict=True)
     except ValueError as error:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback role selection v14 is invalid"
@@ -3379,6 +3891,33 @@ def load_qwen38_feedback_role_selection_v14(
     if lock.canonical_bytes() != content:
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8-Max Feedback role selection v14 is not canonical JSON"
+        )
+    return lock
+
+
+def load_qwen38_feedback_role_selection_v15(
+    path: str | Path,
+    *,
+    expected_file_sha256: str,
+) -> Qwen38FeedbackRoleSelectionV15:
+    content = read_stable_regular_file(
+        path,
+        label="Qwen3.8-Max Feedback role selection v15",
+        max_bytes=1024 * 1024,
+    )
+    if sha256_bytes(content) != expected_file_sha256:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback role selection v15 file SHA-256 mismatch"
+        )
+    try:
+        lock = Qwen38FeedbackRoleSelectionV15.model_validate_json(content, strict=True)
+    except ValueError as error:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback role selection v15 is invalid"
+        ) from error
+    if lock.canonical_bytes() != content:
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8-Max Feedback role selection v15 is not canonical JSON"
         )
     return lock
 
@@ -3490,18 +4029,22 @@ __all__ = [
     "QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V5",
     "QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V6",
     "QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V7",
+    "QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V8",
     "QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V6",
     "QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V7",
+    "QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V8",
     "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V3",
     "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V4",
     "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V5",
     "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V6",
     "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V7",
+    "QWEN38_FEEDBACK_PRICING_LOCK_POLICY_VERSION_V8",
     "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V3",
     "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V4",
     "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V5",
     "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V6",
     "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V7",
+    "QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V8",
     "QWEN38_FEEDBACK_PRICING_TIER_MAX_INPUT_TOKENS",
     "QWEN38_FEEDBACK_PROCESSOR",
     "QWEN38_FEEDBACK_PROVIDER",
@@ -3516,28 +4059,35 @@ __all__ = [
     "QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V12",
     "QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V13",
     "QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V14",
+    "QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V15",
     "QWEN38_FEEDBACK_ROLE_SELECTION_RELATIVE_PATH_V13",
     "QWEN38_FEEDBACK_ROLE_SELECTION_RELATIVE_PATH_V14",
+    "QWEN38_FEEDBACK_ROLE_SELECTION_RELATIVE_PATH_V15",
     "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256",
     "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V11",
     "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V12",
     "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V13",
     "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V14",
+    "QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V15",
     "QWEN38_FEEDBACK_SELECTED_COUNT",
     "QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256",
     "QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V2",
     "QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V3",
     "QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V4",
+    "QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V5",
     "QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V3",
     "QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V4",
+    "QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V5",
     "QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION",
     "QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V2",
     "QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V3",
     "QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V4",
+    "QWEN38_FEEDBACK_SOURCE_LOCK_POLICY_VERSION_V5",
     "QWEN38_FEEDBACK_SOURCE_LOCK_SHA256",
     "QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V2",
     "QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V3",
     "QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V4",
+    "QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V5",
     "QWEN38_FEEDBACK_TECHNICAL_PHASE_HARD_CAP_CNY",
     "QWEN38_FEEDBACK_TECHNICAL_PHASE_HARD_CAP_CNY_V2",
     "QWEN38_FEEDBACK_ROUND3_CUMULATIVE_MAXIMUM_CNY",
@@ -3562,6 +4112,23 @@ __all__ = [
     "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_FRESH_STAGE_HARD_CAP_CNY",
     "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_MAXIMUM_CNY",
     "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_HARD_CAP_CNY",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ACTUAL_COST_CNY",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_CUMULATIVE_ACTUAL_CNY",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_FILE_SHA256",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_RUN_SHA256",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_ARTIFACT_SET_SHA256",
+    "QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256",
+    "QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT",
+    "QWEN38_FEEDBACK_PHASE60_PREFIX_PROVIDER_CALL_COUNT",
+    "QWEN38_FEEDBACK_PHASE60_PREFIX_RETRY_COUNT",
+    "QWEN38_FEEDBACK_PHASE60_NEW_FIRST_CALL_COUNT",
+    "QWEN38_FEEDBACK_PHASE60_NEW_RETRY_TOKEN_COUNT",
+    "QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING",
+    "QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING",
+    "QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY",
+    "QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY",
+    "QWEN38_FEEDBACK_PHASE60_CUMULATIVE_MAXIMUM_CNY",
+    "QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY",
     "QWEN38_FEEDBACK_THINKING_BUDGET",
     "QWEN38_FEEDBACK_TIMEOUT_SECONDS",
     "QWEN38_FEEDBACK_TRANSPORT_POLICY_SHA256",
@@ -3572,18 +4139,23 @@ __all__ = [
     "ROUND3_PRIMARY_TRANSPORT_POLICY_VERSION_V1",
     "ROUND3_PRIMARY_JSON_SCHEMA_TRANSPORT_POLICY_SHA256_V1",
     "ROUND3_PRIMARY_JSON_SCHEMA_TRANSPORT_POLICY_VERSION_V1",
+    "ROUND3_PHASE60_RETRY_POLICY_VERSION_V1",
+    "ROUND3_PHASE60_RETRY_POLICY_SHA256_V1",
     "Qwen38FeedbackModelSourceLockV1",
     "Qwen38FeedbackModelSourceLockV2",
     "Qwen38FeedbackModelSourceLockV3",
     "Qwen38FeedbackModelSourceLockV4",
+    "Qwen38FeedbackModelSourceLockV5",
     "Qwen38FeedbackPricingLockV3",
     "Qwen38FeedbackPricingLockV4",
     "Qwen38FeedbackPricingLockV5",
     "Qwen38FeedbackPricingLockV6",
     "Qwen38FeedbackPricingLockV7",
+    "Qwen38FeedbackPricingLockV8",
     "Qwen38FeedbackRoleSelectionV12",
     "Qwen38FeedbackRoleSelectionV13",
     "Qwen38FeedbackRoleSelectionV14",
+    "Qwen38FeedbackRoleSelectionV15",
     "Qwen38FeedbackSourceEvidenceV1",
     "SelectedQwenFeedbackAssetV1",
     "build_selected_qwen_feedback_authorization",
@@ -3596,14 +4168,17 @@ __all__ = [
     "load_qwen38_feedback_model_source_lock_v2",
     "load_qwen38_feedback_model_source_lock_v3",
     "load_qwen38_feedback_model_source_lock_v4",
+    "load_qwen38_feedback_model_source_lock_v5",
     "load_qwen38_feedback_pricing_lock_v3",
     "load_qwen38_feedback_pricing_lock_v4",
     "load_qwen38_feedback_pricing_lock_v5",
     "load_qwen38_feedback_pricing_lock_v6",
     "load_qwen38_feedback_pricing_lock_v7",
+    "load_qwen38_feedback_pricing_lock_v8",
     "load_qwen38_feedback_role_selection_v12",
     "load_qwen38_feedback_role_selection_v13",
     "load_qwen38_feedback_role_selection_v14",
+    "load_qwen38_feedback_role_selection_v15",
     "load_selected_qwen_feedback_authorization",
     "require_qwen37_feedback_pre_call_budget",
     "require_qwen37_feedback_pre_call_budget_v2",
@@ -3611,6 +4186,8 @@ __all__ = [
     "require_qwen38_feedback_pre_call_budget_v2",
     "require_qwen38_feedback_pre_call_budget_v3",
     "require_qwen38_feedback_pre_call_budget_v4",
+    "require_qwen38_feedback_pre_call_budget_v5",
+    "round3_phase60_retry_policy_v1",
     "validate_selected_qwen_feedback_authorization",
     "write_qwen37_feedback_launch_lock",
     "write_selected_qwen_feedback_authorization",
