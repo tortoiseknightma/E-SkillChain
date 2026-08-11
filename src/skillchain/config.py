@@ -22,6 +22,16 @@ USAGE_LOG = RUNS_DIR / "usage.jsonl"
 ASSISTANT_PROVIDER = "qwen"
 ASSISTANT_MODEL = "qwen3-vl-flash-2026-01-22"
 ASSISTANT_MODEL_REVISION = "2026-01-22"
+# Capacity settings measured on 2026-08-12 with the production non-thinking
+# multimodal/function-calling Assistant action wire.  At 0.5 requests/s a
+# 60-call mixed tool-selection/final-response batch reached 95.7k tokens/min,
+# returned 60/60 valid transport responses, and needed only 2 inflight slots.
+# The dated snapshot's public 100k TPM limit, rather than worker count, is the
+# binding capacity constraint.
+ASSISTANT_VALIDATED_CONCURRENCY = 2
+ASSISTANT_REQUESTS_PER_SECOND = 0.5
+ASSISTANT_ACCEPTABLE_ERROR_RATE = 0.02
+ASSISTANT_SERVICE_ERROR_RATE = 0.0
 
 # Backward-compatible names for code that still calls the production Assistant
 # the backbone.  Data-label synthesis has separate constants below so changing
