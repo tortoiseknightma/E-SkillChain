@@ -37,7 +37,7 @@ def _load_triad():
     return source, pricing, role
 
 
-def test_phase60_retry_policy_is_new_pending_authority_not_canary_retry_reuse() -> None:
+def test_phase60_retry_policy_is_new_live_authority_not_canary_retry_reuse() -> None:
     policy = governance.round3_phase60_retry_policy_v1()
 
     assert policy["policy_version"] == (
@@ -51,8 +51,15 @@ def test_phase60_retry_policy_is_new_pending_authority_not_canary_retry_reuse() 
     assert policy["new_global_retry_ceiling"] == 12
     assert policy["new_provider_call_ceiling"] == 60
     assert policy["cumulative_provider_call_ceiling"] == 75
-    assert policy["live_provider_calls_authorized"] is False
-    assert policy["owner_phase60_budget_and_retry_approval_status"] == "pending"
+    assert policy["live_provider_calls_authorized"] is True
+    assert policy["owner_phase60_budget_and_retry_approval_status"] == "granted"
+    assert policy["owner_approval_decision_source"] == "current_user_instruction"
+    assert policy["owner_approved_on"] == "2026-08-11"
+    assert policy["owner_approved_fresh_maximum_reservation_cny"] == ("27.692640000000")
+    assert policy["owner_approved_fresh_technical_hard_cap_cny"] == ("28.000000000000")
+    assert policy["owner_approved_cumulative_technical_hard_cap_cny"] == (
+        "54.264100000000"
+    )
     assert sha256_bytes(canonical_json_bytes(policy)) == (
         governance.ROUND3_PHASE60_RETRY_POLICY_SHA256_V1
     )
@@ -61,7 +68,7 @@ def test_phase60_retry_policy_is_new_pending_authority_not_canary_retry_reuse() 
     )
 
 
-def test_phase60_pending_triad_is_canonical_exact_and_zero_call() -> None:
+def test_phase60_live_triad_is_canonical_exact_and_creator_stays_blocked() -> None:
     source, pricing, role = _load_triad()
 
     assert sha256_bytes(SOURCE_V5.read_bytes()) == (
@@ -103,13 +110,18 @@ def test_phase60_pending_triad_is_canonical_exact_and_zero_call() -> None:
     assert source.canary_prefix_retry_tokens_reusable is False
     assert source.historical_feedback_outputs_imported == 12
     assert source.terminated_json_object_canary_outputs_imported == 0
-    assert source.live_call_authority is False
-    assert source.live_provider_calls_authorized is False
-    assert source.owner_phase60_budget_authorization_status == "pending"
-    assert source.owner_phase60_retry_authorization_status == "pending"
+    assert source.live_call_authority is True
+    assert source.live_provider_calls_authorized is True
+    assert source.owner_phase60_budget_authorization_status == "granted"
+    assert source.owner_phase60_retry_authorization_status == "granted"
+    assert source.fresh_maximum_reservation_cny == "27.692640000000"
+    assert source.fresh_technical_hard_cap_cny == "28.000000000000"
+    assert source.cumulative_technical_hard_cap_cny == "54.264100000000"
+    assert source.phase60_requires_new_owner_approval is False
+    assert source.phase120_requires_new_owner_approval is True
 
-    assert pricing.live_authorized_selected_query_count == 0
-    assert pricing.live_authorized_phase_counts == ()
+    assert pricing.live_authorized_selected_query_count == 60
+    assert pricing.live_authorized_phase_counts == (60,)
     assert pricing.phase60_prefix_selected_count == 12
     assert pricing.phase60_new_first_call_count == 48
     assert pricing.global_retry_token_count == 12
@@ -117,29 +129,37 @@ def test_phase60_pending_triad_is_canonical_exact_and_zero_call() -> None:
     assert pricing.prefix_global_retry_tokens_reusable is False
     assert pricing.provider_call_ceiling == 60
     assert pricing.cumulative_provider_call_ceiling == 75
-    assert pricing.live_provider_calls_authorized is False
-    assert pricing.fresh_run_and_retry_scope_owner_approved is False
-    assert pricing.owner_budget_authorized_cap_cny == "0.000000000000"
-    assert pricing.owner_budget_authorized_on is None
+    assert pricing.live_provider_calls_authorized is True
+    assert pricing.fresh_run_and_retry_scope_owner_approved is True
+    assert pricing.owner_budget_authorized_cap_cny == "28.000000000000"
+    assert pricing.owner_budget_authorized_on == "2026-08-11"
     assert pricing.owner_budget_authorization_status == (
-        "pending_phase60_budget_and_retry_approval"
+        "granted_phase60_budget_and_retry_approval"
     )
-    assert pricing.owner_phase60_retry_authorization_status == "pending"
+    assert pricing.owner_phase60_retry_authorization_status == "granted"
+    assert pricing.phase60_requires_new_owner_approval is False
+    assert pricing.phase120_requires_new_owner_approval is True
 
     feedback = role.feedback_evaluator
     assert feedback["model_source_lock_file_sha256"] == sha256_bytes(
         SOURCE_V5.read_bytes()
     )
     assert feedback["pricing_lock_file_sha256"] == sha256_bytes(PRICING_V8.read_bytes())
-    assert feedback["live_call_authority"] is False
-    assert feedback["live_provider_calls_authorized"] is False
-    assert feedback["owner_phase60_budget_authorization_status"] == "pending"
-    assert feedback["owner_phase60_retry_authorization_status"] == "pending"
+    assert feedback["live_call_authority"] is True
+    assert feedback["live_provider_calls_authorized"] is True
+    assert feedback["fresh_run_and_retry_scope_owner_approved"] is True
+    assert feedback["live_authorized_selected_query_count"] == 60
+    assert feedback["live_authorized_phase_counts"] == [60]
+    assert feedback["owner_phase60_budget_authorization_status"] == "granted"
+    assert feedback["owner_phase60_retry_authorization_status"] == "granted"
+    assert feedback["owner_authorized_budget_ceiling_cny"] == "28.000000000000"
+    assert feedback["phase60_requires_new_owner_approval"] is False
+    assert feedback["phase120_requires_new_owner_approval"] is True
     assert feedback["creator_authorized"] is False
     assert feedback["bundle_v11_publishable"] is False
 
 
-def test_phase60_pending_budget_arithmetic_is_exact() -> None:
+def test_phase60_live_budget_arithmetic_is_exact() -> None:
     _source, pricing, _role = _load_triad()
 
     per_call = Decimal("20000") * Decimal("12") / Decimal("1000000") + (
@@ -165,16 +185,25 @@ def test_phase60_pending_budget_arithmetic_is_exact() -> None:
     assert pricing.live_cumulative_hard_cap_cny == "54.264100000000"
 
 
-def test_phase60_pending_budget_helper_fails_before_provider_authority() -> None:
-    with pytest.raises(
-        PortfolioS1QwenFeedbackGovernanceError,
-        match="owner budget and retry approval is pending",
-    ):
+def test_phase60_live_budget_helper_returns_exact_reservation_and_fails_closed() -> (
+    None
+):
+    assert (
         governance.require_qwen38_feedback_pre_call_budget_v5(
             estimated_input_tokens_including_images=20_000,
             provider_calls_already_reserved=0,
             committed_cumulative_cost_cny="26.264100000000",
         )
+        == "0.461544000000"
+    )
+    assert (
+        governance.require_qwen38_feedback_pre_call_budget_v5(
+            estimated_input_tokens_including_images=1,
+            provider_calls_already_reserved=59,
+            committed_cumulative_cost_cny="53.495196000000",
+        )
+        == "0.461544000000"
+    )
 
     with pytest.raises(
         PortfolioS1QwenFeedbackGovernanceError,
@@ -186,8 +215,18 @@ def test_phase60_pending_budget_helper_fails_before_provider_authority() -> None
             committed_cumulative_cost_cny="26.264100000000",
         )
 
+    with pytest.raises(
+        PortfolioS1QwenFeedbackGovernanceError,
+        match="fresh technical cap would be exceeded",
+    ):
+        governance.require_qwen38_feedback_pre_call_budget_v5(
+            estimated_input_tokens_including_images=1,
+            provider_calls_already_reserved=59,
+            committed_cumulative_cost_cny="54.000000000000",
+        )
 
-def test_phase60_pending_loaders_fail_closed(tmp_path: Path) -> None:
+
+def test_phase60_live_loaders_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(
         PortfolioS1QwenFeedbackGovernanceError,
         match="source lock v5 file SHA-256 mismatch",
@@ -197,7 +236,7 @@ def test_phase60_pending_loaders_fail_closed(tmp_path: Path) -> None:
         )
 
     pricing_payload = json.loads(PRICING_V8.read_text(encoding="utf-8"))
-    pricing_payload["live_provider_calls_authorized"] = True
+    pricing_payload["live_provider_calls_authorized"] = False
     invalid_pricing = tmp_path / "pricing-v8-invalid.json"
     invalid_pricing.write_bytes(canonical_json_bytes(pricing_payload))
     with pytest.raises(
