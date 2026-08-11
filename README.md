@@ -13,6 +13,22 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 > GitHub 默认展示 HTML 源码；两份 HTML 报告建议下载后用浏览器打开。
 
+## Core 1,500 默认实验入口
+
+Core r3 完整实验现在使用独立的最小治理入口：
+
+```powershell
+$env:CORE_FAST_OPT_STATIC_RESULTS = 'E:\path\to\opt800-static-observations.jsonl'
+uv run python scripts/run_core_experiment.py validate
+uv run python scripts/run_core_experiment.py run --through test
+uv run python scripts/run_core_experiment.py report
+```
+
+该入口固定执行 `dev200 → opt800 → val200 → test300`，生成五配置 `val=1,000`、
+`test=1,500` 条逻辑结果；回滚配置复用 parent 的精确结果。历史 Formal Core 治理入口仍
+保留兼容，但不再是 Core Portfolio Quickstart 的默认依赖。详见
+[Core 1,500 Fast Path](docs/core-fast-path.md)。
+
 ## 为什么做这个项目
 
 图像电商助手面对的不是一种任务：同一张图片可能触发商品同款检索、多商品识别、穿搭推荐、视觉百科、票据读取或食谱指导。它们需要不同的路由、工具、证据和输出卡片，单一系统提示词很容易在能力之间产生干扰。
