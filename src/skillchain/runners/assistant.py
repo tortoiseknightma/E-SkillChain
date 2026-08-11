@@ -3454,6 +3454,276 @@ class PortfolioStaticOptAssistantRunner(ProductionAssistantRunner):
 _PORTFOLIO_STATIC_OPT_EXECUTE = PortfolioStaticOptAssistantRunner.execute
 
 
+class CoreFastAssistantRunner(ProductionAssistantRunner):
+    """Portfolio Assistant execution without launch/lock/budget governance.
+
+    This constructor is intentionally available only to the Core Fast Path.
+    It reuses the reviewed routing, tool invocation, and answer loop while
+    omitting the historical runtime-lock and reservation state machines.
+    Returned receipts remain an internal implementation detail; the Fast Path
+    persists only its normalized call result.
+    """
+
+    __slots__ = ()
+
+    def __init__(
+        self,
+        *,
+        registry: ToolRegistry,
+        system_prompt: str,
+        banks: Mapping[str, StaticBankArtifact],
+        asset_catalog: AssetCatalog,
+    ) -> None:
+        registry = require_portfolio_diagnostic_registry(registry)
+        if not system_prompt or system_prompt != system_prompt.strip():
+            raise ValueError("Core Fast system_prompt must be non-blank and trimmed")
+        if type(asset_catalog) is not AssetCatalog:
+            raise TypeError("Core Fast runner requires exactly AssetCatalog")
+        asset_catalog.require_verified_files()
+        expected = {"llm_static", "s1", "s1s2", "full"}
+        if set(banks) != expected:
+            raise ValueError("Core Fast runner requires exactly four Bank slots")
+        held: dict[str, StaticBankArtifact] = {}
+        for config, bank in banks.items():
+            reparsed = StaticBankArtifact.model_validate(
+                bank.model_dump(mode="python"), strict=True
+            )
+            if (
+                reparsed.tool_registry_sha256 != registry.registry_sha256
+                or reparsed.tool_registry_runtime_sha256
+                != registry.registry_runtime_sha256
+            ):
+                raise ValueError("Core Fast Bank differs from the live registry")
+            held[config] = reparsed
+        self._registry = registry
+        self._system_prompt = system_prompt
+        self._banks = held
+        self._asset_catalog = asset_catalog
+        self._qwen_call_start_waiter = None
+        _require_evolution_bank_boundaries(held)
+
+    def execute_body_replay(
+        self,
+        request: AssistantRequestSnapshot,
+        *,
+        parent_response: AssistantBackendResponse,
+        parent_receipt: AssistantExecutionReceipt,
+        parent_scorer_calls: tuple[PublicScorerCallEvidenceV2, ...],
+        scorer_query: Query,
+    ) -> RunnerOwnedAssistantExecution:
+        """Regenerate only the answer while reusing the exact route/tool trace.
+
+        This is the narrow execution primitive required by Core Fast S3.  It
+        deliberately exposes no tool definitions and carries the parent's
+        already-sanitized visible evidence into one answer-only model call.
+        """
+
+        if request.config != "full":
+            raise AssistantBackendContractError("Body replay requires Full config")
+        if scorer_query.query_id != request.query.query_id:
+            raise AssistantBackendContractError("Body replay query binding differs")
+        if (
+            parent_response.error_code is not None
+            or parent_response.selected_capability is None
+            or parent_response.skill_slug is None
+            or parent_response.route_trace_sha256 is None
+            or parent_receipt.outcome != "success"
+            or parent_receipt.tool_trace != parent_response.tool_trace
+            or parent_receipt.route_attempt is None
+            or parent_receipt.route_attempt.status != "selected"
+        ):
+            raise AssistantBackendContractError(
+                "Body replay requires one successful routed parent execution"
+            )
+        successful_parent = tuple(
+            (
+                item.call_index,
+                item.tool_name,
+                item.arguments_sha256,
+                item.result_sha256,
+            )
+            for item in parent_response.tool_trace
+            if item.status == "success"
+        )
+        scorer_parent = tuple(
+            (
+                item.call_index,
+                item.tool_name,
+                item.arguments_sha256,
+                item.result_sha256,
+            )
+            for item in parent_scorer_calls
+        )
+        if successful_parent != scorer_parent:
+            raise AssistantBackendContractError(
+                "Body replay scorer calls differ from parent tool trace"
+            )
+
+        bank = self._validate_prompt_and_bank(request)
+        assert bank is not None
+        selected = next(
+            (
+                item
+                for item in bank.skills
+                if item.capability_id == parent_response.selected_capability
+            ),
+            None,
+        )
+        if selected is None or selected.slug != parent_response.skill_slug:
+            raise AssistantBackendContractError(
+                "Body replay candidate changed the selected Skill identity"
+            )
+        public = _public_query(request)
+        binding = request.query.asset_binding
+        if binding is None:
+            asset_id = public.get("asset_id")
+            image_path = public.get("image_path")
+            leakage_group_id = None
+        else:
+            asset_id = binding.asset_id
+            image_path = binding.image_path
+            leakage_group_id = binding.leakage_group_id
+        if not isinstance(asset_id, str) or not isinstance(image_path, str):
+            raise AssistantBackendContractError("Body replay asset binding is absent")
+        resolution = self._asset_catalog.verify_reference(
+            asset_id, image_path, leakage_group_id=leakage_group_id
+        )
+        absolute_image_path = (
+            self._asset_catalog.asset_root / resolution.asset.local_path
+        ).resolve(strict=True)
+        replay_payload = {
+            "query": _model_query_projection(public),
+            "parent_response_text": parent_response.response_text,
+            "fixed_cards": [
+                item.model_dump(mode="json") for item in parent_response.visible_cards
+            ],
+            "fixed_tool_evidence": [
+                item.model_dump(mode="json")
+                for item in parent_response.visible_tool_evidence
+            ],
+            "instruction": (
+                "Regenerate only the final user-visible answer using the selected "
+                "Skill and fixed evidence. Do not request or simulate tools."
+            ),
+        }
+        messages = [
+            {
+                "role": "system",
+                "content": self._action_prompt_for(
+                    request, selected_skill_slug=selected.slug
+                ),
+            },
+            {
+                "role": "user",
+                "content": canonical_json_bytes(replay_payload).decode("utf-8"),
+            },
+        ]
+        started = time.perf_counter_ns()
+        response = self._chat(
+            request,
+            messages,
+            request.budget.max_output_tokens,
+            absolute_image_path,
+            asset_id,
+            json_mode=False,
+            tools=None,
+            attach_image=True,
+            timeout_seconds=request.budget.timeout_ms / 1000,
+            failure_stage="action",
+        )
+        if (
+            response.finish_reason != "stop"
+            or response.tool_calls
+            or not response.text.strip()
+        ):
+            raise AssistantBackendContractError(
+                "Body replay did not return one complete text answer"
+            )
+        elapsed_ms = max(0, (time.perf_counter_ns() - started) // 1_000_000)
+        model_call = _receipt_for_model_call(1, response)
+        response_model = AssistantBackendResponse(
+            request_sha256=request.request_sha256,
+            backbone_provider=request.backbone.provider,
+            backbone_model=request.backbone.model,
+            backbone_endpoint=request.backbone.endpoint,
+            backbone_identity_sha256=request.backbone.identity_sha256,
+            registry_sha256=request.registry.registry_sha256,
+            registry_runtime_sha256=request.registry.registry_runtime_sha256,
+            budget_sha256=request.budget.budget_sha256,
+            response_text=response.text,
+            visible_cards=parent_response.visible_cards,
+            visible_tool_evidence=parent_response.visible_tool_evidence,
+            tool_trace=parent_response.tool_trace,
+            selected_capability=parent_response.selected_capability,
+            skill_slug=parent_response.skill_slug,
+            route_trace_sha256=parent_response.route_trace_sha256,
+            backbone_request_id=response.request_id,
+            usage=response.usage,
+            turn_count=1,
+            latency_ms=elapsed_ms,
+        )
+        unsigned_receipt = {
+            "schema_version": 1,
+            # v1 has no requirement to bind a fresh route-call evidence object;
+            # route/tool equality is enforced directly by Core Fast.
+            "policy_version": "runner-owned-assistant-v1",
+            "request_sha256": request.request_sha256,
+            "asset_catalog_sha256": parent_receipt.asset_catalog_sha256,
+            "query_asset_id": parent_receipt.query_asset_id,
+            "query_asset_sha256": parent_receipt.query_asset_sha256,
+            "model_calls": (model_call,),
+            "tool_trace": parent_response.tool_trace,
+            "route_attempt": parent_receipt.route_attempt,
+            "aggregate_usage": response.usage,
+            "runner_latency_ms": elapsed_ms,
+            "outcome": "success",
+            "response_sha256": sha256_bytes(
+                canonical_json_bytes(response_model.model_dump(mode="json"))
+            ),
+        }
+        receipt_payload = {
+            key: (
+                value.model_dump(mode="json")
+                if isinstance(value, BaseModel)
+                else [
+                    item.model_dump(mode="json")
+                    if isinstance(item, BaseModel)
+                    else item
+                    for item in value
+                ]
+                if isinstance(value, tuple)
+                else value
+            )
+            for key, value in unsigned_receipt.items()
+        }
+        receipt = AssistantExecutionReceipt.model_validate(
+            {
+                **unsigned_receipt,
+                "receipt_sha256": sha256_bytes(canonical_json_bytes(receipt_payload)),
+            },
+            strict=True,
+        )
+        return _issue_runner_owned_assistant_execution(
+            response_model,
+            receipt,
+            scorer_calls=parent_scorer_calls,
+            scorer_capture_policy_version=GCS_SCORER_EVIDENCE_V2_POLICY_VERSION,
+        )
+
+
+_CORE_FAST_EXECUTE = CoreFastAssistantRunner.execute
+
+
+def require_core_fast_assistant_runner(value: object) -> CoreFastAssistantRunner:
+    if (
+        type(value) is not CoreFastAssistantRunner
+        or CoreFastAssistantRunner.execute is not _CORE_FAST_EXECUTE
+    ):
+        raise TypeError("Core Fast execution requires exactly CoreFastAssistantRunner")
+    require_portfolio_diagnostic_registry(object.__getattribute__(value, "_registry"))
+    return value
+
+
 def require_production_assistant_runner(value: object) -> ProductionAssistantRunner:
     """Reject subclasses, instance monkeypatching, and class-method replacement."""
 
@@ -3511,6 +3781,7 @@ __all__ = [
     "AssistantProviderPreResponseError",
     "AssistantRouteCapability",
     "AssistantTurnDecision",
+    "CoreFastAssistantRunner",
     "PortfolioAssistantBudgetContext",
     "PortfolioAssistantRunner",
     "PortfolioStaticOptAssistantRunner",
@@ -3523,5 +3794,6 @@ __all__ = [
     "noskill_execution_contract_payload",
     "require_portfolio_assistant_runner",
     "require_portfolio_static_opt_assistant_runner",
+    "require_core_fast_assistant_runner",
     "require_production_assistant_runner",
 ]
