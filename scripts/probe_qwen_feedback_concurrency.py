@@ -1,4 +1,4 @@
-"""Measure safe in-flight concurrency for the frozen Qwen3.7 Feedback wire.
+"""Measure safe in-flight concurrency for a production Qwen Feedback wire.
 
 This is an explicit paid integration probe.  It uses the production model,
 thinking controls, strict JSON Schema, parser, and representative local images,
@@ -29,17 +29,23 @@ from openai import APIConnectionError, APIStatusError, RateLimitError
 from skillchain import config, llm
 from skillchain.evaluation.evaluator_outputs import (
     EvaluatorOutputParseError,
+    feedback_output_contract_v4,
     parse_visual_feedback_output_v3,
 )
-from skillchain.evaluation.feedback_runtime import visual_feedback_response_format_v1
-from skillchain.evaluation.evaluator_outputs import feedback_output_contract_v4
+from skillchain.evaluation.feedback_runtime import (
+    _require_policy_labeled_suggestions,
+    visual_feedback_response_format_v1,
+)
 from skillchain.evaluation.packets import (
     _FEEDBACK_SYSTEM_PROMPT_V5,
+    _FEEDBACK_SYSTEM_PROMPT_V6,
     visual_feedback_prompt_output_identity_v5,
 )
 from skillchain.evaluation.portfolio_s1_qwen_governance import (
     QWEN37_FEEDBACK_INPUT_CNY_PER_MILLION_TOKENS,
     QWEN37_FEEDBACK_OUTPUT_CNY_PER_MILLION_TOKENS,
+    QWEN38_FEEDBACK_INPUT_CNY_PER_MILLION_TOKENS,
+    QWEN38_FEEDBACK_OUTPUT_CNY_PER_MILLION_TOKENS,
 )
 from skillchain.synthesis.store import atomic_create_file, canonical_json_bytes
 
@@ -50,6 +56,51 @@ DEFAULT_SERVICE_ERROR_RATE_LIMIT = config.LEGACY_QWEN37_FEEDBACK_SERVICE_ERROR_R
 DEFAULT_COST_CAP_CNY = Decimal("9.500000")
 OFFICIAL_SNAPSHOT_RPM = 600
 OFFICIAL_SNAPSHOT_TPM = 1_000_000
+
+
+@dataclass(frozen=True)
+class ProbeProfile:
+    name: str
+    model: str
+    max_completion_tokens: int
+    input_cny_per_million_tokens: int
+    output_cny_per_million_tokens: int
+    system_prompt: str
+    require_policy_labels: bool
+    initial_cost_estimate_cny: Decimal
+    official_snapshot_rpm: int
+    official_snapshot_tpm: int
+
+
+PROBE_PROFILES = {
+    "legacy-qwen37": ProbeProfile(
+        name="legacy-qwen37",
+        model=config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+        max_completion_tokens=(
+            config.LEGACY_QWEN37_FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS
+        ),
+        input_cny_per_million_tokens=QWEN37_FEEDBACK_INPUT_CNY_PER_MILLION_TOKENS,
+        output_cny_per_million_tokens=QWEN37_FEEDBACK_OUTPUT_CNY_PER_MILLION_TOKENS,
+        system_prompt=_FEEDBACK_SYSTEM_PROMPT_V5,
+        require_policy_labels=False,
+        initial_cost_estimate_cny=Decimal("0.020"),
+        official_snapshot_rpm=OFFICIAL_SNAPSHOT_RPM,
+        official_snapshot_tpm=OFFICIAL_SNAPSHOT_TPM,
+    ),
+    "active-qwen38": ProbeProfile(
+        name="active-qwen38",
+        model=config.FEEDBACK_JUDGE_MODEL,
+        max_completion_tokens=config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS,
+        input_cny_per_million_tokens=QWEN38_FEEDBACK_INPUT_CNY_PER_MILLION_TOKENS,
+        output_cny_per_million_tokens=QWEN38_FEEDBACK_OUTPUT_CNY_PER_MILLION_TOKENS,
+        system_prompt=_FEEDBACK_SYSTEM_PROMPT_V6,
+        require_policy_labels=True,
+        # Phase-60 canary: CNY 1.9446 / 12 successful calls.
+        initial_cost_estimate_cny=Decimal("0.16205"),
+        official_snapshot_rpm=30_000,
+        official_snapshot_tpm=5_000_000,
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -122,7 +173,7 @@ def _load_dashscope_credential(env_file: Path) -> str:
     return source_name
 
 
-def _prompt(ordinal: int) -> list[dict[str, str]]:
+def _prompt(ordinal: int, profile: ProbeProfile) -> list[dict[str, str]]:
     payload = {
         "schema_version": 2,
         "packet_kind": "feedback",
@@ -149,10 +200,48 @@ def _prompt(ordinal: int) -> list[dict[str, str]]:
         "output_contract": feedback_output_contract_v4(),
         "response_identity": visual_feedback_prompt_output_identity_v5(),
     }
+    if profile.require_policy_labels:
+        payload.update(
+            {
+                "schema_version": 3,
+                "cache_namespace": "feedback-evaluator-v10",
+                "gcs_diagnostics": {
+                    "answer_mode": "unresolved",
+                    "gcs": 0,
+                    "components": {
+                        "route_acceptable": 1,
+                        "no_hard_error": 1,
+                        "tool_contract_pass": 0,
+                        "evidence_grounded": 0,
+                        "output_contract_pass": 1,
+                    },
+                    "reason_codes": ["missing_tool_evidence"],
+                },
+                "gcs_contract": {
+                    "policy_sha256": "a" * 64,
+                    "required_sections": ["answer"],
+                    "fallback_markers": ["insufficient visible evidence"],
+                    "preferred_fallback_marker": "insufficient visible evidence",
+                    "card_requirement": "forbidden",
+                    "legal_tool_sequences": [["image_search"]],
+                    "detector_label_policy": "prediction_only_never_verified_identity",
+                    "evidence_policy": "material_facts_require_visible_tool_evidence",
+                },
+            }
+        )
+        payload["output_contract"]["skill_suggestions_item_schema"] = {
+            "type": "string",
+            "nonblank_after_trim": True,
+            "required_prefix_exactly_one_of": [
+                "[policy_compatible] ",
+                "[requires_new_evidence] ",
+                "[rejected] ",
+            ],
+        }
     return [
         {
             "role": "system",
-            "content": _FEEDBACK_SYSTEM_PROMPT_V5,
+            "content": profile.system_prompt,
         },
         {
             "role": "user",
@@ -161,12 +250,14 @@ def _prompt(ordinal: int) -> list[dict[str, str]]:
     ]
 
 
-def _cost(input_tokens: int, output_tokens: int) -> Decimal:
+def _cost(
+    input_tokens: int, output_tokens: int, profile: ProbeProfile
+) -> Decimal:
     return (
         Decimal(input_tokens)
-        * Decimal(QWEN37_FEEDBACK_INPUT_CNY_PER_MILLION_TOKENS)
+        * Decimal(profile.input_cny_per_million_tokens)
         + Decimal(output_tokens)
-        * Decimal(QWEN37_FEEDBACK_OUTPUT_CNY_PER_MILLION_TOKENS)
+        * Decimal(profile.output_cny_per_million_tokens)
     ) / Decimal(1_000_000)
 
 
@@ -191,29 +282,34 @@ def _one_call(
     ordinal: int,
     level: int,
     image: Path,
+    profile: ProbeProfile,
     pacer: _StartPacer,
     tracker: _ConcurrencyTracker,
 ) -> ProbeResult:
     pacer.wait()
     tracker.enter()
     try:
-        return _one_call_active(ordinal=ordinal, level=level, image=image)
+        return _one_call_active(
+            ordinal=ordinal, level=level, image=image, profile=profile
+        )
     finally:
         tracker.exit()
 
 
-def _one_call_active(*, ordinal: int, level: int, image: Path) -> ProbeResult:
+def _one_call_active(
+    *, ordinal: int, level: int, image: Path, profile: ProbeProfile
+) -> ProbeResult:
     started = time.perf_counter()
     try:
         response = llm.chat(
             "qwen",
-            _prompt(ordinal),
-            model=config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+            _prompt(ordinal, profile),
+            model=profile.model,
             images=[str(image)],
             thinking=True,
             thinking_budget=2048,
             max_tokens=None,
-            max_completion_tokens=4096,
+            max_completion_tokens=profile.max_completion_tokens,
             response_format=visual_feedback_response_format_v1(),
             max_attempts=1,
             record_usage=False,
@@ -241,7 +337,9 @@ def _one_call_active(*, ordinal: int, level: int, image: Path) -> ProbeResult:
             raise llm.LLMContractError(
                 "capacity probe response did not finish with plain stop text"
             )
-        parse_visual_feedback_output_v3(response.text)
+        parsed = parse_visual_feedback_output_v3(response.text)
+        if profile.require_policy_labels:
+            _require_policy_labeled_suggestions(parsed)
     except Exception as error:
         error_kind, status_code = _error_kind(error)
         return ProbeResult(
@@ -260,7 +358,10 @@ def _one_call_active(*, ordinal: int, level: int, image: Path) -> ProbeResult:
                 response.request_id.encode("utf-8")
             ).hexdigest(),
             cost_cny=format(
-                _cost(response.usage.input_tokens, response.usage.output_tokens), "f"
+                _cost(
+                    response.usage.input_tokens, response.usage.output_tokens, profile
+                ),
+                "f",
             ),
         )
     return ProbeResult(
@@ -277,9 +378,12 @@ def _one_call_active(*, ordinal: int, level: int, image: Path) -> ProbeResult:
         response_sha256=hashlib.sha256(response.text.encode("utf-8")).hexdigest(),
         request_id_sha256=hashlib.sha256(response.request_id.encode("utf-8")).hexdigest(),
         cost_cny=format(
-            _cost(response.usage.input_tokens, response.usage.output_tokens), "f"
+            _cost(response.usage.input_tokens, response.usage.output_tokens, profile),
+            "f",
         ),
     )
+
+
 def _percentile(values: list[int], quantile: float) -> int:
     if not values:
         return 0
@@ -358,6 +462,7 @@ def _run_level(
     call_count: int,
     first_ordinal: int,
     images: tuple[Path, ...],
+    profile: ProbeProfile,
     requests_per_second: float,
 ) -> tuple[list[ProbeResult], int]:
     pacer = _StartPacer(requests_per_second)
@@ -370,6 +475,7 @@ def _run_level(
                 ordinal=first_ordinal + offset,
                 level=level,
                 image=images[offset % len(images)],
+                profile=profile,
                 pacer=pacer,
                 tracker=tracker,
             )
@@ -403,6 +509,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--image", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--model-profile",
+        choices=tuple(PROBE_PROFILES),
+        default="legacy-qwen37",
+    )
     parser.add_argument("--levels", type=_parse_levels, default=DEFAULT_LEVELS)
     parser.add_argument(
         "--requests-per-second",
@@ -427,6 +538,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    profile = PROBE_PROFILES[args.model_profile]
     if not 0 <= args.error_rate_limit < 1:
         raise ValueError("error-rate-limit must be in [0, 1)")
     if not 0 <= args.service_error_rate_limit < 1:
@@ -449,7 +561,7 @@ def main() -> int:
         average_cost = (
             sum(Decimal(item.cost_cny) for item in all_results) / len(all_results)
             if all_results
-            else Decimal("0.020")
+            else profile.initial_cost_estimate_cny
         )
         current_cost = sum(Decimal(item.cost_cny) for item in all_results)
         if current_cost + average_cost * level > args.cost_cap_cny:
@@ -460,6 +572,7 @@ def main() -> int:
             call_count=level,
             first_ordinal=next_ordinal,
             images=images,
+            profile=profile,
             requests_per_second=args.requests_per_second,
         )
         next_ordinal += len(results)
@@ -490,6 +603,7 @@ def main() -> int:
                 call_count=confirmation_calls,
                 first_ordinal=next_ordinal,
                 images=images,
+                profile=profile,
                 requests_per_second=args.requests_per_second,
             )
             all_results.extend(confirmation)
@@ -514,24 +628,25 @@ def main() -> int:
     total_cost = sum(Decimal(item.cost_cny) for item in all_results)
     receipt: dict[str, Any] = {
         "schema_version": 1,
-        "kind": "qwen37-feedback-concurrency-probe",
+        "kind": "qwen-feedback-concurrency-probe",
         "started_at": started_at.isoformat(),
         "completed_at": completed_at.isoformat(),
         "provider": "qwen",
-        "model": config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+        "model_profile": profile.name,
+        "model": profile.model,
         "endpoint": config.PROVIDER_ENDPOINTS["qwen"],
         "credential_source_name": credential_source,
         "credential_value_persisted": False,
         "production_wire": {
             "enable_thinking": True,
             "thinking_budget": 2048,
-            "max_completion_tokens": 4096,
+            "max_completion_tokens": profile.max_completion_tokens,
             "response_format": "strict_json_schema",
             "max_attempts": 1,
         },
         "official_snapshot_limits": {
-            "requests_per_minute": OFFICIAL_SNAPSHOT_RPM,
-            "tokens_per_minute": OFFICIAL_SNAPSHOT_TPM,
+            "requests_per_minute": profile.official_snapshot_rpm,
+            "tokens_per_minute": profile.official_snapshot_tpm,
         },
         "probe_policy": {
             "levels": list(args.levels),

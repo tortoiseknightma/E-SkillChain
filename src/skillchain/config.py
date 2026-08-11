@@ -85,6 +85,15 @@ FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS = 6144
 FEEDBACK_JUDGE_TIMEOUT_SECONDS = 600
 FEEDBACK_JUDGE_TEMPERATURE = None
 FEEDBACK_JUDGE_TOP_P = None
+# Capacity lower bound measured on 2026-08-12 with the active Qwen3.8-Max
+# thinking/strict-JSON-Schema wire.  A 60-call batch reached 60 inflight at a
+# smooth 8 requests/s with 1.67% total errors and zero service errors.  This is
+# an observed safe lower bound, not a provider maximum or a replacement for
+# the concurrency frozen into an already-authorized experiment receipt.
+FEEDBACK_JUDGE_VALIDATED_CONCURRENCY = 60
+FEEDBACK_JUDGE_REQUESTS_PER_SECOND = 8.0
+FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE = 0.02
+FEEDBACK_JUDGE_SERVICE_ERROR_RATE = 0.0
 # Capacity settings measured on 2026-08-12 with the legacy Qwen3.7
 # thinking/JSON-Schema wire.  They must not be applied to the active Qwen3.8
 # alias without a separate provider test.

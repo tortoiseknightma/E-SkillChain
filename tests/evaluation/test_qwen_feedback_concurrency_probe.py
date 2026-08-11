@@ -1,9 +1,12 @@
 from decimal import Decimal
+import json
 
 from scripts.probe_qwen_feedback_concurrency import (
+    PROBE_PROFILES,
     ProbeResult,
     _cost,
     _highest_passing_level,
+    _prompt,
     _summarize,
 )
 from skillchain import config
@@ -32,6 +35,13 @@ def test_forward_capacity_constants_bind_the_measured_240_call_profile() -> None
     assert config.LEGACY_QWEN37_FEEDBACK_REQUESTS_PER_SECOND == 8.0
     assert config.LEGACY_QWEN37_FEEDBACK_ACCEPTABLE_ERROR_RATE == 0.02
     assert config.LEGACY_QWEN37_FEEDBACK_SERVICE_ERROR_RATE == 0.0
+
+
+def test_active_capacity_constants_bind_the_measured_60_call_profile() -> None:
+    assert config.FEEDBACK_JUDGE_VALIDATED_CONCURRENCY == 60
+    assert config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND == 8.0
+    assert config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE == 0.02
+    assert config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE == 0.0
 
 
 def test_summary_separates_payload_and_service_failures() -> None:
@@ -68,4 +78,32 @@ def test_confirmation_recomputes_the_highest_combined_passing_level() -> None:
 
 
 def test_cost_uses_frozen_qwen37_rates() -> None:
-    assert _cost(3_857, 2_000) == Decimal("0.023714")
+    assert _cost(3_857, 2_000, PROBE_PROFILES["legacy-qwen37"]) == Decimal(
+        "0.023714"
+    )
+
+
+def test_active_qwen38_profile_uses_production_wire_and_rates() -> None:
+    profile = PROBE_PROFILES["active-qwen38"]
+
+    assert profile.model == config.FEEDBACK_JUDGE_MODEL == "qwen3.8-max"
+    assert profile.max_completion_tokens == 6_144
+    assert profile.official_snapshot_rpm == 30_000
+    assert profile.official_snapshot_tpm == 5_000_000
+    assert _cost(3_857, 2_000, profile) == Decimal("0.118284")
+
+
+def test_active_qwen38_prompt_requires_policy_labeled_suggestions() -> None:
+    messages = _prompt(1, PROBE_PROFILES["active-qwen38"])
+    payload = json.loads(messages[1]["content"])
+
+    assert payload["schema_version"] == 3
+    assert payload["cache_namespace"] == "feedback-evaluator-v10"
+    assert payload["gcs_diagnostics"]["gcs"] == 0
+    assert payload["output_contract"]["skill_suggestions_item_schema"][
+        "required_prefix_exactly_one_of"
+    ] == [
+        "[policy_compatible] ",
+        "[requires_new_evidence] ",
+        "[rejected] ",
+    ]
