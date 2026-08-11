@@ -1,0 +1,7 @@
+**
+!src/
+!src/**
+!deploy/
+!deploy/authoring/
+!deploy/authoring/Dockerfile
+!deploy/authoring/requirements.lock

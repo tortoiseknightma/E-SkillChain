@@ -1,0 +1,397 @@
+{
+  "schema_version": 1,
+  "manifest_id": "ecommerce-raw-download-profiles-v1",
+  "decision_date": "2026-07-23",
+  "portfolio": "ecommerce-mvp-source-portfolio-v1",
+  "profiles": {
+    "mvp": {
+      "description": "MVP primary, language, KB, secondary, and bounded challenge raw sources.",
+      "sources": [
+        "abo_compact",
+        "rpc",
+        "fashioniq",
+        "wildreceipt",
+        "durecdial_2_0",
+        "crosswoz",
+        "muge",
+        "wikimedia_zhwiki",
+        "inaturalist_bounded",
+        "isia_food500",
+        "xiachufang",
+        "cord_v2",
+        "sroie",
+        "wikimedia_documents_bounded",
+        "coco_bounded"
+      ]
+    },
+    "full": {
+      "description": "Project full-profile inputs: MVP plus core/candidate/challenge extensions. This is not a mirror of every upstream bucket.",
+      "extends": "mvp",
+      "sources": [
+        "deepfashion",
+        "simmc_2_1",
+        "csds",
+        "mep3m_selected",
+        "products_10k",
+        "polyvore",
+        "recipe1m_plus_selected",
+        "sku_110k"
+      ]
+    },
+    "full-upstream": {
+      "description": "Literal upstream releases where meaningful. Multi-terabyte, partly gated, and not required by the 4,500-query project full profile.",
+      "extends": "full",
+      "sources": [
+        "abo_original_images",
+        "mep3m_upstream_all",
+        "inaturalist_2021_all",
+        "open_images_all",
+        "recipe1m_plus_all"
+      ]
+    }
+  },
+  "sources": {
+    "abo_compact": {
+      "dataset_id": "abo",
+      "kind": "artifacts",
+      "revision_policy": "public_s3_object_size_frozen_in_manifest",
+      "artifacts": [
+        {
+          "path": "abo/archives/abo-listings.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-listings.tar",
+          "bytes": 87480320
+        },
+        {
+          "path": "abo/archives/abo-images-small.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-images-small.tar",
+          "bytes": 3253381120
+        },
+        {
+          "path": "abo/archives/abo-spins.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-spins.tar",
+          "bytes": 42446704640
+        }
+      ]
+    },
+    "rpc": {
+      "dataset_id": "rpc",
+      "kind": "manual",
+      "reason": "The official package is distributed through a click-through/Kaggle-style access path; no account credentials or mutable third-party mirror belong in the repository.",
+      "instructions": "Accept the RPC terms, obtain the official package URLs or local files, then replace this source with artifacts in a local overrides JSON."
+    },
+    "fashioniq": {
+      "dataset_id": "fashioniq",
+      "kind": "manual",
+      "reason": "Official annotations and image URL lists are public, but the image corpus is a large set of mutable third-party URLs rather than a revision-pinned archive.",
+      "instructions": "Freeze the official fashion-iq annotations commit and dress/shirt/toptee URL inventory; after bounded retries, record unresolved URLs in an explicit owner-approved exclusion ledger, verify accepted-plus-excluded coverage, then expose the finalized acquisition through a local command override."
+    },
+    "wildreceipt": {
+      "dataset_id": "wildreceipt",
+      "kind": "artifacts",
+      "revision_policy": "openmmlab_public_object",
+      "artifacts": [
+        {
+          "path": "wildreceipt/wildreceipt.tar",
+          "url": "https://download.openmmlab.com/mmocr/data/wildreceipt.tar",
+          "bytes": 185323520
+        }
+      ]
+    },
+    "durecdial_2_0": {
+      "dataset_id": "durecdial_2_0",
+      "kind": "artifacts",
+      "revision_policy": "official_repository_commit_archive_with_sha256",
+      "artifacts": [
+        {
+          "path": "dialogue/durecdial-2.0/1309cc072afd0b832e899e49c62906e700ff6acf.zip",
+          "url": "https://codeload.github.com/liuzeming01/DuRecDial/zip/1309cc072afd0b832e899e49c62906e700ff6acf",
+          "bytes": 10112093,
+          "sha256": "5ebe6e7052b5c01fbdfb257b1c502163607cee7a770f6dba1b42515e5cfe6905"
+        }
+      ]
+    },
+    "crosswoz": {
+      "dataset_id": "crosswoz",
+      "kind": "artifacts",
+      "revision_policy": "official_repository_commit_archive_with_sha256",
+      "artifacts": [
+        {
+          "path": "dialogue/crosswoz/df82c9fdff91b9b130f2d6b89110d3870ba6260e.zip",
+          "url": "https://codeload.github.com/thu-coai/CrossWOZ/zip/df82c9fdff91b9b130f2d6b89110d3870ba6260e",
+          "bytes": 20684500,
+          "sha256": "f710a480f88452ff0a2bc664555434caa029004dfe7a70edd91b88a5f00a37da"
+        }
+      ]
+    },
+    "muge": {
+      "dataset_id": "muge",
+      "kind": "artifacts",
+      "revision_policy": "first-run_remote_identity_frozen_in_state",
+      "artifacts": [
+        {
+          "path": "muge/MUGE1.z01",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z01",
+          "bytes": 629145600
+        },
+        {
+          "path": "muge/MUGE1.z02",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z02",
+          "bytes": 629145600
+        },
+        {
+          "path": "muge/MUGE1.z03",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z03",
+          "bytes": 629145600
+        },
+        {
+          "path": "muge/MUGE1.z04",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z04",
+          "bytes": 629145600
+        },
+        {
+          "path": "muge/MUGE1.zip",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.zip",
+          "bytes": 115153004
+        }
+      ]
+    },
+    "wikimedia_zhwiki": {
+      "dataset_id": "wikimedia_zhwiki",
+      "kind": "artifacts",
+      "revision_policy": "first-run_remote_identity_frozen_in_state",
+      "artifacts": [
+        {
+          "path": "wiki_zh/wikipedia-cn-20230720-filtered.json",
+          "url": "https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered/resolve/main/wikipedia-cn-20230720-filtered.json",
+          "bytes": 524489333
+        }
+      ]
+    },
+    "inaturalist_bounded": {
+      "dataset_id": "inaturalist",
+      "kind": "command",
+      "revision_policy": "bounded_api_candidate_snapshot",
+      "command": [
+        "{python}",
+        "-m",
+        "skillchain.data.inaturalist",
+        "download",
+        "--per-taxon",
+        "400"
+      ]
+    },
+    "isia_food500": {
+      "dataset_id": "isia_food500",
+      "kind": "artifacts",
+      "revision_policy": "size_and_sha256_frozen",
+      "artifacts": [
+        {
+          "path": "isia_food500/ISIA_Food500.zip",
+          "url": "http://123.57.42.89/Dataset_ict/ISIA_Food500_Dir/dataset/ISIA_Food500.zip",
+          "bytes": 636880932,
+          "sha256": "3e68b472a0fa2bcd23d354c1fffcc101a54bb50e80dbd641d1b365d4a6f4109c"
+        }
+      ]
+    },
+    "xiachufang": {
+      "dataset_id": "xiachufang",
+      "kind": "artifacts",
+      "revision_policy": "size_frozen_unverified_license",
+      "artifacts": [
+        {
+          "path": "recipes/xiachufang_recipe_corpus_full.zip",
+          "url": "https://drive.usercontent.google.com/download?id=1HDUHNDHUxKJilfKr3D_9lA7K_RtJ6ewY&export=download&confirm=t",
+          "bytes": 663982342
+        }
+      ]
+    },
+    "cord_v2": {
+      "dataset_id": "cord",
+      "kind": "manual",
+      "reason": "CORD v2 is hosted as a multi-file Hugging Face repository whose immutable revision must be selected and frozen before formal use.",
+      "instructions": "Freeze a naver-clova-ix/cord-v2 commit, export its parquet artifact URLs/sizes/hashes, and add them through a local overrides JSON."
+    },
+    "sroie": {
+      "dataset_id": "sroie",
+      "kind": "manual",
+      "reason": "The official SROIE distribution uses gated or mutable file-hosting links.",
+      "instructions": "Obtain the official packages under their terms, freeze a reviewed browser-acquisition manifest, validate ZIP structure and content identity, then provide the already acquired files through a local_artifacts override."
+    },
+    "wikimedia_documents_bounded": {
+      "dataset_id": "wikimedia_documents",
+      "kind": "command",
+      "revision_policy": "bounded_api_candidate_snapshot",
+      "command": [
+        "{python}",
+        "-m",
+        "skillchain.data.wikimedia_documents",
+        "download",
+        "--per-category",
+        "50"
+      ]
+    },
+    "coco_bounded": {
+      "dataset_id": "coco_open_images",
+      "kind": "artifacts",
+      "revision_policy": "coco_2017_public_objects",
+      "artifacts": [
+        {
+          "path": "coco/val2017.zip",
+          "url": "http://images.cocodataset.org/zips/val2017.zip",
+          "bytes": 815585330
+        },
+        {
+          "path": "coco/annotations_trainval2017.zip",
+          "url": "http://images.cocodataset.org/annotations/annotations_trainval2017.zip",
+          "bytes": 252907541
+        }
+      ]
+    },
+    "deepfashion": {
+      "dataset_id": "deepfashion",
+      "kind": "manual",
+      "reason": "DeepFashion access requires accepting the dataset release agreement.",
+      "instructions": "Request access from the official project, retain the agreement evidence outside Git, and provide the authorized archives through a local overrides JSON."
+    },
+    "simmc_2_1": {
+      "dataset_id": "simmc_2_1",
+      "kind": "manual",
+      "reason": "SIMMC 2.1 is a conditional Full candidate whose Git LFS objects, archived repository revision, CC BY-NC-SA terms and English synthetic-scene scope must be reviewed before use.",
+      "instructions": "Freeze the official repository/LFS object inventory and license evidence, then decide whether its multimodal-coreference structures may be transformed into separately marked Chinese synthetic/derived trajectories."
+    },
+    "csds": {
+      "dataset_id": "csds",
+      "kind": "manual",
+      "reason": "The official CSDS train/val/test package is already acquired and the project owner has confirmed written permission covering use, derivation and redistribution.",
+      "instructions": "Retain the permission notice outside Git and reuse the verified local package; a later Full activation still requires its separate source/PII/selection review."
+    },
+    "mep3m_selected": {
+      "dataset_id": "mep3m",
+      "kind": "command",
+      "revision_policy": "pinned_huggingface_revision_and_sha256",
+      "command": [
+        "{python}",
+        "-m",
+        "skillchain.data.mep3m",
+        "download"
+      ]
+    },
+    "products_10k": {
+      "dataset_id": "products_10k",
+      "kind": "manual",
+      "reason": "Products-10K is distributed through account/file-hosting flows without a stable anonymous archive URL.",
+      "instructions": "Acquire the official release, freeze its package identity, and provide artifacts through a local overrides JSON."
+    },
+    "polyvore": {
+      "dataset_id": "polyvore",
+      "kind": "manual",
+      "reason": "The canonical Polyvore metadata and image availability are split across mutable hosting; many original image URLs are no longer live.",
+      "instructions": "Choose and document an authorized image-bearing snapshot plus the official metadata revision, then provide its frozen artifacts through a local overrides JSON."
+    },
+    "recipe1m_plus_selected": {
+      "dataset_id": "recipe1m_plus",
+      "kind": "manual",
+      "reason": "Recipe1M+ requires an approved download and the project full plan needs a reviewed entity-mapped selection rather than an indiscriminate mirror.",
+      "instructions": "After access approval, create a frozen selected-artifact inventory for mapped recipe/image pairs and inject it with a local overrides JSON."
+    },
+    "sku_110k": {
+      "dataset_id": "sku_110k",
+      "kind": "artifacts",
+      "revision_policy": "fixed_public_archive",
+      "artifacts": [
+        {
+          "path": "sku110k/SKU110K_fixed.tar.gz",
+          "url": "https://trax-geometry.s3.amazonaws.com/cvpr_challenge/SKU110K_fixed.tar.gz",
+          "bytes": 12196152718
+        }
+      ]
+    },
+    "abo_original_images": {
+      "dataset_id": "abo",
+      "kind": "artifacts",
+      "revision_policy": "public_s3_object_size_frozen_in_manifest",
+      "artifacts": [
+        {
+          "path": "abo/archives/abo-images-original.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-images-original.tar",
+          "bytes": 118271436800
+        }
+      ]
+    },
+    "mep3m_upstream_all": {
+      "dataset_id": "mep3m",
+      "kind": "manual",
+      "reason": "The literal release contains 599 archives (71,869,244,985 bytes) and must use a frozen Hugging Face tree inventory rather than a mutable generated list.",
+      "instructions": "Export the 599 Images/*.rar objects from revision 4f38a7404a7c78d849169a480f77af593fb78d03 with sizes and LFS SHA-256 values into a local overrides JSON."
+    },
+    "inaturalist_2021_all": {
+      "dataset_id": "inaturalist",
+      "kind": "artifacts",
+      "revision_policy": "official_2021_competition_objects_runtime_sized",
+      "artifacts": [
+        {
+          "path": "inaturalist/2021/train.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/train.tar.gz"
+        },
+        {
+          "path": "inaturalist/2021/train.json.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/train.json.tar.gz"
+        },
+        {
+          "path": "inaturalist/2021/val.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/val.tar.gz"
+        },
+        {
+          "path": "inaturalist/2021/val.json.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/val.json.tar.gz"
+        },
+        {
+          "path": "inaturalist/2021/public_test.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/public_test.tar.gz"
+        },
+        {
+          "path": "inaturalist/2021/public_test.json.tar.gz",
+          "url": "https://ml-inat-competition-datasets.s3.amazonaws.com/2021/public_test.json.tar.gz"
+        }
+      ]
+    },
+    "open_images_all": {
+      "dataset_id": "coco_open_images",
+      "kind": "manual",
+      "reason": "Open Images is a versioned multi-object bucket; a complete run needs a frozen object inventory and split/version decision.",
+      "instructions": "Freeze the chosen Open Images version, annotations, and exact S3 object list, then add all objects as artifacts through a local overrides JSON."
+    },
+    "recipe1m_plus_all": {
+      "dataset_id": "recipe1m_plus",
+      "kind": "manual",
+      "reason": "The full authorized Recipe1M+ image release is roughly 16 large archives and several terabytes.",
+      "instructions": "After approval, place the authorized archive URLs in a local overrides JSON. Do not commit signed URLs or cookies."
+    }
+  },
+  "retired_sources": [
+    {
+      "source_id": "jddc_2_0",
+      "dataset_id": "jddc_2_0",
+      "disposition": "permanently_abandoned",
+      "decision_date": "2026-07-24",
+      "reason": "Owner decision: access is not currently obtainable and JDDC 2.0 is no longer a required MVP or Full RAW dependency.",
+      "must_not_appear_in_profiles": [
+        "mvp",
+        "full",
+        "full-upstream"
+      ]
+    },
+    {
+      "source_id": "u_need",
+      "dataset_id": "u_need",
+      "disposition": "permanently_abandoned",
+      "decision_date": "2026-08-01",
+      "reason": "Owner decision: U-NEED access is not obtainable even after application, so it is no longer a project dependency.",
+      "must_not_appear_in_profiles": [
+        "mvp",
+        "full",
+        "full-upstream"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "dossier_id": "ecommerce-mvp-required-source-license-evidence-v1",
+  "assessed_at": "2026-07-25T00:00:00Z",
+  "assessment_boundary": "Evidence assessment for this non-commercial local research project; it is not legal advice and does not expand upstream rights.",
+  "sources": [
+    {
+      "source_id": "abo",
+      "license_id": "CC-BY-NC-4.0",
+      "evidence_status": "explicit_dataset_license",
+      "evidence": [
+        {
+          "authority": "Amazon Berkeley Objects registry entry on the Registry of Open Data on AWS",
+          "url": "https://registry.opendata.aws/amazon-berkeley-objects/",
+          "observation": "The dataset entry identifies Creative Commons Attribution-NonCommercial 4.0 as the license and says the dataset is not updated."
+        },
+        {
+          "authority": "ABO paper published by Amazon Science",
+          "url": "https://assets.amazon.science/9d/ca/350b3ef94691a1aedabb8bfb538d/abo-dataset-and-benchmarks-for-real-world-3d-object-understanding.pdf",
+          "observation": "The paper independently states that ABO is released under CC BY-NC 4.0."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the three compact official S3 archives and records their object URLs, ETags, Last-Modified values, local byte counts, and locally computed content hashes.",
+      "conclusion": "Updated 2026-08-07 per docs/data-authorization-tracking.csv: owner authorization permits cloud upload and public demo for academic research; redistribution remains disabled. Original evidence supports non-commercial local research and local embedding with attribution."
+    },
+    {
+      "source_id": "crosswoz",
+      "license_id": "Apache-2.0",
+      "evidence_status": "explicit_repository_license",
+      "evidence": [
+        {
+          "authority": "CrossWOZ repository LICENSE at the exact acquired commit",
+          "url": "https://raw.githubusercontent.com/thu-coai/CrossWOZ/df82c9fdff91b9b130f2d6b89110d3870ba6260e/LICENSE",
+          "observation": "The exact acquired repository snapshot contains the Apache License 2.0 at its root and no separate data terms were found in that snapshot."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the official GitHub commit archive df82c9fdff91b9b130f2d6b89110d3870ba6260e.",
+      "conclusion": "The evidence supports local research use of the repository snapshot for interaction-pattern inventory. Dialogue and place-database content is kept inside the restricted local boundary pending any later item-level PII release review."
+    },
+    {
+      "source_id": "durecdial_2_0",
+      "license_id": "CC-BY-NC-SA-4.0",
+      "evidence_status": "explicit_dataset_license",
+      "evidence": [
+        {
+          "authority": "DuRecDial README at the exact acquired commit",
+          "url": "https://raw.githubusercontent.com/liuzeming01/DuRecDial/1309cc072afd0b832e899e49c62906e700ff6acf/README.md",
+          "observation": "The README identifies CC BY-NC-SA 4.0 for DuRecDial 2.0 and explicitly excludes commercial adoption."
+        },
+        {
+          "authority": "DuRecDial repository LICENSE at the exact acquired commit",
+          "url": "https://raw.githubusercontent.com/liuzeming01/DuRecDial/1309cc072afd0b832e899e49c62906e700ff6acf/LICENSE",
+          "observation": "The exact repository snapshot also contains the Apache License 2.0 for repository material; the dataset-specific CC BY-NC-SA statement is the controlling conservative basis for data use."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the official GitHub commit archive 1309cc072afd0b832e899e49c62906e700ff6acf.",
+      "conclusion": "The evidence supports non-commercial local research limited to interaction-pattern inventory. Raw dialogue remains restricted and is not copied into synthetic trajectories, remotely embedded, redistributed, or publicly demonstrated."
+    },
+    {
+      "source_id": "fashioniq",
+      "license_id": "LicenseRef-FashionIQ-Academic-Research-Only-2020",
+      "evidence_status": "explicit_dataset_usage_terms",
+      "evidence": [
+        {
+          "authority": "Fashion IQ Challenge 2020 CodaLab terms",
+          "url": "https://competitions.codalab.org/competitions/22946",
+          "observation": "The dataset access section permits free non-commercial academic research use and prohibits commercial exploitation and reproduction of images or derived data."
+        },
+        {
+          "authority": "FashionIQ repository at the exact annotation commit",
+          "url": "https://github.com/XiaoxiaoGuo/fashion-iq/tree/f71b16c3b09ef03b02c0fed160fa072fb3b8aa16",
+          "observation": "The pinned annotation snapshot provides the research dataset and image-download route but contains no LICENSE file. A license shown on a later repository state is not retroactively substituted for the acquired commit."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the pinned annotation and URL-inventory commits, 75,267 accepted images, and the immutable 2,416-item exclusion ledger after two identical complete retries.",
+      "conclusion": "Updated 2026-08-07 per docs/data-authorization-tracking.csv: owner authorization permits cloud upload and public demo for academic research; redistribution remains disabled. Original evidence supports non-commercial local research and local embedding."
+    },
+    {
+      "source_id": "isia_food500",
+      "license_id": "NOASSERTION",
+      "evidence_status": "missing_explicit_dataset_license",
+      "evidence": [
+        {
+          "authority": "Official ISIA Food-500 publication page",
+          "url": "https://vipl.ict.ac.cn/homepage/sqjiang/Publication/Conference/202206/t20220606_37954.html",
+          "observation": "The official publication page identifies the dataset and paper but does not state a dataset reuse license."
+        },
+        {
+          "authority": "ISIA Food-500 paper",
+          "url": "https://arxiv.org/abs/2008.05655",
+          "observation": "The paper describes public availability and research purpose. Paper publication permissions are not a license for the image dataset."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the downloaded official-host archive and its locally computed SHA-256; content identity does not create reuse permission.",
+      "conclusion": "Updated 2026-08-07 per docs/data-authorization-tracking.csv: owner authorization permits cloud upload and public demo for academic research; redistribution remains disabled. No explicit dataset license covering local embedding and formal gold construction was found originally."
+    },
+    {
+      "source_id": "muge",
+      "license_id": "NOASSERTION",
+      "evidence_status": "missing_exact_dataset_license_and_official_revision",
+      "evidence": [
+        {
+          "authority": "Tianchi dataset platform description",
+          "url": "https://tianchi.aliyun.com/specials/promotion/about",
+          "observation": "Tianchi identifies MUGE as a leaderboard dataset and says research must follow the applicable dataset agreement, but this is not the exact MUGE agreement."
+        },
+        {
+          "authority": "MUGE Tianchi project page",
+          "url": "https://tianchi.aliyun.com/specials/promotion/muge",
+          "observation": "The project page identifies the benchmark, but the evidence review did not obtain an immutable, source-specific license text for the acquired archive."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers five split-archive files acquired from an unofficial Hugging Face mirror. Mirror object identities prove local content stability, not official revision or authorization.",
+      "conclusion": "The exact official MUGE revision and applicable dataset agreement are unresolved. The source remains deferred and cannot supply language-style material."
+    },
+    {
+      "source_id": "rpc",
+      "license_id": "CC-BY-NC-SA-4.0",
+      "evidence_status": "explicit_dataset_license",
+      "evidence": [
+        {
+          "authority": "Official RPC project page",
+          "url": "https://rpc-dataset.github.io/",
+          "observation": "The dataset section identifies CC BY-NC-SA 4.0 and limits the dataset and code packages to academic usage."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers Kaggle dataset 102034 version 5, generation 1571318753967625. Its 27,205,167,166-byte ZIP has a local SHA-256 and a validated safe central directory with 167,484 entries.",
+      "conclusion": "Updated 2026-08-07 per docs/data-authorization-tracking.csv: owner authorization permits cloud upload and public demo for academic research; redistribution remains disabled. Original evidence supports non-commercial local research and local embedding."
+    },
+    {
+      "source_id": "wikimedia_zhwiki",
+      "license_id": "NOASSERTION-composite-Wikimedia-text",
+      "evidence_status": "content_license_known_but_snapshot_provenance_incomplete",
+      "evidence": [
+        {
+          "authority": "Wikimedia dump license information",
+          "url": "https://dumps.wikimedia.org/legal.html",
+          "observation": "Original Wikimedia textual content is generally available under CC BY-SA 4.0 and GFDL, subject to page-specific exceptions and attribution obligations."
+        },
+        {
+          "authority": "Wikimedia Commons reuse guidance",
+          "url": "https://commons.wikimedia.org/wiki/Commons:Reusing_content_outside_Wikimedia/licenses/en",
+          "observation": "Media licenses are item-specific and must be checked on each file description page."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers a third-party filtered zhwiki JSON object from Hugging Face, not an official Wikimedia dump. The snapshot lacks a frozen transformation manifest, article revision inventory, and attribution ledger; it contains no Wikimedia media catalog.",
+      "conclusion": "General Wikimedia licensing does not cure the local filtered snapshot's provenance and attribution gaps. The combined required source remains deferred until replaced by an official dump-derived, attribution-preserving lock or the portfolio is split."
+    },
+    {
+      "source_id": "wildreceipt",
+      "license_id": "NOASSERTION",
+      "evidence_status": "official_metadata_says_license_unavailable",
+      "evidence": [
+        {
+          "authority": "Official MMOCR dataset-zoo entry for WildReceipt",
+          "url": "https://mmocr.readthedocs.io/en/latest/user_guides/data_prepare/datasetzoo.html#wildreceipt",
+          "observation": "The official dataset metadata identifies the receipt dataset as English and lists its license as N/A."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers the OpenMMLab public tar object. A public download URL and the Apache license of MMOCR code do not license the receipt images or annotations.",
+      "conclusion": "Dataset reuse permission is unresolved and receipt content can expose identifying or transaction information. The source remains deferred, restricted, and quarantined."
+    },
+    {
+      "source_id": "xiachufang",
+      "license_id": "NOASSERTION",
+      "evidence_status": "no_public_reuse_license_and_third_party_archive",
+      "evidence": [
+        {
+          "authority": "Xiachufang community and intellectual-property guidance",
+          "url": "https://www.xiachufang.com/principle/",
+          "observation": "Users grant Xiachufang a non-exclusive platform-use license; this does not grant the public a dataset reuse license."
+        },
+        {
+          "authority": "Xiachufang user agreement",
+          "url": "https://www.xiachufang.com/regagreement/",
+          "observation": "The user agreement protects platform and third-party intellectual property and does not provide open corpus reuse terms."
+        }
+      ],
+      "local_snapshot_observation": "The source lock covers a corpus archive obtained from a third-party Google Drive object rather than an owner-issued Xiachufang export.",
+      "conclusion": "No permission for crawling-derived corpus reuse, local embedding, or formal knowledge evidence was established. User-generated content also carries PII risk. The source remains deferred, restricted, and quarantined."
+    }
+  ]
+}

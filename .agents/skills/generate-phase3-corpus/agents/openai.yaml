@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate Phase 3 Corpus"
+  short_description: "Generate controlled Phase 3 query batches"
+  default_prompt: "Use $generate-phase3-corpus to prepare the next controlled Phase 3 corpus batch."

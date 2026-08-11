@@ -1,0 +1,1 @@
+{"fixture_id":"offline-engineering-fixture-v2","formal_eligible":false,"network_policy":"python-socket-audit-guard","query_count":6,"schema_version":1,"seed":20260721,"split_sizes":{"dev_mini":2,"opt_pool":2,"test_frozen":1,"val":1}}

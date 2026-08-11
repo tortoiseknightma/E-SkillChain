@@ -1,0 +1,6 @@
+{
+  "rubric_id": "portfolio-final-rubric-v1",
+  "rubric_version": "1",
+  "content": "Portfolio Final Rubric v1\nScore only the visible user request, image, assistant response, cards, and visible tool evidence. Do not infer hidden system variants or intent labels.\nTCR (0-10): task completion and relevance. 0=no usable completion; 4=partial; 8=mostly complete; 10=fully satisfies the request and stated constraints.\nCCC (0-10, only when requires_card=true): visible card completeness and consistency with response/evidence. 0=missing or unusable; 4=partial; 8=complete with minor gaps; 10=complete, consistent, decision-useful.\nCQ (0-20): correctness, grounding, clarity, uncertainty handling, and absence of unsupported claims. 0=misleading; 8=mixed; 16=strong; 20=precise and well grounded.\nCA (0-10): appropriateness of the observable capability/tool behavior for the request. 0=wrong task; 4=partly suitable; 8=appropriate; 10=fully appropriate and efficient.\nUse integer scores only. Evidence quality matters more than fluency. If evidence is insufficient, lower correctness and task-completion scores rather than inventing facts.",
+  "content_sha256": "39cf1f7caf0b45fe4099adbf999ddd5ed42e4a88a1ba2ef9b35f2d1b748fc01f"
+}

@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="E-SkillChain 数据集设计技术报告：从论文意图到公开数据映射、Codex 轨迹合成与人工审批。">
+  <title>E-SkillChain｜数据集设计技术报告</title>
+  <style>
+    :root {
+      --ink: #122a32;
+      --ink-soft: #38525a;
+      --paper: #f5f1e8;
+      --paper-deep: #ebe3d3;
+      --white: #fffdf8;
+      --line: #d2c7b4;
+      --teal: #087f78;
+      --teal-deep: #075c58;
+      --coral: #e56c4e;
+      --mustard: #dfa728;
+      --green: #3d8b63;
+      --red: #b94d45;
+      --blue: #416c94;
+      --shadow: 0 18px 50px rgba(18, 42, 50, .10);
+      --radius: 18px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      --serif: Georgia, "Noto Serif SC", "Songti SC", serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(18, 42, 50, .025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(18, 42, 50, .025) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: var(--sans);
+      line-height: 1.72;
+    }
+
+    a { color: var(--teal-deep); text-underline-offset: 3px; }
+    a:hover { color: var(--coral); }
+    code, .mono { font-family: var(--mono); }
+    code {
+      padding: .12em .38em;
+      border: 1px solid rgba(18,42,50,.12);
+      border-radius: 6px;
+      background: rgba(255,255,255,.62);
+      font-size: .9em;
+    }
+    strong { color: #0e3137; }
+
+    .top-progress {
+      position: fixed;
+      inset: 0 auto auto 0;
+      z-index: 99;
+      width: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--coral), var(--mustard), var(--teal));
+      box-shadow: 0 0 12px rgba(229,108,78,.45);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 740px;
+      padding: 82px clamp(24px, 6vw, 96px) 70px;
+      color: #f8f4ea;
+      background:
+        radial-gradient(circle at 88% 17%, rgba(223,167,40,.24), transparent 25%),
+        radial-gradient(circle at 12% 83%, rgba(8,127,120,.33), transparent 26%),
+        #122a32;
+    }
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 50%;
+    }
+    .hero::before { width: 520px; height: 520px; right: -220px; top: 70px; }
+    .hero::after { width: 280px; height: 280px; right: 12%; top: 190px; }
+    .hero-inner { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 34px;
+      font: 700 12px/1 var(--mono);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #d7d0c1;
+    }
+    .eyebrow::before { content: ""; width: 42px; height: 3px; background: var(--coral); }
+    .hero h1 {
+      max-width: 980px;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(44px, 7.2vw, 94px);
+      font-weight: 500;
+      line-height: .98;
+      letter-spacing: -.045em;
+    }
+    .hero h1 em { color: #f5bf44; font-style: normal; }
+    .hero .dek {
+      max-width: 850px;
+      margin: 34px 0 0;
+      color: #d4ddda;
+      font-size: clamp(18px, 2.1vw, 25px);
+      line-height: 1.55;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 28px;
+      margin-top: 34px;
+      color: #aebebb;
+      font: 12px/1.6 var(--mono);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 62px;
+    }
+    .hero-stat {
+      min-height: 138px;
+      padding: 22px;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      background: rgba(255,255,255,.055);
+      backdrop-filter: blur(6px);
+    }
+    .hero-stat b { display: block; color: #fff8e8; font: 500 clamp(30px, 4vw, 46px)/1 var(--serif); }
+    .hero-stat span { display: block; margin-top: 12px; color: #b8c6c3; font-size: 13px; line-height: 1.45; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 230px minmax(0, 970px);
+      gap: 56px;
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 54px 34px 120px;
+    }
+    .side {
+      position: sticky;
+      top: 28px;
+      align-self: start;
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      padding: 18px 0 18px 18px;
+      border-left: 1px solid var(--line);
+    }
+    .side .label { margin-bottom: 12px; color: #718287; font: 700 10px/1 var(--mono); letter-spacing: .12em; }
+    .side a {
+      display: block;
+      margin: 2px 0;
+      padding: 7px 10px;
+      border-radius: 8px;
+      color: #586c71;
+      font-size: 13px;
+      line-height: 1.35;
+      text-decoration: none;
+      transition: .18s ease;
+    }
+    .side a:hover, .side a.active { color: var(--ink); background: var(--white); box-shadow: 0 4px 14px rgba(18,42,50,.06); }
+    .side a.active { border-left: 3px solid var(--coral); }
+    .view-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin: 18px 8px 0 0;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper-deep);
+    }
+    .view-toggle button {
+      padding: 8px 4px;
+      border: 0;
+      border-radius: 7px;
+      color: var(--ink-soft);
+      background: transparent;
+      cursor: pointer;
+      font: 700 11px/1 var(--sans);
+    }
+    .view-toggle button.active { color: var(--white); background: var(--teal-deep); }
+
+    main { min-width: 0; }
+    section { scroll-margin-top: 30px; margin-bottom: 92px; }
+    .section-kicker { margin-bottom: 12px; color: var(--coral); font: 800 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+    h2 {
+      margin: 0 0 24px;
+      font-family: var(--serif);
+      font-size: clamp(35px, 5vw, 57px);
+      font-weight: 500;
+      line-height: 1.08;
+      letter-spacing: -.035em;
+    }
+    h3 { margin: 44px 0 16px; font-size: 23px; line-height: 1.3; }
+    h4 { margin: 28px 0 10px; font-size: 17px; }
+    .lead { max-width: 830px; margin-bottom: 28px; color: var(--ink-soft); font-size: 19px; line-height: 1.75; }
+    .fine { color: #64767a; font-size: 12px; }
+
+    .card {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,253,248,.88);
+      box-shadow: 0 8px 30px rgba(18,42,50,.045);
+    }
+    .card > :first-child { margin-top: 0; }
+    .card > :last-child { margin-bottom: 0; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+    .mini-label { color: #687b80; font: 800 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+    .big-copy { margin: 12px 0 0; font-family: var(--serif); font-size: 22px; line-height: 1.45; }
+
+    .takeaway {
+      position: relative;
+      margin: 26px 0;
+      padding: 26px 30px 26px 52px;
+      border-radius: 0 16px 16px 0;
+      color: #f4f6f1;
+      background: var(--teal-deep);
+    }
+    .takeaway::before {
+      content: "“";
+      position: absolute;
+      left: 16px;
+      top: 4px;
+      color: #f5bf44;
+      font: 48px/1 var(--serif);
+    }
+    .takeaway b { color: #fff9e9; }
+
+    .warning, .success, .info {
+      margin: 20px 0;
+      padding: 18px 20px;
+      border-left: 4px solid;
+      border-radius: 0 10px 10px 0;
+      background: rgba(255,255,255,.58);
+    }
+    .warning { border-color: var(--coral); }
+    .success { border-color: var(--green); }
+    .info { border-color: var(--blue); }
+    .warning strong, .success strong, .info strong { display: block; margin-bottom: 4px; }
+
+    .intent-map {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1.35fr);
+      gap: 12px;
+      align-items: stretch;
+      margin: 30px 0;
+    }
+    .map-col { display: grid; gap: 10px; }
+    .map-item {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 86px;
+      padding: 15px 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--white);
+    }
+    .map-item b { font-size: 15px; }
+    .map-item small { margin-top: 3px; color: #6a7b7e; }
+    .map-item.accent { border-left: 5px solid var(--teal); }
+    .map-item.split { border-left: 5px solid var(--mustard); }
+    .arrows {
+      display: grid;
+      place-items: center;
+      color: var(--coral);
+      font-size: 28px;
+    }
+    .arrows span { writing-mode: vertical-rl; font: 700 10px/1 var(--mono); letter-spacing: .1em; color: #7a898d; }
+
+    .question-flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 9px;
+      margin: 30px 0;
+      counter-reset: q;
+    }
+    .question-flow > div {
+      position: relative;
+      min-height: 164px;
+      padding: 44px 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--white);
+      counter-increment: q;
+    }
+    .question-flow > div::before {
+      content: "0" counter(q);
+      position: absolute;
+      top: 14px;
+      left: 15px;
+      color: var(--coral);
+      font: 800 12px/1 var(--mono);
+    }
+    .question-flow b { display: block; margin-bottom: 8px; font-size: 14px; line-height: 1.35; }
+    .question-flow small { color: #65767a; line-height: 1.5; }
+
+    .table-wrap { overflow-x: auto; margin: 24px 0; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.55; }
+    th, td { padding: 15px 16px; border-bottom: 1px solid #e3dbce; vertical-align: top; text-align: left; }
+    th { color: #53666a; background: #eee8dc; font: 800 10px/1.35 var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fbf8f1; }
+    td strong { display: block; margin-bottom: 2px; }
+
+    .dataset-card { position: relative; overflow: hidden; }
+    .dataset-card::after {
+      content: attr(data-id);
+      position: absolute;
+      right: 16px;
+      top: 10px;
+      color: rgba(18,42,50,.055);
+      font: 700 66px/1 var(--serif);
+    }
+    .dataset-card h3 { margin: 8px 0 2px; padding-right: 48px; }
+    .dataset-card .source { margin-bottom: 18px; color: var(--teal-deep); font: 700 12px/1.4 var(--mono); }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 14px 0; }
+    .pill { padding: 4px 9px; border: 1px solid #cfc4b2; border-radius: 999px; color: #52666a; background: #f8f4eb; font-size: 11px; }
+    .why { margin: 15px 0 0; padding-top: 14px; border-top: 1px dashed var(--line); color: var(--ink-soft); font-size: 13px; }
+
+    .authority-stack { display: grid; gap: 11px; margin: 28px 0; }
+    .authority-layer {
+      display: grid;
+      grid-template-columns: 126px minmax(0,1fr) 170px;
+      gap: 20px;
+      align-items: center;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--white);
+    }
+    .authority-layer .n { color: var(--coral); font: 800 11px/1 var(--mono); }
+    .authority-layer p { margin: 0; }
+    .authority-layer .limit { color: #687a7e; font-size: 12px; }
+
+    .pipeline { position: relative; display: grid; gap: 14px; margin: 32px 0; }
+    .pipeline::before { content: ""; position: absolute; left: 25px; top: 26px; bottom: 26px; width: 2px; background: linear-gradient(var(--teal), var(--mustard), var(--coral)); }
+    .pipe-step { position: relative; display: grid; grid-template-columns: 52px minmax(0,1fr) 160px; gap: 18px; align-items: center; padding: 18px 20px 18px 0; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+    .pipe-step .num { z-index: 1; display: grid; place-items: center; width: 50px; height: 50px; margin-left: 0; border: 4px solid var(--paper); border-radius: 50%; color: white; background: var(--teal-deep); font: 800 12px/1 var(--mono); }
+    .pipe-step h4 { margin: 0 0 5px; }
+    .pipe-step p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+    .pipe-step .owner { color: #65777b; font: 700 10px/1.4 var(--mono); text-align: right; }
+    .pipe-step.human .num { background: var(--coral); }
+
+    .contract-box {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+      margin: 26px 0;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--white);
+    }
+    .contract-box > div { padding: 24px; }
+    .contract-box > div + div { border-left: 1px solid var(--line); background: #f0eadf; }
+    .contract-box ul { margin-bottom: 0; padding-left: 18px; }
+
+    .bars { display: grid; gap: 13px; margin: 24px 0; }
+    .bar-row { display: grid; grid-template-columns: 170px minmax(180px,1fr) 56px; gap: 12px; align-items: center; }
+    .bar-row .name { font-size: 12px; }
+    .bar-track { overflow: hidden; height: 14px; border-radius: 99px; background: #dfd6c7; }
+    .bar-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--teal-deep), var(--teal)); }
+    .bar-row:nth-child(2n) .bar-fill { background: linear-gradient(90deg, #bb7524, var(--mustard)); }
+    .bar-row .value { color: #566b6f; font: 700 11px/1 var(--mono); text-align: right; }
+
+    .timeline { display: grid; grid-template-columns: repeat(4, 1fr); margin: 30px 0; }
+    .time-node { position: relative; padding: 38px 18px 18px 0; border-top: 3px solid var(--teal-deep); }
+    .time-node::before { content: ""; position: absolute; top: -9px; left: 0; width: 14px; height: 14px; border: 3px solid var(--paper); border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 1px var(--coral); }
+    .time-node b { display: block; margin-bottom: 6px; font-size: 14px; }
+    .time-node p { margin: 0; padding-right: 10px; color: #63767a; font-size: 12px; line-height: 1.5; }
+
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 24px 0; }
+    .metric { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+    .metric b { display: block; font: 500 34px/1 var(--serif); }
+    .metric span { display: block; margin-top: 8px; color: #63767a; font-size: 12px; line-height: 1.4; }
+
+    .script-card { margin: 18px 0; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--white); }
+    .script-card .duration { display: inline-block; margin-bottom: 12px; color: var(--coral); font: 800 10px/1 var(--mono); letter-spacing: .1em; }
+    .script-card blockquote { margin: 0; color: var(--ink); font-family: var(--serif); font-size: 19px; line-height: 1.75; }
+
+    details { margin: 10px 0; border: 1px solid var(--line); border-radius: 11px; background: rgba(255,253,248,.8); }
+    summary { padding: 17px 20px; cursor: pointer; font-weight: 700; }
+    details > div { padding: 0 20px 18px; color: var(--ink-soft); }
+
+    .evidence-list { display: grid; gap: 10px; padding: 0; list-style: none; }
+    .evidence-list li { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 10px; align-items: start; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--white); }
+    .evidence-list .id { color: var(--coral); font: 800 11px/1.6 var(--mono); }
+    .evidence-list a { font-weight: 700; }
+    .evidence-list small { display: block; margin-top: 3px; color: #6e7f83; }
+
+    .footer { padding: 42px 24px 60px; color: #aebdb9; background: var(--ink); text-align: center; }
+    .footer b { color: #f5f0e4; }
+
+    body.quick-mode .deep-only { display: none !important; }
+    body.quick-mode section { margin-bottom: 58px; }
+
+    @media (max-width: 1050px) {
+      .layout { grid-template-columns: 1fr; padding-top: 32px; }
+      .side { position: relative; top: 0; z-index: 10; display: flex; align-items: center; gap: 4px; max-height: none; overflow-x: auto; padding: 7px; border: 1px solid var(--line); border-radius: 12px; background: rgba(245,241,232,.96); }
+      .side .label { display: none; }
+      .side a { flex: 0 0 auto; }
+      .view-toggle { flex: 0 0 180px; margin: 0 0 0 auto; }
+      .hero-grid { grid-template-columns: repeat(2,1fr); }
+    }
+    @media (max-width: 720px) {
+      .hero { min-height: auto; padding: 60px 22px 48px; }
+      .hero h1 { font-size: 48px; }
+      .hero-grid, .grid-2, .grid-3, .metric-grid { grid-template-columns: 1fr; }
+      .layout { padding: 18px 16px 80px; }
+      .side a:nth-of-type(n+6) { display: none; }
+      .intent-map { grid-template-columns: 1fr; }
+      .arrows { min-height: 34px; transform: rotate(90deg); }
+      .question-flow { grid-template-columns: 1fr; }
+      .question-flow > div { min-height: auto; }
+      .authority-layer { grid-template-columns: 1fr; gap: 8px; }
+      .pipe-step { grid-template-columns: 52px minmax(0,1fr); }
+      .pipe-step .owner { grid-column: 2; text-align: left; }
+      .contract-box { grid-template-columns: 1fr; }
+      .contract-box > div + div { border-top: 1px solid var(--line); border-left: 0; }
+      .bar-row { grid-template-columns: 110px minmax(100px,1fr) 44px; }
+      .timeline { grid-template-columns: 1fr; }
+      .time-node { padding: 26px 0 24px 24px; border-top: 0; border-left: 3px solid var(--teal-deep); }
+      .time-node::before { top: 0; left: -9px; }
+    }
+    @media print {
+      .top-progress, .side, .view-toggle { display: none !important; }
+      body { background: white; font-size: 10.5pt; }
+      .hero { min-height: auto; padding: 38px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .layout { display: block; max-width: none; padding: 36px; }
+      section { margin-bottom: 44px; break-inside: auto; }
+      .card, .dataset-card, .script-card, details { break-inside: avoid; box-shadow: none; }
+      h2, h3 { break-after: avoid; }
+      a { color: inherit; text-decoration: none; }
+      .deep-only { display: block !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-progress" id="progress"></div>
+
+  <header class="hero" id="top">
+    <div class="hero-inner">
+      <div class="eyebrow">E-SkillChain · Dataset Engineering Report</div>
+      <h1>从论文意图到<br><em>可评测轨迹</em></h1>
+      <p class="dek">一份面向面试讲解的数据集技术报告：如何把 SkillChain 论文中的五类电商视觉意图，转译为六项可执行能力；如何按“监督信号”寻找公开数据；以及如何让 Codex 在事实约束下合成交互轨迹，并由人类完成不可替代的审批。</p>
+      <div class="hero-meta">
+        <span>REPORT · 2026-08-10</span>
+        <span>SOURCE COMMIT · 00d6ad9</span>
+        <span>TRACK · PORTFOLIO / MECHANISM-LEVEL</span>
+      </div>
+      <div class="hero-grid" aria-label="数据集快照">
+        <div class="hero-stat"><b>5 → 6</b><span>论文五类意图，落地为六项可执行 capability</span></div>
+        <div class="hero-stat"><b>1,500</b><span>Core r3 冻结轨迹，60 个批次，每批 25 条</span></div>
+        <div class="hero-stat"><b>8</b><span>实际进入 Core 资产目录的公开数据来源</span></div>
+        <div class="hero-stat"><b>867</b><span>按资产与派生关系合并后的 leakage group</span></div>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="side" aria-label="报告目录">
+      <div class="label">CONTENTS</div>
+      <a href="#executive">01 核心结论</a>
+      <a href="#paper">02 从论文出发</a>
+      <a href="#selection">03 数据集选择方法</a>
+      <a href="#mapping">04 六项能力映射</a>
+      <a href="#composition">05 四层数据构成</a>
+      <a href="#codex">06 Codex 轨迹合成</a>
+      <a href="#approval">07 人工审批</a>
+      <a href="#scale">08 从 200 到 1,500</a>
+      <a href="#leakage">09 切分与防泄漏</a>
+      <a href="#interview">10 面试讲稿</a>
+      <a href="#qa">11 高频追问</a>
+      <a href="#evidence">12 证据索引</a>
+      <div class="view-toggle" role="group" aria-label="阅读模式">
+        <button type="button" data-mode="quick">速讲</button>
+        <button type="button" data-mode="deep" class="active">深挖</button>
+      </div>
+    </nav>
+
+    <main>
+      <section id="executive" data-section>
+        <div class="section-kicker">01 · Executive brief</div>
+        <h2>我真正解决的，不是“把几个数据集拼起来”</h2>
+        <p class="lead">核心难点是建立一条可审计的转译链：<strong>论文业务意图 → 可执行能力 → 所需监督信号 → 合适的公开数据 → 有事实依据的交互轨迹 → 人工批准的评测样本</strong>。每一层都只承担自己有资格承担的责任。</p>
+
+        <div class="grid-3">
+          <article class="card">
+            <div class="mini-label">贡献 01 · 任务建模</div>
+            <p class="big-copy">把模糊的业务意图拆成有输入、工具、gold 和输出契约的能力。</p>
+          </article>
+          <article class="card">
+            <div class="mini-label">贡献 02 · 数据工程</div>
+            <p class="big-copy">不按数据集名选数据，而按“评测所需监督信号”组合数据源。</p>
+          </article>
+          <article class="card">
+            <div class="mini-label">贡献 03 · 人机协作</div>
+            <p class="big-copy">Codex 负责受控组合与改写，人类保留事实、边界与接收权。</p>
+          </article>
+        </div>
+
+        <div class="takeaway"><b>一句话定位：</b>我构建的不是一个“合成问句集合”，而是一套以真实公开资产为事实锚点、以冻结 TaskSpec 为语义锚点、以 Codex 为受约束合成器、以人工审批为最终门禁的电商视觉 Agent 轨迹生产线。</div>
+
+        <div class="warning">
+          <strong>简历与面试的声明边界</strong>
+          本项目是公开数据上的机制级复现：包含真实商品/文档/物种/菜品图像、真实模型调用与真实工具执行，但不声称拥有论文中的生产查询、企业内部数据、线上用户分布或论文绝对分数。
+        </div>
+      </section>
+
+      <section id="paper" data-section>
+        <div class="section-kicker">02 · From paper to executable tasks</div>
+        <h2>第一步：先把论文的“意图”变成可执行任务</h2>
+        <p class="lead">SkillChain 论文把图像电商助手的请求归为五类。它们是业务层的意图，不直接等同于数据集标签。我的第一步不是搜索数据集，而是追问：这个意图需要系统完成什么动作，什么证据才能判断它做对了？</p>
+
+        <div class="intent-map" aria-label="五类意图到六项能力的映射">
+          <div class="map-col">
+            <div class="map-item"><b>Exact Match</b><small>图文检索同一商品</small></div>
+            <div class="map-item"><b>Multi-Product</b><small>识别场景中的多个商品</small></div>
+            <div class="map-item"><b>Divergent Recommendation</b><small>按风格与约束推荐</small></div>
+            <div class="map-item"><b>Encyclopedia</b><small>识别视觉主体并解释</small></div>
+            <div class="map-item"><b>Utility Assistance</b><small>调用专用工具解决场景任务</small></div>
+          </div>
+          <div class="arrows"><span>OPERATIONALIZE</span>→</div>
+          <div class="map-col">
+            <div class="map-item accent"><b>product.exact_match</b><small>同 SKU 的跨视角检索与商品卡输出</small></div>
+            <div class="map-item accent"><b>product.multi_search</b><small>多物体定位、逐物体检索与对比</small></div>
+            <div class="map-item accent"><b>product.style_recommendation</b><small>参考图 + 相对偏好 + 候选约束</small></div>
+            <div class="map-item accent"><b>knowledge.visual_encyclopedia</b><small>实体识别 + 可核验知识证据</small></div>
+            <div class="map-item split"><b>utility.document_reading</b><small>OCR / KIE 字段提取</small></div>
+            <div class="map-item split"><b>utility.recipe_guidance</b><small>菜品识别 + 有来源的步骤指导</small></div>
+          </div>
+        </div>
+
+        <div class="grid-2 deep-only">
+          <article class="card">
+            <div class="mini-label">为什么是 5 → 6</div>
+            <h3>Utility 是工具族，不是单一标签</h3>
+            <p>论文的 Utility 同时包含健康、菜谱、文档等子场景。第一版只实现最容易以公开数据构造可靠 gold 的两类：文档读取与菜谱指导。二者需要的工具和正确性判据完全不同，因此不能混成一个数据任务。</p>
+          </article>
+          <article class="card">
+            <div class="mini-label">为什么不能照搬论文数据</div>
+            <h3>论文的生产查询不可获得</h3>
+            <p>论文实验使用生产查询和内部链路；本项目没有这些数据。因此我复现的是“Skill 自进化的机制”和任务结构，而不是线上流量分布。公开数据负责提供可复核事实，合成层负责恢复交互形态。</p>
+          </article>
+        </div>
+
+        <div class="success"><strong>面试关键词</strong>这一步叫 <em>operationalization</em>：把论文概念操作化为可以构造、运行和评分的任务定义。它决定后续数据搜索不会被“看起来相关”的数据集带偏。</div>
+      </section>
+
+      <section id="selection" data-section>
+        <div class="section-kicker">03 · Supervision-first selection</div>
+        <h2>第二步：按监督信号找数据，而不是按名字找数据</h2>
+        <p class="lead">一个数据集“有商品图片”不代表它能评测商品检索；“有食物类别”不代表它能验证菜谱事实。每个候选数据源都要依次通过五个问题。</p>
+
+        <div class="question-flow">
+          <div><b>系统必须输出什么？</b><small>商品卡、多个物体、推荐理由、知识答案、字段或步骤。</small></div>
+          <div><b>正确性靠什么判？</b><small>同 SKU、bbox、目标商品、实体 ID、字段标签或外部知识。</small></div>
+          <div><b>数据是否真的提供这个 gold？</b><small>“相关”不够，必须存在可执行、可评分的监督结构。</small></div>
+          <div><b>会不会产生伪捷径？</b><small>近重复图、同源派生、类别泄漏和模板记忆都要控制。</small></div>
+          <div><b>缺失部分由谁补？</b><small>资产/KB 补事实，TaskSpec 补语义，Codex 只补表达与组合。</small></div>
+        </div>
+
+        <div class="table-wrap deep-only">
+          <table>
+            <thead><tr><th>能力</th><th>最小监督信号</th><th>仅有图片分类标签为什么不够</th><th>核心评测对象</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Exact Match</strong></td><td>稳定商品/SKU 身份 + 真实跨视角图</td><td>类别相同不代表同一商品</td><td>能否找回同一商品且不被近邻款干扰</td></tr>
+              <tr><td><strong>Multi Search</strong></td><td>场景级多物体 bbox + 每个物体的 SKU/参考图</td><td>只能知道“有杯子”，不能知道是哪一个杯子</td><td>分解、逐物体检索和结果覆盖</td></tr>
+              <tr><td><strong>Style Recommendation</strong></td><td>参考图 + 相对语言/偏好 + 目标候选</td><td>同类商品不是风格兼容或偏好 gold</td><td>约束理解、候选相关性与解释</td></tr>
+              <tr><td><strong>Encyclopedia</strong></td><td>视觉实体身份 + 可核验知识来源</td><td>类别名不足以支撑属性与知识陈述</td><td>识别、证据引用与不编造</td></tr>
+              <tr><td><strong>Document Reading</strong></td><td>文本框/转写 + 字段级 KIE 标签</td><td>文档类型分类不能回答金额、日期、商户</td><td>字段正确性、覆盖率和格式契约</td></tr>
+              <tr><td><strong>Recipe Guidance</strong></td><td>菜品实体 + 经核验的配方/步骤知识</td><td>识别“宫保鸡丁”不等于知道可靠做法</td><td>识别、知识落地和安全边界</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="takeaway"><b>选择原则：</b>公开数据不是按“场景相似度”堆叠，而是按“监督信号互补性”组合。每个来源都要有清晰角色，也要写清楚它不能被用于证明什么。</div>
+      </section>
+
+      <section id="mapping" data-section>
+        <div class="section-kicker">04 · Six capability portfolios</div>
+        <h2>六项能力如何落到具体数据源</h2>
+        <p class="lead">Core r3 的 1,500 条轨迹实际引用 8 个公开图像来源。下面不仅列“用了什么”，还解释“为什么它能提供正确的监督信号”以及“哪里必须补第二层证据”。</p>
+
+        <div class="grid-2">
+          <article class="card dataset-card" data-id="01">
+            <div class="mini-label">Exact Match · 375 条</div>
+            <h3>同一商品检索</h3>
+            <div class="source">ABO · 375 exact-match query bindings</div>
+            <div class="pill-row"><span class="pill">商品/Listing 身份</span><span class="pill">真实多视角</span><span class="pill">query-gallery 隔离</span></div>
+            <p><strong>为什么选：</strong>Amazon Berkeley Objects 提供稳定商品身份和多视角商品图，能够把“同类”与“同一商品”区分开。</p>
+            <p class="why"><strong>关键控制：</strong>禁止把简单裁剪、缩放或近重复图当成正样本；同一商品家族必须在切分时保持原子性。</p>
+          </article>
+
+          <article class="card dataset-card" data-id="02">
+            <div class="mini-label">Multi Search · 225 条</div>
+            <h3>多商品场景检索</h3>
+            <div class="source">RPC · 225 query bindings</div>
+            <div class="pill-row"><span class="pill">多物体场景</span><span class="pill">bbox</span><span class="pill">逐物体 SKU</span></div>
+            <p><strong>为什么选：</strong>Retail Product Checkout 同时有拥挤零售场景、物体框与商品级身份，支持先分解、再逐项检索。</p>
+            <p class="why"><strong>反例：</strong>COCO 虽有 bbox，但只能提供通用物体类别，无法定义电商 SKU 检索的 gold。</p>
+          </article>
+
+          <article class="card dataset-card" data-id="03">
+            <div class="mini-label">Style Recommendation · 300 条</div>
+            <h3>发散式风格推荐</h3>
+            <div class="source">FashionIQ · 272 / ABO · 28 query bindings</div>
+            <div class="pill-row"><span class="pill">参考图</span><span class="pill">相对语言</span><span class="pill">目标候选</span></div>
+            <p><strong>为什么选：</strong>FashionIQ 的“参考图 + 修改描述 + 目标图”天然对应“更正式一点、换成短袖”等相对偏好；ABO 补充非服饰/家居风格。</p>
+            <p class="why"><strong>反例：</strong>DeepFashion 可做服装候选库或同款排除，但类别/属性标签本身不是用户偏好或兼容性 gold。</p>
+          </article>
+
+          <article class="card dataset-card" data-id="04">
+            <div class="mini-label">Visual Encyclopedia · 300 条</div>
+            <h3>视觉百科问答</h3>
+            <div class="source">iNaturalist · 262 / ABO · 28 / ISIA Food-500 · 10 query bindings</div>
+            <div class="pill-row"><span class="pill">细粒度实体</span><span class="pill">实体映射</span><span class="pill">外部知识证据</span></div>
+            <p><strong>为什么选：</strong>iNaturalist 提供细粒度物种身份，适合测视觉识别边界；少量商品和食物资产构成跨意图挑战。实体描述必须再绑定经过核验的知识来源。</p>
+            <p class="why"><strong>边界：</strong>图片标签只负责“它是什么”，百科事实必须来自独立证据，不能由 Codex 或视觉分类标签自由发挥。</p>
+          </article>
+
+          <article class="card dataset-card" data-id="05">
+            <div class="mini-label">Document Reading · 90 条</div>
+            <h3>票据与文档读取</h3>
+            <div class="source">CORD · 33 / SROIE · 27 / Wikimedia Documents · 30 query bindings</div>
+            <div class="pill-row"><span class="pill">OCR 转写</span><span class="pill">字段标签</span><span class="pill">版面变化</span></div>
+            <p><strong>为什么选：</strong>CORD 和 SROIE 提供收据文本/字段结构，可验证商户、日期、总额等答案；Wikimedia 文档补充非收据版面。</p>
+            <p class="why"><strong>任务本质：</strong>这里评测的是 OCR/KIE 与输出契约，不是“这是不是一张收据”的分类。</p>
+          </article>
+
+          <article class="card dataset-card" data-id="06">
+            <div class="mini-label">Recipe Guidance · 210 条</div>
+            <h3>看图做菜指导</h3>
+            <div class="source">ISIA Food-500 · 210 query bindings + reviewed recipe KB</div>
+            <div class="pill-row"><span class="pill">菜品实体</span><span class="pill">别名归一</span><span class="pill">配方知识分离</span></div>
+            <p><strong>为什么选：</strong>ISIA Food-500 提供中餐细粒度识别；实体/别名映射再连接到审核过的菜谱知识，形成“识别 → 检索 → 指导”。</p>
+            <p class="why"><strong>边界：</strong>Food-500 不能独自证明食材用量或步骤正确，菜谱事实不能由图像类别标签推导。</p>
+          </article>
+        </div>
+
+        <h3 class="deep-only">为什么有些“看起来相关”的数据没有被当作 gold</h3>
+        <div class="table-wrap deep-only">
+          <table>
+            <thead><tr><th>候选来源</th><th>可承担的角色</th><th>不能承担的角色</th><th>判断依据</th></tr></thead>
+            <tbody>
+              <tr><td><strong>MUGE / MEP-3M</strong></td><td>中文电商表达或困难负例参考</td><td>Exact Match 正样本</td><td>缺少稳定 SKU 的真实跨视角配对</td></tr>
+              <tr><td><strong>COCO</strong></td><td>通用多物体视觉研究</td><td>多商品 SKU 检索 gold</td><td>bbox 后仍只有类别身份</td></tr>
+              <tr><td><strong>DeepFashion</strong></td><td>服装候选、属性或同款排除</td><td>风格偏好/相对推荐 gold</td><td>类别相似不等于偏好匹配</td></tr>
+              <tr><td><strong>DuRecDial / CrossWOZ</strong></td><td>追问、约束冲突、目标变化等交互模式</td><td>商品、文档、物种或菜谱事实</td><td>对话形态权威不等于领域事实权威</td></tr>
+              <tr><td><strong>JDDC / U-NEED</strong></td><td>早期调研候选</td><td>当前正式来源或用户分布证据</td><td>前者已退役，后者不可稳定获得；均不进入当前主口径</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="info"><strong>“目录资产数”与“轨迹引用数”不要混淆</strong>Core 的 AssetCatalog 有 1,022 行资产、872 个 catalog leakage component：ABO 340、FashionIQ 130、RPC 125、iNaturalist 122、ISIA Food-500 210、CORD 35、SROIE 30、Wikimedia Documents 30。1,500 条 materialized query 实际引用 867 个去重资产，并形成 867 个 query leakage component；按 query binding 统计则是 ABO 431、FashionIQ 272、iNaturalist 262、RPC 225、ISIA 220、CORD 33、Wikimedia 30、SROIE 27。差异来自候选目录未被全量消费，以及同一资产的受控复用。</div>
+      </section>
+
+      <section id="composition" data-section>
+        <div class="section-kicker">05 · Four-layer composition</div>
+        <h2>数据不是“混合”，而是四层职责分离</h2>
+        <p class="lead">最重要的设计是把语义、事实、表达和接收权分开。Codex 不是事实来源，也不决定样本属于哪个 split；它只在已经冻结的约束内组织自然语言交互。</p>
+
+        <div class="authority-stack">
+          <div class="authority-layer">
+            <div class="n">L1 · SEMANTIC</div>
+            <p><strong>TaskSpec / Authoring Plan</strong><br>规定 intent、capability、边界类型、交互形态、split、资产、顺序和稳定 ID。</p>
+            <div class="limit">语义权威<br>不是自然语言作者</div>
+          </div>
+          <div class="authority-layer">
+            <div class="n">L2 · FACTUAL</div>
+            <p><strong>公开视觉资产 + verified KB</strong><br>提供商品身份、bbox、目标候选、实体、OCR 字段、菜谱证据等可核验事实。</p>
+            <div class="limit">事实权威<br>不提供完整用户表达</div>
+          </div>
+          <div class="authority-layer">
+            <div class="n">L3 · PATTERN</div>
+            <p><strong>DuRecDial / CrossWOZ / MUGE 等模式参考</strong><br>抽取偏好追问、约束修正、无结果放宽、目标变化、短口语等交互模式。</p>
+            <div class="limit">形态权威<br>不提供业务 gold</div>
+          </div>
+          <div class="authority-layer">
+            <div class="n">L4 · COMPOSER</div>
+            <p><strong>Codex</strong><br>读取计划与可见资产，在有限字段内把事实和模式组合成自然、具差异性的单轮或三轮轨迹。</p>
+            <div class="limit">合成器<br>无权改标签、事实或 split</div>
+          </div>
+        </div>
+
+        <div class="contract-box deep-only">
+          <div>
+            <div class="mini-label">Codex 可以做</div>
+            <ul>
+              <li>让同一任务出现简短、口语、错别字、夹杂数字等表达差异；</li>
+              <li>把预设的澄清、纠正、放宽或目标变化写成自然对话；</li>
+              <li>在真实图片与冻结事实范围内选择合理指代；</li>
+              <li>只返回 <code>plan_id</code> 与 <code>turns</code>。</li>
+            </ul>
+          </div>
+          <div>
+            <div class="mini-label">Codex 不可以做</div>
+            <ul>
+              <li>新增/删除样本、移动 split 或改 capability；</li>
+              <li>发明商品、文档字段、物种属性或配方事实；</li>
+              <li>复制来源数据中的原始用户话术；</li>
+              <li>自行把 staging 语料变成 accepted 语料。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="takeaway"><b>最适合面试的表述：</b>TaskSpec 是“语义真值”，公开资产与知识库是“事实真值”，对话数据只提供“交互先验”，Codex 是受限 composer，人类是最终 approver。</div>
+      </section>
+
+      <section id="codex" data-section>
+        <div class="section-kicker">06 · Codex trajectory synthesis</div>
+        <h2>Codex 如何合成“像人说话”的轨迹</h2>
+        <p class="lead">合成并不是一句“大模型请生成 200 条问句”。它被拆成确定性计划与受控语言生成两部分：代码先锁定不可变字段，Codex 再补有限的自然语言表面。</p>
+
+        <div class="pipeline">
+          <div class="pipe-step">
+            <div class="num">01</div>
+            <div><h4>接受五意图 seed</h4><p>每个论文意图先生成 3 个语义种子，共 15 个；当前 seed 记录 provider=Codex、模型显示名，以及该显示名来自用户确认。</p></div>
+            <div class="owner">HUMAN CONFIRMATION</div>
+          </div>
+          <div class="pipe-step">
+            <div class="num">02</div>
+            <div><h4>代码生成冻结计划</h4><p>为每条样本确定 plan_id、intent、capability、split、boundary、image path、对话轮数和顺序。</p></div>
+            <div class="owner">DETERMINISTIC CODE</div>
+          </div>
+          <div class="pipe-step">
+            <div class="num">03</div>
+            <div><h4>运行 pre-generation guard</h4><p>校验计划、源资产和 batch 边界；每个 batch 固定 25 条，避免模型改变集合规模。</p></div>
+            <div class="owner">AUTOMATED GUARD</div>
+          </div>
+          <div class="pipe-step">
+            <div class="num">04</div>
+            <div><h4>查看真实图片与事实</h4><p>Codex 依据计划读取图片/元数据，只在真实可见信息与已验证事实内写用户表达。</p></div>
+            <div class="owner">CODEX · VISUAL GROUNDING</div>
+          </div>
+          <div class="pipe-step">
+            <div class="num">05</div>
+            <div><h4>一次生成 25 条轨迹</h4><p>输出必须与计划逐条对应，turn shape 只能是单轮 <code>[user]</code> 或三轮 <code>[user, assistant, user]</code>。</p></div>
+            <div class="owner">CODEX · CONTROLLED TEXT</div>
+          </div>
+          <div class="pipe-step">
+            <div class="num">06</div>
+            <div><h4>stage + quality</h4><p>机器检查 ID、数量、角色、轮数、分布、敏感词、模板化与事实边界；结果仍只进入 staging。</p></div>
+            <div class="owner">AUTOMATED VALIDATION</div>
+          </div>
+          <div class="pipe-step human">
+            <div class="num">07</div>
+            <div><h4>人工接受或拒绝</h4><p>人类必须做出显式决定；只有 literal <code>ACCEPT</code> 才能写入不可变 accepted ledger。</p></div>
+            <div class="owner">HUMAN GATE</div>
+          </div>
+        </div>
+
+        <h3 class="deep-only">“像人类”不是随机口语化，而是受控覆盖交互现象</h3>
+        <div class="table-wrap deep-only">
+          <table>
+            <thead><tr><th>控制轴</th><th>Core r3 覆盖</th><th>它解决的问题</th></tr></thead>
+            <tbody>
+              <tr><td><strong>交互形态</strong></td><td>直接请求 1,050；需澄清 225；约束修正/目标变化/无结果放宽各 75</td><td>避免只有“一问一答”的理想化请求</td></tr>
+              <tr><td><strong>表达完整度</strong></td><td>S0 225、S1 675、S2 450、S3 150</td><td>覆盖从碎片到完整描述的梯度</td></tr>
+              <tr><td><strong>用户风格</strong></td><td>口语 525、简短片段 375、完整中性 375；另含礼貌、错别字/ASR、数字或中英混写</td><td>把语言变化变成设计变量，而不是随缘采样</td></tr>
+              <tr><td><strong>约束数量</strong></td><td>0/1/2/3+ 条约束分别为 450/600/375/75</td><td>测路由与工具链能否处理组合约束</td></tr>
+              <tr><td><strong>边界样本</strong></td><td>263 条；其中 105 需澄清、158 为已解决近边界</td><td>把 skill 路由最容易犯错的区域显式采样</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="warning"><strong>合成语料的 provenance</strong>所有轨迹都标记为 <code>synthetic_derived</code>。DuRecDial、CrossWOZ、MUGE 等只能贡献抽象交互模式，不能把合成样本包装成真实用户轨迹，也不能声称复现真实中国电商用户分布。</div>
+      </section>
+
+      <section id="approval" data-section>
+        <div class="section-kicker">07 · Human approval & immutable ledgers</div>
+        <h2>人工审批不是“看几眼”，而是改变数据状态的唯一权限</h2>
+        <p class="lead">机器检查回答“格式和契约是否成立”，人工审批回答“这条交互是否真实、事实是否可信、边界是否合理、是否可以成为评测资产”。两者不能互相替代。</p>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="mini-label">批次级审批 · dev_mini</div>
+            <h3>8 × 25 = 200</h3>
+            <p>200 条 Phase 3 轨迹分 8 批生成。每批只有在通过质量检查、owner 逐条检查图文对应与话术可接受性，并显式 <code>ACCEPT</code> 后，才进入 accepted ledger。</p>
+            <p><strong>可复核信号：</strong>当前 accepted 下有 8 个最终批次；另保留 4 个未被采用的早期 revision，说明 gate 不是自动盖章。</p>
+            <p><strong>冻结分布：</strong>五 intent 为 35 / 35 / 35 / 35 / 60；六 capability 为 35 / 35 / 35 / 35 / 30 / 30；40 条 boundary，188 条单轮、12 条三轮澄清。</p>
+          </article>
+          <article class="card">
+            <div class="mini-label">扩量后审批 · Core r3</div>
+            <h3>自动守卫 + 定向 owner audit</h3>
+            <p>扩量到 1,500 后，不再假装逐条人工生成。60 个计划批次先由冻结规则与机器校验控制，状态明确为 <code>auto_approved_usable_pending_sample_review</code>；随后从全量做覆盖 60 个生成批次和 12 个 prompt recipe 的 cluster-aware audit，得到 196 pass / 4 needs-revision。r3 再对 248 条 ASCII 语言问题与 2 条列表风格问题做 create-only 修订。</p>
+            <p><strong>最终 receipt：</strong>从 250 条修订中按 10 个批次各抽 20 条，并强制覆盖 6 个已知修复点，共 200 pass / 0 needs-revision / 0 reject；corpus_status=approved，审核阶段模型调用为 0。</p>
+          </article>
+        </div>
+
+        <h3 class="deep-only">人工具体检查什么</h3>
+        <div class="grid-3 deep-only">
+          <div class="card"><div class="mini-label">FACT</div><h4>事实与图像一致</h4><p>指代对象确实可见；商品/字段/实体/菜谱信息不超出资产或 KB。</p></div>
+          <div class="card"><div class="mini-label">INTENT</div><h4>意图与边界成立</h4><p>用户话术能触发目标 capability；澄清样本真的有歧义，边界不过度造作。</p></div>
+          <div class="card"><div class="mini-label">LANGUAGE</div><h4>自然但不模板化</h4><p>口语、残句、修正合理；避免批次内机械换词和不符合中文习惯的翻译腔。</p></div>
+          <div class="card"><div class="mini-label">CONTRACT</div><h4>轮次与角色合法</h4><p>plan_id 对齐，单轮/三轮结构正确，assistant 只在需要追问时出现。</p></div>
+          <div class="card"><div class="mini-label">SAFETY</div><h4>敏感与越界受控</h4><p>不引入私人信息、凭据或不必要风险；Utility 不制造医疗等未实现主张。</p></div>
+          <div class="card"><div class="mini-label">PROVENANCE</div><h4>来源声明诚实</h4><p>明确 synthetic_derived；不复制源对话，不把合成样本称为真实用户日志。</p></div>
+        </div>
+
+        <h3 class="deep-only">被拒绝的 revision 具体暴露了什么</h3>
+        <div class="table-wrap deep-only">
+          <table>
+            <thead><tr><th>Revision</th><th>人工发现</th><th>处理方式</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td><strong>dev-mini-001-r1</strong></td><td>请求表达过度具体，降低真实交互感</td><td>整批拒绝；仅作 high-specificity 参考</td><td>自然度不是简单“信息越多越好”</td></tr>
+              <tr><td><strong>dev-mini-001-r2</strong></td><td>24/1/0；一条清晰度层级判断需修正</td><td>整批进入 rejected，创建 r3</td><td>不会为了补配额偷偷改其他 query</td></tr>
+              <tr><td><strong>dev-mini-005-r1</strong></td><td>24/1/0；明确请求被人为加成澄清轮</td><td>拒绝后在 r2 修正</td><td>多轮不是越多越真实</td></tr>
+              <tr><td><strong>dev-mini-006-r1</strong></td><td>24/1/0；审阅辅助层级需调整</td><td>保留 query 原文，只修 review 层</td><td>区分语料问题与工具展示问题</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="contract-box deep-only">
+          <div>
+            <div class="mini-label">状态机</div>
+            <p><code>plan → generated → staged → inspected → ACCEPT → accepted ledger</code></p>
+            <p>任何自动生成或质量检查都不能跨过人工接受节点。</p>
+          </div>
+          <div>
+            <div class="mini-label">不可变性</div>
+            <p>accepted 不做原地修改。发现问题时创建新 revision；历史候选、reviewer、时间、哈希和决定继续保留。</p>
+          </div>
+        </div>
+
+        <div class="warning"><strong>人工审核的准确含义</strong>intent、capability、boundary 与 split 由冻结 plan 拥有；owner 审的是图片—话术一致性、自然度、边界可接受性和是否进入 corpus，不是重新人工标注这四个字段。当前只有单 owner reviewer，因此不报告 inter-rater agreement。</div>
+
+        <div class="takeaway"><b>面试里的工程亮点：</b>我把“人工检查”做成了数据状态机，而不是文档约定。人类的决定有明确输入、输出、记录和不可变历史，因此失败 revision 能被复盘。</div>
+      </section>
+
+      <section id="scale" data-section>
+        <div class="section-kicker">08 · Scaling: 200 → 1,500</div>
+        <h2>扩量不是复制 7.5 倍，而是保持分布、资产与泄漏约束</h2>
+        <p class="lead">小规模 dev_mini 先验证 authoring 合同和人工审批；Core 再把这套机制扩展到 1,500 条。扩量过程中冻结计划，修订只做 create-only 替换，旧版本不被覆盖。</p>
+
+        <div class="timeline">
+          <div class="time-node"><b>Phase 3 seed</b><p>确认论文五意图的语义种子与生成合同。</p></div>
+          <div class="time-node"><b>dev_mini · 200</b><p>8 批 × 25；批次级人工接受，验证合成与审批闭环。</p></div>
+          <div class="time-node"><b>Core r2 · 1,500</b><p>60 批 × 25；覆盖六能力、五种交互形态与 56 个模板族。</p></div>
+          <div class="time-node"><b>Core r3 · frozen</b><p>针对 248 条 ASCII 与 2 条风格问题 create-only 修订；250 替换 + 1,250 原样继承。</p></div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric"><b>200 / 800 / 200 / 300</b><span>dev_mini / opt_pool / val / test_frozen</span></div>
+          <div class="metric"><b>1,050 / 450</b><span>单轮 / 三轮交互轨迹</span></div>
+          <div class="metric"><b>263</b><span>显式边界样本，约占 17.5%</span></div>
+          <div class="metric"><b>60 × 25</b><span>固定批次规模，便于重放与审计</span></div>
+          <div class="metric"><b>56</b><span>模板族，降低单一话术捷径</span></div>
+          <div class="metric"><b>248 + 2</b><span>r3 ASCII / 风格修复；create-only，旧 r2 保持不变</span></div>
+        </div>
+
+        <h3>六项能力的 Core 配额</h3>
+        <div class="bars" aria-label="六项能力数据分布">
+          <div class="bar-row"><span class="name">Exact Match</span><div class="bar-track"><div class="bar-fill" style="width:100%"></div></div><span class="value">375</span></div>
+          <div class="bar-row"><span class="name">Style Recommendation</span><div class="bar-track"><div class="bar-fill" style="width:80%"></div></div><span class="value">300</span></div>
+          <div class="bar-row"><span class="name">Encyclopedia</span><div class="bar-track"><div class="bar-fill" style="width:80%"></div></div><span class="value">300</span></div>
+          <div class="bar-row"><span class="name">Multi Search</span><div class="bar-track"><div class="bar-fill" style="width:60%"></div></div><span class="value">225</span></div>
+          <div class="bar-row"><span class="name">Recipe Guidance</span><div class="bar-track"><div class="bar-fill" style="width:56%"></div></div><span class="value">210</span></div>
+          <div class="bar-row"><span class="name">Document Reading</span><div class="bar-track"><div class="bar-fill" style="width:24%"></div></div><span class="value">90</span></div>
+        </div>
+
+        <div class="warning deep-only"><strong>如何解释不均衡</strong>这不是把每类机械做成 250 条。Exact Match 承担最大商品检索主场景；Document Reading 的可信公开资产更稀缺，因此只做 90 条。评测时使用 capability macro，而不是让大类数量直接主导总分。低样本能力的 val/test 结论也要更保守。</div>
+      </section>
+
+      <section id="leakage" data-section>
+        <div class="section-kicker">09 · Split integrity & leakage control</div>
+        <h2>同一张图换个问法，不能算两个独立样本</h2>
+        <p class="lead">视觉 Agent 数据最容易发生的泄漏，不只是文本重复；同一商品、同一原图的裁剪、同一资产的多意图问法，都可能让测试集看起来更好。因此切分单位必须从“query 行”提升到“泄漏连通分量”。</p>
+
+        <div class="grid-2">
+          <article class="card">
+            <div class="mini-label">原子切分规则</div>
+            <h3>867 个 connected components</h3>
+            <p>把共享源资产、商品身份、派生图或同图跨意图关系连接成 leakage group；整个 group 只能落入同一个 split。</p>
+          </article>
+          <article class="card">
+            <div class="mini-label">刻意的跨意图挑战</div>
+            <h3>38 组 / 104 条 query</h3>
+            <p>同一图片会被问检索、推荐或百科等不同问题，用于测路由是否读懂意图；这些 query 作为一个原子组切分，不跨 train/test。</p>
+          </article>
+        </div>
+
+        <div class="table-wrap deep-only">
+          <table>
+            <thead><tr><th>风险</th><th>表面上看</th><th>实际控制</th></tr></thead>
+            <tbody>
+              <tr><td><strong>同 SKU 多视角</strong></td><td>不同图片</td><td>按商品/Listing 身份聚组，禁止跨 split</td></tr>
+              <tr><td><strong>裁剪/派生图</strong></td><td>文件哈希不同</td><td>追溯 source asset 与 derivative lineage</td></tr>
+              <tr><td><strong>同图跨意图</strong></td><td>文本和标签都不同</td><td>共享 asset 的 query 构成同一 connected component</td></tr>
+              <tr><td><strong>模板近重复</strong></td><td>换了实体和少量词</td><td>模板族、表达风格和交互形态按计划控制并做重复检查</td></tr>
+              <tr><td><strong>合成器记忆</strong></td><td>语言自然</td><td>冻结 split/ID/事实，Codex 无权选择测试位置或更改 gold</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="success"><strong>为什么这对 Skill 自进化尤其重要</strong>S1/S2/S3 会从失败轨迹中学习。如果同资产的另一种表达偷偷进入 holdout，系统可能只是记住对象或模板，而不是学会更好的 Skill。按 connected component 切分，才能让前后比较更可信。</div>
+      </section>
+
+      <section id="interview" data-section>
+        <div class="section-kicker">10 · Interview scripts</div>
+        <h2>把复杂设计讲成三种长度</h2>
+        <p class="lead">先讲“为什么这样做”，再讲数据名。面试官如果追问，再进入监督信号、审批状态机和泄漏控制。</p>
+
+        <div class="script-card">
+          <span class="duration">ONE SENTENCE · 10 SEC</span>
+          <blockquote>我从论文五类电商视觉意图出发，把它们操作化成六项可评测能力，再按每项能力需要的监督信号组合 8 个公开数据源，用冻结 TaskSpec 和真实资产约束 Codex 合成交互轨迹，最后通过人工审批与泄漏分组形成 1,500 条可复核数据。</blockquote>
+        </div>
+
+        <div class="script-card">
+          <span class="duration">ELEVATOR PITCH · 30 SEC</span>
+          <blockquote>数据部分的难点不是缺图片，而是论文意图没有直接对应的公开数据。我先把 Exact Match、Multi-Product、Divergent Recommendation、Encyclopedia 和 Utility 拆成六个有明确 gold 的 capability，然后按监督信号选数据：比如 ABO 提供同 SKU 多视角，RPC 提供多物体框和 SKU，FashionIQ 提供参考图加相对偏好，CORD/SROIE 提供字段级标签。真实数据负责事实，TaskSpec 负责意图，Codex 只负责把交互模式写成自然轨迹，人类保留最终接收权。这样得到的数据既贴近业务交互，又不会把模型生成内容误当成事实。</blockquote>
+        </div>
+
+        <div class="script-card deep-only">
+          <span class="duration">DEEP DIVE · 2 MIN</span>
+          <blockquote>我先读论文的任务定义，而不是先搜“大而全”的电商数据集。论文有五类视觉意图，但它们是业务概念，所以我先做 operationalization：定义每类的输入、目标工具、输出契约和可评分 gold。Utility 里文档 OCR 和菜谱指导依赖完全不同的工具与证据，因此拆成两个 capability，最终是五类意图、六项能力。<br><br>接着我按监督信号选源。Exact Match 必须有稳定 SKU 和真实跨视角，所以用 ABO，而不是只有图文对的 MUGE；Multi Search 要同时有场景 bbox 和商品身份，所以用 RPC，而不是只有通用类别的 COCO；风格推荐用 FashionIQ 的参考图、相对语言和目标图；百科用 iNaturalist 的细粒度实体再连接知识证据；文档用 CORD/SROIE 的 OCR/KIE 标签；菜谱把 Food-500 的菜品识别与审核过的菜谱知识分开。<br><br>在合成层，我把数据职责拆成四层：TaskSpec 决定语义，公开资产和 KB 决定事实，公开对话数据只贡献澄清、约束修正、目标变化等交互模式，Codex 只能在冻结计划中补自然语言。它不能改 capability、split、图片或 gold，每次严格生成 25 条 plan_id 对齐的单轮/三轮轨迹。dev_mini 的 8 个批次都经过显式人工接受，失败 revision 保留；扩量到 Core 后用自动守卫控制 60 个批次，再对 r3 修订语料做 owner audit。最后按 867 个 leakage connected component 切分同商品、派生图和同图跨意图样本，避免自进化系统从 holdout 偷看相近资产。</blockquote>
+        </div>
+
+        <div class="info"><strong>叙述顺序建议</strong>先说“监督信号优先”和“四层职责分离”，这两个是设计思想；再用 ABO/RPC/FashionIQ 举三个直观例子；最后用“人工 gate + connected component”收束工程可信度。</div>
+      </section>
+
+      <section id="qa" data-section>
+        <div class="section-kicker">11 · Interviewer Q&A</div>
+        <h2>面试官最可能追问什么</h2>
+
+        <details open>
+          <summary>Q1：为什么不直接找一个大型电商多模态数据集？</summary>
+          <div>因为六项能力需要的 gold 结构不同：同款检索要 SKU 多视角，多商品检索要 bbox + SKU，推荐要相对偏好，文档要字段标签。一个大数据集即使图片多，也很难同时提供这些监督。我的方案是按监督信号组合来源，并给每个来源定义允许与禁止用途。</div>
+        </details>
+        <details>
+          <summary>Q2：Codex 会不会幻觉，污染事实？</summary>
+          <div>它被限制在 composer 角色。intent、capability、split、image、boundary 和 gold 都由确定性计划与资产/KB 冻结；Codex 只输出 plan_id 和 turns。机器检查之后仍是 staging，必须人工接受。百科、文档、菜谱等事实也不能由模型自由补全。</div>
+        </details>
+        <details>
+          <summary>Q3：这些轨迹真的“像人类”吗？</summary>
+          <div>更准确的说法是“覆盖了受控的人类交互现象”，而不是“等同真实线上分布”。我们显式设计直接请求、澄清、约束修正、无结果放宽、目标变化，以及口语、残句、错别字/ASR、中英或数字混写。它适合机制级评测，但不能证明生产流量外部有效性。</div>
+        </details>
+        <details>
+          <summary>Q4：人工审核 1,500 条是不是成本很高？</summary>
+          <div>采用两层策略。dev_mini 阶段逐批显式接受，先把 authoring contract 校准；Core 扩量依靠冻结计划和自动守卫，不宣称逐条人工编写。首轮从全量 1,500 条分层抽 200 条并定位 4 条需修订；r3 对 248 条 ASCII 问题和 2 条风格问题做 create-only 修订，再按每个修订批次抽 20 条、强制覆盖已知修复点，共审核 200 条并形成可追溯 receipt。</div>
+        </details>
+        <details>
+          <summary>Q5：为什么 Exact Match 用 ABO，不用图文检索数据？</summary>
+          <div>Exact Match 的正样本定义是“同一商品”，不是“语义相关”。ABO 有稳定 listing/product 身份和真实多视角；很多图文检索数据只有描述相关性，无法证明两张图属于同一 SKU，因此可做语言或负例参考，却不能做正样本 gold。</div>
+        </details>
+        <details>
+          <summary>Q6：Food-500 有类别，为什么还要菜谱知识库？</summary>
+          <div>视觉类别只回答“这是什么菜”，不能回答“需要哪些材料、按什么步骤做”。因此把识别与知识分开：Food-500 锚定菜品实体，经审核的别名映射连接到 recipe KB，回答必须落到该证据；这能避免模型从菜名直接编步骤。</div>
+        </details>
+        <details>
+          <summary>Q7：同一图片用于多个意图，是数据重复吗？</summary>
+          <div>这是刻意设计的路由挑战：同一图既可被问“帮我找同款”，也可被问“这是什么/适合什么风格”。它测试系统是否理解用户意图而不是看图猜 skill。为了不泄漏，共享图片的 query 会被归入同一个 leakage component，只落在一个 split。</div>
+        </details>
+        <details>
+          <summary>Q8：这部分最能体现你的算法能力还是工程能力？</summary>
+          <div>两者都有。算法上是把业务意图转换为监督结构、分布轴和泄漏图；工程上是实现确定性 plan、固定批次合成、guard、staging/accepted 状态机、hash/ledger 与 create-only revision。它为后续 Skill 自进化提供了可信训练/优化/保留集边界。</div>
+        </details>
+        <details>
+          <summary>Q9：你说用了 Codex 5.6 Sol Ultra，证据强度是什么？</summary>
+          <div>manifest 记录 provider=codex 和该显示名，但模型身份来自当时的用户确认，不是 provider-attested request metadata。因此可以描述“按用户确认记录的模型显示名”，不能声称掌握 served revision、provider request ID 或底层重试细节。</div>
+        </details>
+
+        <div class="warning"><strong>不要这样说</strong>“我混了几个开源数据集，让 Codex 模拟真实用户，所以构建了生产级数据。”更准确的是：“我用公开资产构造了覆盖真实任务语义的机制级评测数据，并用受控合成恢复交互形态；其生产分布外部有效性仍需线上数据验证。”</div>
+      </section>
+
+      <section id="evidence" data-section>
+        <div class="section-kicker">12 · Evidence index</div>
+        <h2>报告中的结论可以从哪里复核</h2>
+        <p class="lead">以下链接均指向仓库内的原始协议、计划或机器可读配置。本报告是讲解层，不替代这些事实来源。</p>
+
+        <ul class="evidence-list">
+          <li><span class="id">E01</span><div><a href="https://arxiv.org/abs/2606.12984">SkillChain 原论文（arXiv）</a><small>五类视觉意图、三阶段演化机制与论文实验设定。</small></div></li>
+          <li><span class="id">E02</span><div><a href="data-source-adjustment.md">Data Source Adjustment</a><small>六项能力的监督信号、来源角色、替代数据与禁用口径。</small></div></li>
+          <li><span class="id">E03</span><div><a href="../specs/data_sources/ecommerce-mvp-source-portfolio-v1.json">Source Portfolio v1（JSON）</a><small>机器可读的数据源选择、用途与限制。</small></div></li>
+          <li><span class="id">E04</span><div><a href="mock-trajectory-runbook.md">Mock Trajectory Runbook</a><small>Phase 3 的 seed、25 条批次、stage、quality、inspect、accept/reject 流程。</small></div></li>
+          <li><span class="id">E05</span><div><a href="../.agents/skills/generate-phase3-corpus/references/corpus-contract.md">Phase 3 Corpus Contract</a><small>五意图集合、模型可写字段、人工 gate、immutable ledger 与 provenance 规则。</small></div></li>
+          <li><span class="id">E06</span><div><a href="portfolio-core-synthesis-runbook.md">Core Synthesis Runbook</a><small>Core 扩量、自动校验和 owner audit 操作流程。</small></div></li>
+          <li><span class="id">E07</span><div><a href="plans/2026-08-04-portfolio-core-r2.md">Portfolio Core r2 Plan</a><small>交互形态、表达风格、边界样本与 authoring 设计。</small></div></li>
+          <li><span class="id">E08</span><div><a href="plans/2026-08-05-core-final-evaluation-framework.md">Core Final Evaluation Framework</a><small>当前 r3 冻结数据的 1,500 条、能力分布、资产与 owner audit 主口径。</small></div></li>
+          <li><span class="id">E09</span><div><a href="evaluation-protocol.md">Evaluation Protocol</a><small>切分公平性、失败保留、路由与端到端评测口径。</small></div></li>
+        </ul>
+
+        <div class="card deep-only" style="margin-top:24px">
+          <div class="mini-label">当前冻结快照</div>
+          <p><strong>Core r3 corpus binding：</strong>1,500 条 query；六能力分布 375 / 225 / 300 / 300 / 90 / 210；60 批；56 模板族；263 边界样本；867 query leakage connected components；r3 修订 248 条 ASCII + 2 条风格问题、继承 1,250 条；修订集 owner audit 200/200 pass。</p>
+          <p class="fine">AssetCatalog 本身为 1,022 个 asset / 872 个 catalog component；materialized query 使用其中 867 个资产。两个层级不要混写。</p>
+          <p class="fine">注：<code>test_frozen</code> 是冻结的 response-level execution holdout，不应在对外表述中夸大为企业生产 blind/unseen 流量。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <p><b>E-SkillChain · Dataset Design Technical Report</b></p>
+    <p>公开数据机制级复现 · 真实资产锚定 · 受控 Codex 合成 · 人工最终审批</p>
+  </footer>
+
+  <script>
+    (() => {
+      const progress = document.getElementById('progress');
+      const links = [...document.querySelectorAll('.side a[href^="#"]')];
+      const sections = [...document.querySelectorAll('[data-section]')];
+      const modeButtons = [...document.querySelectorAll('[data-mode]')];
+
+      function onScroll() {
+        const max = document.documentElement.scrollHeight - innerHeight;
+        progress.style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`;
+        let current = sections[0]?.id;
+        for (const section of sections) {
+          if (section.getBoundingClientRect().top <= 160) current = section.id;
+        }
+        links.forEach(link => link.classList.toggle('active', link.hash === `#${current}`));
+      }
+
+      modeButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const quick = button.dataset.mode === 'quick';
+          document.body.classList.toggle('quick-mode', quick);
+          modeButtons.forEach(item => item.classList.toggle('active', item === button));
+          onScroll();
+        });
+      });
+
+      addEventListener('scroll', onScroll, { passive: true });
+      addEventListener('resize', onScroll);
+      onScroll();
+    })();
+  </script>
+</body>
+</html>

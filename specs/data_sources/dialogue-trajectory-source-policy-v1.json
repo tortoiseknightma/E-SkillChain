@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "policy_id": "dialogue-trajectory-source-policy-v1",
+  "decision_date": "2026-07-24",
+  "decision": {
+    "jddc_2_0": {
+      "disposition": "permanently_abandoned",
+      "required_by_mvp": false,
+      "required_by_full": false,
+      "reason": "The owner cannot currently obtain the dataset and has removed it as a project dependency.",
+      "claim_limit": "The project must not claim reproduction of JDDC 2.0 traffic scale or its original real Chinese e-commerce multimodal user distribution."
+    },
+    "u_need": {
+      "disposition": "permanently_abandoned",
+      "required_by_mvp": false,
+      "required_by_full": false,
+      "reason": "Owner confirmed that U-NEED cannot be obtained even through its application process and has removed it as a project dependency.",
+      "replacement": "Use the existing DuRecDial 2.0, CrossWOZ, and MUGE pattern inventory with guarded Codex rewrites bound to verified Asset/KB facts; every resulting trajectory remains synthetic_derived and human-reviewed.",
+      "claim_limit": "The replacement must not be described as real Chinese e-commerce presales dialogue, U-NEED, or evidence of a real-user distribution."
+    }
+  },
+  "mvp": {
+    "trajectory_mode": "mock",
+    "scope": "mechanism_level_reproduction",
+    "source_patterns": [
+      {
+        "source_id": "durecdial_2_0",
+        "revision": "1309cc072afd0b832e899e49c62906e700ff6acf",
+        "license": "CC-BY-NC-SA-4.0 for the dataset; repository code also carries Apache-2.0",
+        "allowed_contribution": [
+          "preference_elicitation_pattern",
+          "recommendation_transition_pattern",
+          "topic_transition_pattern"
+        ],
+        "forbidden_contribution": [
+          "real_ecommerce_traffic_claim",
+          "product_or_visual_fact_gold",
+          "capability_gold"
+        ]
+      },
+      {
+        "source_id": "crosswoz",
+        "revision": "df82c9fdff91b9b130f2d6b89110d3870ba6260e",
+        "license": "Apache-2.0",
+        "allowed_contribution": [
+          "constraint_conflict_pattern",
+          "no_offer_pattern",
+          "constraint_relaxation_pattern",
+          "dynamic_goal_change_pattern",
+          "multi_query_pattern"
+        ],
+        "forbidden_contribution": [
+          "tourism_entity_copy_into_ecommerce_gold",
+          "product_or_visual_fact_gold",
+          "capability_gold",
+          "real_ecommerce_traffic_claim"
+        ]
+      },
+      {
+        "source_id": "muge",
+        "revision": "bound_by_raw_download_manifest_and_local_source_lock",
+        "allowed_contribution": [
+          "chinese_ecommerce_short_query_style",
+          "product_expression_pattern",
+          "hard_negative_language_candidate"
+        ],
+        "forbidden_contribution": [
+          "exact_match_positive",
+          "sku_multiview_identity",
+          "style_preference_gold"
+        ]
+      }
+    ],
+    "composition": {
+      "semantic_authority": "task_spec",
+      "factual_authority": "verified_asset_or_kb",
+      "composer": "codex_guarded_phase3_workflow",
+      "taxonomy_version": "ecommerce-mvp-taxonomy-v0",
+      "taxonomy_sha256": "af23dbe76e8c0cffdbb056b44c6595af6c508eaa0158f96227cbc92e244ca315",
+      "task_spec_version": "ecommerce-task-spec-v1",
+      "task_spec_sha256": "f8d5596de5d0ba98235f82c7c176a5b774b33d7bdd7e84fb00a07b5b0b7a7f0d",
+      "canonical_intents": [
+        "exact_match",
+        "multi_product",
+        "divergent_rec",
+        "encyclopedia",
+        "utility"
+      ],
+      "required_data_origin": "synthetic_derived",
+      "human_review_required": true,
+      "source_utterance_copying": "forbidden",
+      "raw_source_entities_as_gold": "forbidden",
+      "batch_size": 25,
+      "automatic_acceptance": "forbidden"
+    }
+  },
+  "full": {
+    "implementation_plan_status": "deferred",
+    "replan_trigger": "authorized packages and applicable terms have been received and reviewed",
+    "conditional_candidates": [
+      {
+        "source_id": "simmc_2_1",
+        "status": "acquisition_complete_license_activation_review_pending",
+        "candidate_role": "multimodal_coreference_and_multi_object_visual_context",
+        "activation_gate": "frozen official Git LFS inventory plus CC-BY-NC-SA review; Chinese rewrites remain synthetic_derived"
+      },
+      {
+        "source_id": "csds",
+        "status": "acquisition_complete_written_permission_owner_confirmed",
+        "candidate_role": "after_sales_and_utility_assistance_dialogue_patterns",
+        "activation_gate": "owner-confirmed written permission is complete; retain the notice outside Git and complete the separate Full source/PII/selection review before activation"
+      }
+    ],
+    "owner_reported_pending_dataset_label": {
+      "label": "jddc_2_1",
+      "status": "identity_and_terms_unverified",
+      "rule": "Do not equate this label with SIMMC 2.1 or add it to the implementation plan until the official package and terms are available."
+    }
+  },
+  "external_validity": {
+    "preserved": [
+      "preference_clarification_mechanism",
+      "constraint_change_mechanism",
+      "no_result_and_relaxation_mechanism",
+      "controlled_multiturn_query_composition"
+    ],
+    "not_preserved": [
+      "jddc_2_0_real_traffic_scale",
+      "jddc_2_0_original_multimodal_user_distribution",
+      "jddc_2_0_product_knowledge_base_distribution"
+    ]
+  }
+}

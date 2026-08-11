@@ -1,0 +1,73 @@
+# 环境与密钥
+.env
+
+# 外部安装的技能框架（含指向 aris_repo 的符号链接，Windows git 无法索引；
+# 可用 aris_repo/tools/install_aris.sh 重装）
+.aris/
+.codex/
+.claude/skills/
+
+# 数据与实验产物（大文件，不入库）
+/data/
+/logs/
+*.part
+*.aria2
+/runs/
+!/runs/
+/runs/*
+!/runs/formal-authoring/
+/runs/formal-authoring/*
+!/runs/formal-authoring/llm-static-codex-primary-20260724-high-v4/
+!/runs/formal-authoring/llm-static-codex-primary-20260724-high-v4/**
+!/runs/formal-authoring/llm-static-codex-primary-20260724-high-v5/
+!/runs/formal-authoring/llm-static-codex-primary-20260724-high-v5/**
+!/runs/portfolio/
+/runs/portfolio/*
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/run-checklist.json
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/stage1-input-v1/
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/stage1-input-v1/trajectory-bundle.json
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/stage1-input-v1/s1-creator-packet.json
+!/runs/portfolio/portfolio-dev-mini-smoke-dm-019-v1/stage1-input-v1/handoff-manifest.json
+*.faiss
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+/.ruff_cache/
+/.mypy_cache/
+/.pytest-tmp/
+/.tmp/
+/tmp/
+
+# 构建、覆盖率与本地日志
+/build/
+/dist/
+.coverage
+.coverage.*
+/htmlcov/
+coverage.xml
+*.log
+
+# Local-only authorization evidence and reference material
+/docs/authorizations/
+/docs/data-authorization-tracking.private.csv
+/docs/Self_Improving_Agents.pdf
+/docs/Hu 等 - 2026 - SkillChain Closing the Loop on Skill Evolution for Image-Based E-Commerce AI Assistants.pdf
+/docs/抽检*.jpeg
+
+# 模型权重缓存
+*.pt
+*.onnx
+
+# 编辑器/系统
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# 本地隔离工作区
+.worktrees/

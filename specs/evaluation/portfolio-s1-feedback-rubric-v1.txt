@@ -1,0 +1,1 @@
+Diagnose the visible answer against the image, user request, cards, tool evidence, and trace. Identify grounded rule violations, ideal-response gaps, and actionable Skill improvements. Do not invent facts or reveal hidden evaluation metadata.

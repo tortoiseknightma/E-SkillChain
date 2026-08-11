@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "dataset_id": "rpc",
+  "dataset_name": "Retail Product Checkout Dataset",
+  "source": {
+    "provider": "Kaggle",
+    "dataset_slug": "diyer22/retail-product-checkout-dataset",
+    "dataset_version": 5,
+    "generation_id": "1571318753967625",
+    "download_url": "https://www.kaggle.com/api/v1/datasets/download/diyer22/retail-product-checkout-dataset?datasetVersionNumber=5"
+  },
+  "acquisition": {
+    "local_path": "rpc/kaggle-v5/archive.zip",
+    "bytes": 27205167166,
+    "sha256": "3b7db198a3f36ad86842f754f9845e8907cae8d1b553ec6f734b3ddff087dc79",
+    "digest_provenance": "locally_computed_after_download",
+    "archive_validation": {
+      "format": "zip",
+      "central_directory_readable": true,
+      "entry_count": 167484,
+      "uncompressed_bytes": 31810311622,
+      "jpg_entry_count": 167478,
+      "json_entry_count": 6,
+      "unsafe_path_count": 0
+    }
+  },
+  "status": "locally_verified_raw_not_formal_ready",
+  "remaining_gates": {
+    "license_and_use_policy_recorded": false,
+    "pii_review_recorded": false,
+    "source_lock_created": false,
+    "selection_disposition_created": false,
+    "catalog_created": false
+  },
+  "notes": [
+    "The SHA-256 value is a local acquisition receipt, not a publisher-provided checksum.",
+    "RAW acquisition completion does not imply formal evaluation readiness."
+  ]
+}

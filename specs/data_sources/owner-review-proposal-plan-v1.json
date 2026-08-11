@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "proposal_plan_id": "ecommerce-mvp-owner-source-review-proposals-v1",
+  "prepared_at": "2026-07-25T00:00:00Z",
+  "prepared_by": "codex-evidence-preparer",
+  "sources": [
+    {
+      "source_id": "abo",
+      "proposed_decision": "approved",
+      "purposes": ["capability_gold", "product_gallery", "tool_gold"],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Explicit CC BY-NC 4.0 evidence supports non-commercial local research; external processing and publication are intentionally not granted."
+    },
+    {
+      "source_id": "crosswoz",
+      "proposed_decision": "approved",
+      "purposes": ["interaction_pattern"],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "The commit snapshot carries Apache-2.0, but raw dialogue and place records stay local and may only inform an abstract interaction-pattern inventory."
+    },
+    {
+      "source_id": "durecdial_2_0",
+      "proposed_decision": "approved",
+      "purposes": ["interaction_pattern"],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "Dataset-specific CC BY-NC-SA 4.0 evidence supports non-commercial local pattern analysis; raw utterances must not be copied into Mock data or leave the local boundary."
+    },
+    {
+      "source_id": "fashioniq",
+      "proposed_decision": "approved",
+      "purposes": ["capability_gold", "product_gallery", "tool_gold"],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "The CodaLab access terms allow non-commercial academic research. The narrower research-only boundary controls because the pinned annotation commit has no LICENSE file."
+    },
+    {
+      "source_id": "isia_food500",
+      "proposed_decision": "deferred",
+      "purposes": ["capability_gold"],
+      "permissions": {
+        "download_allowed": false,
+        "local_research_allowed": false,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "A public paper and download do not establish an image-dataset license; obtain written terms or replace this required source."
+    },
+    {
+      "source_id": "muge",
+      "proposed_decision": "deferred",
+      "purposes": ["language_style"],
+      "permissions": {
+        "download_allowed": false,
+        "local_research_allowed": false,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "The exact MUGE agreement and official revision are missing, while the local package came from a third-party mirror; acquire authority-issued terms and bytes or replace it."
+    },
+    {
+      "source_id": "rpc",
+      "proposed_decision": "approved",
+      "purposes": ["capability_gold", "product_gallery", "tool_gold"],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "The official project page identifies CC BY-NC-SA 4.0 and academic usage; formal work remains non-commercial and local."
+    },
+    {
+      "source_id": "wikimedia_zhwiki",
+      "proposed_decision": "deferred",
+      "purposes": ["capability_gold", "knowledge_evidence"],
+      "permissions": {
+        "download_allowed": false,
+        "local_research_allowed": false,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Wikimedia text licenses are known, but the locked third-party filtered JSON lacks an official dump revision, transformation manifest, and attribution inventory; replace it with an official dump-derived snapshot."
+    },
+    {
+      "source_id": "wildreceipt",
+      "proposed_decision": "deferred",
+      "purposes": ["capability_gold", "tool_gold"],
+      "permissions": {
+        "download_allowed": false,
+        "local_research_allowed": false,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "Official MMOCR metadata reports License N/A and receipt images may expose identifying or transaction data; written permission and a redaction decision are required."
+    },
+    {
+      "source_id": "xiachufang",
+      "proposed_decision": "deferred",
+      "purposes": ["knowledge_evidence"],
+      "permissions": {
+        "download_allowed": false,
+        "local_research_allowed": false,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "The third-party archive has no public reuse license; platform users license content to Xiachufang rather than to downstream dataset builders, and user-generated content carries PII risk."
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "manifest_id": "sroie-browser-acquisition-v1",
+  "dataset_id": "sroie",
+  "official_source_url": "https://rrc.cvc.uab.es/?ch=13&com=downloads",
+  "acquired_at": "2026-07-24",
+  "acquisition_method": "owner-authenticated-browser-download",
+  "status": "locally_verified_raw_not_formal_source_lock",
+  "license_status": "pending_explicit_terms_and_use_scope_review",
+  "artifacts": [
+    {
+      "path": "sroie/official/0325updated.task1train(626p)-20260724T032018Z-1-001.zip",
+      "role": "task1_train_localisation",
+      "bytes": 390419878,
+      "sha256": "b2eb4fc40ad8c186692456abb736842837eb03a1a16c55453d13615ed3db6c34",
+      "expected": {
+        "physical_members": 1547,
+        "logical_members_by_extension": {
+          ".jpg": 626,
+          ".txt": 626
+        },
+        "duplicate_logical_groups": 201,
+        "conflicting_duplicate_groups": 0
+      }
+    },
+    {
+      "path": "sroie/official/0325updated.task2train(626p)-20260724T032019Z-1-001.zip",
+      "role": "official_task2train_named_package_with_task3_key_field_json",
+      "bytes": 393905403,
+      "sha256": "88a3c3d1558d7a3893aa32378e0348be427c2e11492c2e80de7bd0d67899ca1b",
+      "expected": {
+        "physical_members": 1611,
+        "logical_members_by_extension": {
+          ".jpg": 626,
+          ".txt": 626
+        },
+        "duplicate_logical_groups": 268,
+        "conflicting_duplicate_groups": 0
+      }
+    },
+    {
+      "path": "sroie/official/task1&2_test(361p)-20260724T032021Z-1-001.zip",
+      "role": "task1_task2_test_images",
+      "bytes": 215126924,
+      "sha256": "7a668c78aad6282cc2c6881178b574200d4e829678c9033e5c89fed50e558ef3",
+      "expected": {
+        "physical_members": 360,
+        "logical_members_by_extension": {
+          ".jpg": 360
+        },
+        "duplicate_logical_groups": 0,
+        "conflicting_duplicate_groups": 0
+      }
+    },
+    {
+      "path": "sroie/official/task3-test 347p) --20260724T023855Z-1-001.zip",
+      "role": "task3_test_images",
+      "bytes": 205806890,
+      "sha256": "585956922a3b5a33d9142abb788e34ea35927c00d9751ba9fd04795fbdb349f7",
+      "expected": {
+        "physical_members": 347,
+        "logical_members_by_extension": {
+          ".jpg": 347
+        },
+        "duplicate_logical_groups": 0,
+        "conflicting_duplicate_groups": 0
+      }
+    },
+    {
+      "path": "sroie/official/text.task1&2-test（361p)-20260724T023332Z-1-001.zip",
+      "role": "task1_task2_test_text",
+      "bytes": 496754,
+      "sha256": "125014bda9be97a8693c83e1b8cc83dfe859f1b2b7099f7cb13fddfa963759d6",
+      "expected": {
+        "physical_members": 361,
+        "logical_members_by_extension": {
+          ".txt": 361
+        },
+        "duplicate_logical_groups": 0,
+        "conflicting_duplicate_groups": 0
+      }
+    }
+  ],
+  "pair_checks": [
+    {
+      "left_role": "task1_task2_test_images",
+      "left_extension": ".jpg",
+      "right_role": "task1_task2_test_text",
+      "right_extension": ".txt",
+      "expected_intersection": 360,
+      "expected_left_only": [],
+      "expected_right_only": [
+        "X51006619570"
+      ]
+    }
+  ],
+  "excluded_local_files": [
+    {
+      "reason": "byte-identical member set to the selected text test archive; archive order differs",
+      "name": "text.task1&2-test（361p)-20260724T023856Z-1-001.zip"
+    },
+    {
+      "reason": "unrelated Claude user-data export containing users/projects/memories/conversations JSON",
+      "name_pattern": "data-*-batch-0000.zip"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "bootstrap": {
+    "algorithm_unchanged_from_v1": true,
+    "policy_version": "portfolio-gcs-component-bootstrap-v1",
+    "replicates": 10000,
+    "root_seed": 2026080601,
+    "unit": "query_connected_component"
+  },
+  "capabilities": [
+    "knowledge.visual_encyclopedia",
+    "product.exact_match",
+    "product.multi_search",
+    "product.style_recommendation",
+    "utility.document_reading",
+    "utility.recipe_guidance"
+  ],
+  "components": [
+    "route_acceptable",
+    "no_hard_error",
+    "tool_contract_pass",
+    "evidence_grounded",
+    "output_contract_pass"
+  ],
+  "fixed_full_denominator": true,
+  "formula": "int(all_five_components)",
+  "oracle_contract": {
+    "non_style_payload_kinds": [
+      "product_candidates_v1",
+      "multi_mapping_v1",
+      "knowledge_sources_v1",
+      "ocr_lines_v1",
+      "detections_v1"
+    ],
+    "ocr_line_handle_pattern": "^tool-call-(\\d+)-line-(\\d+)$",
+    "style": {
+      "allowed_tool_sequences": [
+        [
+          "style_similar_search"
+        ]
+      ],
+      "argument_binding": "sha256 canonical {asset_id: authoritative query asset id, query: frozen Query.text}",
+      "candidate_closure": "exact cards, product/evidence handles, Style facet handles, mode, family, category, facet value, confidence, provenance",
+      "fallback": "no_result or unsupported with zero candidates/cards/handles and an explicit evidence-limitation marker",
+      "payload_kind": "style_candidates_v2",
+      "submodes": [
+        "same_category_alternative",
+        "cross_category_coordination"
+      ],
+      "support_statuses": [
+        "candidates",
+        "no_result",
+        "unsupported"
+      ]
+    },
+    "style_evidence_handle_pattern": "^tool-call-(\\d+)-style-evidence-(\\d+)-(\\d+)$"
+  },
+  "policy_version": "portfolio-grounded-contract-success-v2",
+  "predecessor_policy_version": "portfolio-grounded-contract-success-v1",
+  "reason_codes": [
+    "assistant_hard_error",
+    "card_contract_failed",
+    "evidence_card_union_mismatch",
+    "evidence_handle_unknown",
+    "fallback_contract_failed",
+    "input_binding_invalid",
+    "material_claim_uncited",
+    "multi_mapping_invalid",
+    "output_section_invalid",
+    "receipt_trace_mismatch",
+    "requested_item_coverage_unresolved",
+    "route_unacceptable",
+    "scorer_sidecar_invalid",
+    "scorer_sidecar_missing",
+    "semantic_claim_support_unresolved",
+    "style_evidence_invalid",
+    "style_mode_mismatch",
+    "style_status_invalid",
+    "style_target_family_mismatch",
+    "tool_argument_invalid",
+    "tool_contract_failed",
+    "tool_evidence_mismatch",
+    "unsupported_claim"
+  ],
+  "row_failure_semantics": {
+    "missing_or_invalid_sidecar": "fatal population integrity error",
+    "missing_terminal_query_config_row": "fatal population integrity error",
+    "oracle_coverage": "implementation availability only",
+    "semantic_claim_support_unresolved": "row zero; does not make oracle coverage unavailable",
+    "valid_terminal_model_or_tool_failure": "five-component row with failed components equal to zero"
+  },
+  "scorer_evidence": {
+    "assistant_binding": [
+      "matrix_run_id",
+      "instance_id",
+      "request_sha256",
+      "query_id",
+      "config",
+      "query_artifact_sha256",
+      "assistant_result_sha256",
+      "assistant_receipt_sha256"
+    ],
+    "atomic_checkpoint_required": true,
+    "policy_version": "portfolio-gcs-scorer-evidence-v2",
+    "private_fields_forbidden": true,
+    "schema_version": 2,
+    "successful_call_identity_binding": [
+      "call_index",
+      "tool_name",
+      "arguments_sha256",
+      "result_sha256"
+    ]
+  },
+  "system_gain_thresholds_pp": {
+    "hard_error_delta_max": 1.0,
+    "macro_ci95_low_min": 0.0,
+    "macro_delta_min": 2.0,
+    "per_capability_delta_min": -3.0
+  }
+}

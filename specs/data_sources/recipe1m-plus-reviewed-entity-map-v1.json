@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "reviewed_by": "owner-delegated-codex-exact-title-review",
+  "reviewed_at": "2026-08-03",
+  "max_total_images": 10,
+  "entities": [
+    {
+      "entity_id": "isia_food500_bibimbap",
+      "recipe_title_aliases": [
+        "Bibimbap"
+      ],
+      "max_recipes": 2,
+      "max_images_per_recipe": 1
+    },
+    {
+      "entity_id": "isia_food500_biryani",
+      "recipe_title_aliases": [
+        "Biryani"
+      ],
+      "max_recipes": 2,
+      "max_images_per_recipe": 1
+    },
+    {
+      "entity_id": "isia_food500_chicken_curry",
+      "recipe_title_aliases": [
+        "Chicken Curry"
+      ],
+      "max_recipes": 2,
+      "max_images_per_recipe": 1
+    },
+    {
+      "entity_id": "isia_food500_lebkuchen",
+      "recipe_title_aliases": [
+        "Lebkuchen"
+      ],
+      "max_recipes": 2,
+      "max_images_per_recipe": 1
+    },
+    {
+      "entity_id": "isia_food500_potato_salad",
+      "recipe_title_aliases": [
+        "Potato Salad"
+      ],
+      "max_recipes": 2,
+      "max_images_per_recipe": 1
+    }
+  ]
+}

@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "plan_id": "ecommerce-mvp-required-source-locks-v1",
+  "raw_profile_id": "mvp",
+  "sources": [
+    {
+      "source_id": "abo",
+      "source_revision": "aws-public-objects-last-modified-2023-07-17",
+      "scopes": [
+        {
+          "scope_id": "compact_archives",
+          "mode": "explicit_files",
+          "paths": [
+            "abo/archives/abo-images-small.tar",
+            "abo/archives/abo-listings.tar",
+            "abo/archives/abo-spins.tar"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "abo/archives/abo-images-small.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-images-small.tar",
+          "bytes": 3253381120,
+          "etag": "\"c0e19e65e121c026cb99034c0f68a57a-388\"",
+          "last_modified": "Mon, 17 Jul 2023 12:39:05 GMT",
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "abo/archives/abo-listings.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-listings.tar",
+          "bytes": 87480320,
+          "etag": "\"45e6d23bec0501e3ccc9aea3a1634e73-11\"",
+          "last_modified": "Mon, 17 Jul 2023 12:35:16 GMT",
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "abo/archives/abo-spins.tar",
+          "url": "https://amazon-berkeley-objects.s3.amazonaws.com/archives/abo-spins.tar",
+          "bytes": 42446704640,
+          "etag": "\"56a41e7d28f06200acfff2c6732be28e-5061\"",
+          "last_modified": "Mon, 17 Jul 2023 15:13:51 GMT",
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "crosswoz",
+      "source_revision": "github-commit-df82c9fdff91b9b130f2d6b89110d3870ba6260e",
+      "scopes": [
+        {
+          "scope_id": "commit_archive",
+          "mode": "explicit_files",
+          "paths": [
+            "dialogue/crosswoz/df82c9fdff91b9b130f2d6b89110d3870ba6260e.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "dialogue/crosswoz/df82c9fdff91b9b130f2d6b89110d3870ba6260e.zip",
+          "url": "https://codeload.github.com/thu-coai/CrossWOZ/zip/df82c9fdff91b9b130f2d6b89110d3870ba6260e",
+          "bytes": 20684500,
+          "etag": "W/\"dc6938f1ae2fa6cdf76391890f38fd77d4485f7c6413dddae6d89d5eed79e2b7\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "durecdial_2_0",
+      "source_revision": "github-commit-1309cc072afd0b832e899e49c62906e700ff6acf",
+      "scopes": [
+        {
+          "scope_id": "commit_archive",
+          "mode": "explicit_files",
+          "paths": [
+            "dialogue/durecdial-2.0/1309cc072afd0b832e899e49c62906e700ff6acf.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "dialogue/durecdial-2.0/1309cc072afd0b832e899e49c62906e700ff6acf.zip",
+          "url": "https://codeload.github.com/liuzeming01/DuRecDial/zip/1309cc072afd0b832e899e49c62906e700ff6acf",
+          "bytes": 10112093,
+          "etag": "W/\"1a016dbc5b326230803b471fe8c6c3177ff3241689c8e442b2487c16324d728e\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "fashioniq",
+      "source_revision": "annotations-f71b16c3b09ef03b02c0fed160fa072fb3b8aa16_metadata-3bb39d7d9a024d92f1b0fd0929b38d73dff24a0a_exclusions-2026-07-24",
+      "scopes": [
+        {
+          "scope_id": "accepted_images",
+          "mode": "recursive_tree",
+          "root": "fashioniq/images",
+          "exclude_prefixes": []
+        },
+        {
+          "scope_id": "annotations",
+          "mode": "recursive_tree",
+          "root": "fashioniq/fashion-iq-f71b16c3b09ef03b02c0fed160fa072fb3b8aa16",
+          "exclude_prefixes": [
+            "fashioniq/fashion-iq-f71b16c3b09ef03b02c0fed160fa072fb3b8aa16/.git"
+          ]
+        },
+        {
+          "scope_id": "exclusion_ledger",
+          "mode": "explicit_files",
+          "paths": [
+            "fashioniq/download-state/complete-run-20260724-185549.failures.jsonl",
+            "fashioniq/download-state/complete-run-20260724-185549.summary.json",
+            "fashioniq/download-state/exclusions-summary.json",
+            "fashioniq/download-state/exclusions.jsonl",
+            "fashioniq/download-state/failures.jsonl"
+          ]
+        },
+        {
+          "scope_id": "url_inventory",
+          "mode": "recursive_tree",
+          "root": "fashioniq/fashion-iq-metadata-3bb39d7d9a024d92f1b0fd0929b38d73dff24a0a",
+          "exclude_prefixes": [
+            "fashioniq/fashion-iq-metadata-3bb39d7d9a024d92f1b0fd0929b38d73dff24a0a/.git"
+          ]
+        }
+      ],
+      "acquisition_identities": []
+    },
+    {
+      "source_id": "isia_food500",
+      "source_revision": "official-object-local-sha256-3e68b472a0fa2bcd23d354c1fffcc101a54bb50e80dbd641d1b365d4a6f4109c",
+      "scopes": [
+        {
+          "scope_id": "archive",
+          "mode": "explicit_files",
+          "paths": [
+            "isia_food500/ISIA_Food500.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "isia_food500/ISIA_Food500.zip",
+          "url": "http://123.57.42.89/Dataset_ict/ISIA_Food500_Dir/dataset/ISIA_Food500.zip",
+          "bytes": 636880932,
+          "etag": "\"5f0409de-25f60824\"",
+          "last_modified": "Tue, 07 Jul 2020 05:36:30 GMT",
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "muge",
+      "source_revision": "third-party-mirror-main-object-identities-2026-07-23",
+      "scopes": [
+        {
+          "scope_id": "split_archive",
+          "mode": "explicit_files",
+          "paths": [
+            "muge/MUGE1.z01",
+            "muge/MUGE1.z02",
+            "muge/MUGE1.z03",
+            "muge/MUGE1.z04",
+            "muge/MUGE1.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "muge/MUGE1.z01",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z01",
+          "bytes": 629145600,
+          "etag": "\"ef65dacc1be19d34d3c4f07cba1b7be63fdf71bf7dbc861a7acadf939611a29e\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "muge/MUGE1.z02",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z02",
+          "bytes": 629145600,
+          "etag": "\"5f25d78221eac37ff7e00e9f4eb596cc617de0ae08c897ec2b31a84e5126ffbb\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "muge/MUGE1.z03",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z03",
+          "bytes": 629145600,
+          "etag": "\"fbb41c3b114e3a10b6c9b11473e359e148ce31ff6daffccab66bb93887dba5c7\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "muge/MUGE1.z04",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.z04",
+          "bytes": 629145600,
+          "etag": "\"2d39987b2f36b0a3b68a6a829695681c508798fdd00b3e4a4fd74c29c5ac1f0c\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        },
+        {
+          "logical_path": "muge/MUGE1.zip",
+          "url": "https://hf-mirror.com/datasets/JieJieJ/muge/resolve/main/MUGE1.zip",
+          "bytes": 115153004,
+          "etag": "\"252b8e7812ed091ad0bb573fcb3bed4361725d09874b62d02d3ff957f824fe50\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "rpc",
+      "source_revision": "kaggle-dataset-102034-v5-generation-1571318753967625",
+      "scopes": [
+        {
+          "scope_id": "kaggle_archive",
+          "mode": "explicit_files",
+          "paths": [
+            "rpc/kaggle-v5/archive.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "rpc/kaggle-v5/archive.zip",
+          "url": "https://www.kaggle.com/api/v1/datasets/download/diyer22/retail-product-checkout-dataset?datasetVersionNumber=5",
+          "bytes": 27205167166,
+          "etag": null,
+          "last_modified": null,
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "wikimedia_zhwiki",
+      "source_revision": "pleisto-huggingface-object-etag-2caa9583b3a77def2bcd132eee1437877ec635c6f6534a8cd56dbb68c210ed86",
+      "scopes": [
+        {
+          "scope_id": "filtered_zhwiki_json",
+          "mode": "explicit_files",
+          "paths": [
+            "wiki_zh/wikipedia-cn-20230720-filtered.json"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "wiki_zh/wikipedia-cn-20230720-filtered.json",
+          "url": "https://huggingface.co/datasets/pleisto/wikipedia-cn-20230720-filtered/resolve/main/wikipedia-cn-20230720-filtered.json",
+          "bytes": 524489333,
+          "etag": "\"2caa9583b3a77def2bcd132eee1437877ec635c6f6534a8cd56dbb68c210ed86\"",
+          "last_modified": null,
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "wildreceipt",
+      "source_revision": "openmmlab-object-etag-a78e4194333b92c224b2829efc5d8806-73",
+      "scopes": [
+        {
+          "scope_id": "archive",
+          "mode": "explicit_files",
+          "paths": [
+            "wildreceipt/wildreceipt.tar"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "wildreceipt/wildreceipt.tar",
+          "url": "https://download.openmmlab.com/mmocr/data/wildreceipt.tar",
+          "bytes": 185323520,
+          "etag": "\"A78E4194333B92C224B2829EFC5D8806-73\"",
+          "last_modified": "Tue, 02 Nov 2021 17:56:15 GMT",
+          "publisher_sha256": null
+        }
+      ]
+    },
+    {
+      "source_id": "xiachufang",
+      "source_revision": "third-party-google-drive-object-last-modified-2022-10-20",
+      "scopes": [
+        {
+          "scope_id": "archive",
+          "mode": "explicit_files",
+          "paths": [
+            "recipes/xiachufang_recipe_corpus_full.zip"
+          ]
+        }
+      ],
+      "acquisition_identities": [
+        {
+          "logical_path": "recipes/xiachufang_recipe_corpus_full.zip",
+          "url": "https://drive.usercontent.google.com/download?id=1HDUHNDHUxKJilfKr3D_9lA7K_RtJ6ewY&export=download&confirm=t",
+          "bytes": 663982342,
+          "etag": null,
+          "last_modified": "Thu, 20 Oct 2022 06:17:19 GMT",
+          "publisher_sha256": null
+        }
+      ]
+    }
+  ]
+}

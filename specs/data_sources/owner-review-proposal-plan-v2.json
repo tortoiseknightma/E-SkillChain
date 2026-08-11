@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "proposal_plan_id": "ecommerce-mvp-owner-source-review-proposals-v2",
+  "supersedes": "ecommerce-mvp-owner-source-review-proposals-v1",
+  "owner_instruction": "Approve the listed required sources; grant cloud upload and public-demo rights only for sources explicitly approved in docs/data-authorization-tracking.csv, while preserving evidence gaps and redistribution restrictions.",
+  "prepared_at": "2026-07-25T02:45:49.6160758Z",
+  "prepared_by": "codex-evidence-preparer",
+  "sources": [
+    {
+      "source_id": "abo",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold",
+        "product_gallery",
+        "tool_gold"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": true,
+        "redistribution_allowed": false,
+        "public_demo_allowed": true
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Explicit CC BY-NC 4.0 evidence supports non-commercial local research; external processing and publication are intentionally not granted. Updated per docs/data-authorization-tracking.csv: academic_cloud_upload_and_public_demo; redistribution remains disabled."
+    },
+    {
+      "source_id": "crosswoz",
+      "proposed_decision": "approved",
+      "purposes": [
+        "interaction_pattern"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "The commit snapshot carries Apache-2.0. Owner approval is limited to local interaction-pattern inventory; raw dialogue and place records must not leave the restricted boundary."
+    },
+    {
+      "source_id": "durecdial_2_0",
+      "proposed_decision": "approved",
+      "purposes": [
+        "interaction_pattern"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "Dataset-specific CC BY-NC-SA 4.0 evidence supports non-commercial local pattern analysis; raw utterances must not be copied into Mock data or leave the local boundary."
+    },
+    {
+      "source_id": "fashioniq",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold",
+        "product_gallery",
+        "tool_gold"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": true,
+        "redistribution_allowed": false,
+        "public_demo_allowed": true
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "The CodaLab access terms allow non-commercial academic research. The narrower research-only boundary controls because the pinned annotation commit has no LICENSE file. Updated per docs/data-authorization-tracking.csv: academic_cloud_upload_and_public_demo; redistribution remains disabled."
+    },
+    {
+      "source_id": "isia_food500",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": true,
+        "redistribution_allowed": false,
+        "public_demo_allowed": true
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Owner explicitly accepts local non-commercial research and embedding risk despite NOASSERTION: the public paper and download do not establish an image-dataset reuse license. This approval is not upstream permission. Updated per docs/data-authorization-tracking.csv: academic_cloud_upload_and_public_demo; redistribution remains disabled."
+    },
+    {
+      "source_id": "muge",
+      "proposed_decision": "approved",
+      "purposes": [
+        "language_style"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Owner explicitly accepts local language-style analysis risk despite NOASSERTION: the exact MUGE agreement and official revision are missing and the locked package came from a third-party mirror. This approval is not upstream permission."
+    },
+    {
+      "source_id": "rpc",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold",
+        "product_gallery",
+        "tool_gold"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": true,
+        "redistribution_allowed": false,
+        "public_demo_allowed": true
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "The official project page identifies CC BY-NC-SA 4.0 and academic usage; formal work remains non-commercial and local. Updated per docs/data-authorization-tracking.csv: academic_cloud_upload_and_public_demo; redistribution remains disabled."
+    },
+    {
+      "source_id": "wikimedia_zhwiki",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold",
+        "knowledge_evidence"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "not_applicable",
+      "redaction_policy_sha256": null,
+      "rationale": "Owner explicitly accepts local research and embedding risk despite incomplete attribution provenance: the locked third-party filtered JSON lacks an official dump revision, transformation manifest, and attribution inventory. This approval is not a waiver of Wikimedia obligations."
+    },
+    {
+      "source_id": "wildreceipt",
+      "proposed_decision": "approved",
+      "purposes": [
+        "capability_gold",
+        "tool_gold"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": false,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "Owner explicitly accepts local OCR/KIE research risk although official MMOCR metadata reports License N/A. Receipt bytes remain restricted and cannot be remotely processed, redistributed, or publicly demonstrated. This approval is not upstream permission."
+    },
+    {
+      "source_id": "xiachufang",
+      "proposed_decision": "approved",
+      "purposes": [
+        "knowledge_evidence"
+      ],
+      "permissions": {
+        "download_allowed": true,
+        "local_research_allowed": true,
+        "local_embedding_allowed": true,
+        "remote_embedding_allowed": false,
+        "redistribution_allowed": false,
+        "public_demo_allowed": false
+      },
+      "pii_status": "restricted",
+      "redaction_policy_sha256": null,
+      "rationale": "Owner explicitly accepts local research and embedding risk despite NOASSERTION: the third-party archive has no public reuse license and user-generated content carries PII risk. Bytes remain restricted and this approval is not upstream permission."
+    }
+  ]
+}

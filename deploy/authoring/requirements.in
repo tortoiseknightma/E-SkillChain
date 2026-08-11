@@ -1,0 +1,11 @@
+anthropic==0.116.0
+bm25s==0.3.9
+faiss-cpu==1.14.3
+imagehash==4.3.2
+jieba==0.42.1
+openai==2.44.0
+pillow==12.3.0
+pyarrow==24.0.0
+pydantic==2.13.4
+python-dotenv==1.2.2
+requests==2.34.2

@@ -1,0 +1,396 @@
+{
+  "schema_version": 1,
+  "portfolio_id": "ecommerce-mvp-source-portfolio-v1",
+  "decision_date": "2026-07-24",
+  "selection_rule": "select_sources_by_required_supervision_signal_not_by_intent_or_download_availability",
+  "profiles": {
+    "mvp": {
+      "query_count": 200,
+      "boundary_target_approx": 40,
+      "human_authored_or_rewritten_min": 40,
+      "capability_allocations": [
+        {
+          "capability": "exact_match",
+          "count": 35,
+          "primary_sources": [
+            "abo"
+          ]
+        },
+        {
+          "capability": "multi_product",
+          "count": 35,
+          "primary_sources": [
+            "rpc"
+          ]
+        },
+        {
+          "capability": "style_recommendation",
+          "count": 35,
+          "primary_sources": [
+            "fashioniq"
+          ]
+        },
+        {
+          "capability": "visual_encyclopedia",
+          "count": 35,
+          "primary_sources": [
+            "wikimedia_zhwiki"
+          ],
+          "challenge_sources": [
+            "inaturalist"
+          ]
+        },
+        {
+          "capability": "document_reading",
+          "count": 30,
+          "primary_sources": [
+            "wildreceipt"
+          ],
+          "secondary_sources": [
+            "cord",
+            "sroie"
+          ],
+          "challenge_sources": [
+            "wikimedia_documents"
+          ]
+        },
+        {
+          "capability": "recipe_guidance",
+          "count": 30,
+          "primary_sources": [
+            "isia_food500",
+            "xiachufang"
+          ]
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "source_id": "abo",
+      "tier": "mvp",
+      "roles": [
+        "product_identity",
+        "exact_match_primary_gallery",
+        "non_fashion_style_extension"
+      ],
+      "must_not_supply": [
+        "style_preference_gold"
+      ]
+    },
+    {
+      "source_id": "rpc",
+      "tier": "mvp",
+      "roles": [
+        "multi_product_primary",
+        "sku_reference_gallery",
+        "bbox_gold",
+        "per_object_sku_gold"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "fashioniq",
+      "tier": "mvp",
+      "roles": [
+        "relative_language_style_gold"
+      ],
+      "must_not_supply": [
+        "exact_match_gold"
+      ]
+    },
+    {
+      "source_id": "wildreceipt",
+      "tier": "mvp",
+      "roles": [
+        "receipt_ocr_kie_gold"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "jddc_2_0",
+      "tier": "retired",
+      "disposition": "permanently_abandoned",
+      "roles": [],
+      "must_not_supply": [
+        "mvp_input",
+        "full_input",
+        "raw_dependency",
+        "capability_gold",
+        "visual_fact_gold"
+      ]
+    },
+    {
+      "source_id": "durecdial_2_0",
+      "tier": "mvp_language",
+      "roles": [
+        "chinese_recommendation_dialogue_pattern",
+        "preference_elicitation_pattern",
+        "topic_transition_pattern"
+      ],
+      "must_not_supply": [
+        "real_ecommerce_traffic_claim",
+        "capability_gold",
+        "visual_fact_gold",
+        "product_fact_gold"
+      ]
+    },
+    {
+      "source_id": "crosswoz",
+      "tier": "mvp_language",
+      "roles": [
+        "constraint_conflict_pattern",
+        "no_offer_pattern",
+        "constraint_relaxation_pattern",
+        "dynamic_goal_change_pattern"
+      ],
+      "must_not_supply": [
+        "ecommerce_entity",
+        "product_fact_gold",
+        "capability_gold",
+        "real_ecommerce_traffic_claim"
+      ]
+    },
+    {
+      "source_id": "codex_mock_trajectories",
+      "tier": "mvp_derived",
+      "roles": [
+        "controlled_domain_rewrite",
+        "verified_asset_and_kb_binding",
+        "canonical_intent_trajectory_composition"
+      ],
+      "required_origin": "synthetic_derived",
+      "must_not_supply": [
+        "real_user_log",
+        "source_dataset_utterance_copy",
+        "capability_gold",
+        "visual_fact_gold",
+        "product_fact_gold"
+      ]
+    },
+    {
+      "source_id": "muge",
+      "tier": "mvp",
+      "roles": [
+        "chinese_short_query_style",
+        "hard_negative_candidate"
+      ],
+      "must_not_supply": [
+        "exact_match_positive",
+        "sku_multiview_identity",
+        "style_preference_gold"
+      ]
+    },
+    {
+      "source_id": "wikimedia_zhwiki",
+      "tier": "mvp",
+      "roles": [
+        "visual_encyclopedia_primary",
+        "revision_pinned_knowledge_evidence"
+      ],
+      "must_not_supply": [
+        "llm_synthesized_fact_gold"
+      ]
+    },
+    {
+      "source_id": "inaturalist",
+      "tier": "challenge",
+      "roles": [
+        "fine_grained_species_challenge",
+        "low_confidence_abstention_challenge"
+      ],
+      "must_not_supply": [
+        "general_encyclopedia_primary"
+      ]
+    },
+    {
+      "source_id": "isia_food500",
+      "tier": "mvp",
+      "roles": [
+        "chinese_dish_identification"
+      ],
+      "must_not_supply": [
+        "recipe_evidence"
+      ]
+    },
+    {
+      "source_id": "xiachufang",
+      "tier": "mvp",
+      "roles": [
+        "chinese_recipe_kb"
+      ],
+      "must_not_supply": [
+        "dish_image_identity_without_reviewed_mapping"
+      ]
+    },
+    {
+      "source_id": "cord",
+      "tier": "mvp_secondary",
+      "roles": [
+        "receipt_ocr_kie_gold"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "sroie",
+      "tier": "mvp_secondary",
+      "roles": [
+        "receipt_core_field_gold"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "wikimedia_documents",
+      "tier": "challenge",
+      "roles": [
+        "ocr_layout_capture_condition_challenge"
+      ],
+      "must_not_supply": [
+        "field_level_ocr_kie_gold"
+      ]
+    },
+    {
+      "source_id": "coco_open_images",
+      "tier": "challenge",
+      "roles": [
+        "open_world_detector_challenge"
+      ],
+      "must_not_supply": [
+        "sku_identity",
+        "multi_product_sku_retrieval_primary_metric"
+      ]
+    },
+    {
+      "source_id": "deepfashion",
+      "tier": "candidate_gallery",
+      "roles": [
+        "fashion_candidate_gallery",
+        "same_item_exclusion"
+      ],
+      "must_not_supply": [
+        "style_preference_gold"
+      ]
+    },
+    {
+      "source_id": "u_need",
+      "tier": "retired",
+      "disposition": "permanently_abandoned",
+      "decision_date": "2026-08-01",
+      "reason": "Owner confirmed that U-NEED cannot be obtained even after application.",
+      "roles": [],
+      "must_not_supply": [
+        "mvp_dependency",
+        "full_input",
+        "raw_dependency",
+        "capability_gold",
+        "real_chinese_ecommerce_traffic_claim"
+      ]
+    },
+    {
+      "source_id": "simmc_2_1",
+      "tier": "full_conditional",
+      "access_status": "acquisition_complete_license_activation_review_pending",
+      "roles": [
+        "candidate_multimodal_coreference_pattern",
+        "candidate_multi_object_visual_context_pattern"
+      ],
+      "must_not_supply": [
+        "chinese_real_traffic_claim",
+        "full_input_before_source_lock",
+        "unmarked_chinese_rewrite"
+      ]
+    },
+    {
+      "source_id": "csds",
+      "tier": "full_conditional",
+      "access_status": "acquisition_complete_written_permission_owner_confirmed",
+      "roles": [
+        "candidate_after_sales_dialogue_pattern",
+        "candidate_utility_assistance_pattern"
+      ],
+      "must_not_supply": [
+        "mvp_dependency",
+        "unreviewed_full_input"
+      ]
+    },
+    {
+      "source_id": "mep3m",
+      "tier": "core",
+      "roles": [
+        "long_tail_product_candidate",
+        "hard_negative_candidate"
+      ],
+      "must_not_supply": [
+        "mvp_exact_match_positive",
+        "mvp_style_preference_gold"
+      ]
+    },
+    {
+      "source_id": "products_10k",
+      "tier": "core",
+      "roles": [
+        "exact_match_extension"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "polyvore",
+      "tier": "core",
+      "roles": [
+        "outfit_compatibility_gold"
+      ],
+      "must_not_supply": []
+    },
+    {
+      "source_id": "recipe1m_plus",
+      "tier": "core",
+      "roles": [
+        "image_recipe_pair_extension"
+      ],
+      "must_not_supply": [
+        "unmapped_chinese_dish_gold"
+      ]
+    },
+    {
+      "source_id": "sku_110k",
+      "tier": "core_challenge",
+      "roles": [
+        "dense_detection_challenge"
+      ],
+      "must_not_supply": [
+        "per_object_sku_retrieval_gold"
+      ]
+    }
+  ],
+  "composition": {
+    "semantic_authority": "task_spec",
+    "factual_authority": "verified_asset_or_kb",
+    "language_style_sources": [
+      "durecdial_2_0",
+      "crosswoz",
+      "muge"
+    ],
+    "composer": "gated_llm",
+    "derived_output_source": "codex_mock_trajectories",
+    "required_output_origin": "synthetic_derived",
+    "claim_boundary": "mechanism_level_reproduction_only_not_real_jd_traffic_or_original_multimodal_distribution",
+    "final_gate": "human_review"
+  },
+  "full_dialogue_plan": {
+    "implementation_status": "deferred_until_access_and_license_review",
+    "conditional_candidates": [
+      "simmc_2_1",
+      "csds"
+    ],
+    "owner_reported_pending_label": "jddc_2_1",
+    "identity_status": "not_equated_with_simmc_2_1_and_not_added_as_an_implementation_dependency_without_official_package_and_terms",
+    "replan_required_after_acquisition": true
+  },
+  "grouping_rules": [
+    "all_queries_reusing_an_asset_or_entity_must_share_one_atomic_leakage_group",
+    "cross_intent_reuse_must_not_cross_splits",
+    "exact_match_positive_requires_same_product_distinct_real_non_near_duplicate_assets",
+    "style_recommendation_must_exclude_the_same_product",
+    "dish_identification_and_recipe_evidence_must_be_joined_by_a_reviewed_entity_mapping"
+  ]
+}

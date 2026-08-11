@@ -1,0 +1,236 @@
+{
+  "abo_listings_archive_sha256": "b7f7ceacb328fa5ab6e143b88e1f948443a877cfc95b67ff09c8ebabd50644e3",
+  "candidates": [
+    {
+      "asset_id": "asset.v2.46b0652fec143c01a9248b3ca66b582301ce34e38e52066ed7c6f4721534434d",
+      "audience": "women",
+      "category_l1": "footwear",
+      "color_families": ["taupe", "rose"],
+      "confidence": 0.9,
+      "display_title": "Taupe and rose velvet block-heel ankle boot",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["ankle_boot", "block_heel"],
+      "image_path": "query_images/exact_match/abo-core-0033.jpg",
+      "image_sha256": "cf75949bafabe2836f12ac3b4c592cf1dc166532e328c1bf9036a0b7406d3d5a",
+      "product_id": "abo:B0719SPZ7N",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_a.json.gz",
+        "item_id": "B0719SPZ7N",
+        "main_image_id": "91cPlY9t9wL",
+        "product_type": "BOOT"
+      },
+      "source_record_id": "listing:B0719SPZ7N/image:91cPlY9t9wL"
+    },
+    {
+      "asset_id": "asset.v2.7560f399c621ebbbdb62d17c086f38f6c1ae008b6c736feabbcfca55fd765b79",
+      "audience": "women",
+      "category_l1": "footwear",
+      "color_families": ["black"],
+      "confidence": 0.9,
+      "display_title": "Black low-block-heel ankle boot",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["ankle_boot", "low_block_heel"],
+      "image_path": "query_images/exact_match/abo-core-0223.jpg",
+      "image_sha256": "141943d85ffa825dc6407ec5790c48209c2b306fec3698f2e10605aa6f752ef0",
+      "product_id": "abo:B07RCH6M33",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_2.json.gz",
+        "item_id": "B07RCH6M33",
+        "main_image_id": "71eQWUlu+OL",
+        "product_type": "BOOT"
+      },
+      "source_record_id": "listing:B07RCH6M33/image:71eQWUlu+OL"
+    },
+    {
+      "asset_id": "asset.v2.46dcda66edb450e7913c5a9ff2db55ca33e3c24e434b5eb1dcf6789c28ac686f",
+      "audience": "women",
+      "category_l1": "footwear",
+      "color_families": ["turquoise"],
+      "compatible_anchor_color_families": ["turquoise", "blue", "green"],
+      "confidence": 0.86,
+      "display_title": "Turquoise flat thong sandal",
+      "eligibility_mode": "compatible_palette",
+      "feature_tags": ["sandal", "flat"],
+      "image_path": "query_images/exact_match/abo-core-0131.jpg",
+      "image_sha256": "6430511d8a333afed27e5fb5346257654aa29c90097cbc9419b993c308203e93",
+      "product_id": "abo:B07GLMKMGJ",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_c.json.gz",
+        "item_id": "B07GLMKMGJ",
+        "main_image_id": "51cXsS0J7zL",
+        "product_type": "SANDAL"
+      },
+      "source_record_id": "listing:B07GLMKMGJ/image:51cXsS0J7zL"
+    },
+    {
+      "asset_id": "asset.v2.3584b333fc61adfd47a67633071b24386b120a333d915da404782a883326cfb6",
+      "audience": "women",
+      "category_l1": "bag",
+      "color_families": ["cognac"],
+      "confidence": 0.9,
+      "display_title": "Cognac crossbody camera bag",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["camera_bag", "crossbody", "small"],
+      "image_path": "query_images/exact_match/abo-core-0079.jpg",
+      "image_sha256": "07438986522e7d48274c70115d47b4449aee50a1e9ea2aaa6f08fc882cf1faa1",
+      "product_id": "abo:B0792LQ3KS",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_3.json.gz",
+        "item_id": "B0792LQ3KS",
+        "main_image_id": "91wO7kl4A-L",
+        "product_type": "HANDBAG"
+      },
+      "source_record_id": "listing:B0792LQ3KS/image:91wO7kl4A-L"
+    },
+    {
+      "asset_id": "asset.v2.ea38d118f35561be522e6a6a79d8c7ab1f4fc9153986b5d790eb51634f3180be",
+      "audience": "women",
+      "category_l1": "bag",
+      "color_families": ["black"],
+      "confidence": 0.9,
+      "display_title": "Black crossbody camera bag",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["camera_bag", "crossbody", "small"],
+      "image_path": "query_images/exact_match/abo-core-0201.jpg",
+      "image_sha256": "6af88b9fd52a885503e80a20de268b70d897d1368f74bc06beb7f863d6ae0b96",
+      "product_id": "abo:B07QQ3GPNT",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_9.json.gz",
+        "item_id": "B07QQ3GPNT",
+        "main_image_id": "91uv8hqtaqL",
+        "product_type": "HANDBAG"
+      },
+      "source_record_id": "listing:B07QQ3GPNT/image:91uv8hqtaqL"
+    },
+    {
+      "asset_id": "asset.v2.3af6aaea77a67b7e1a772b79b30b8e87c325e3f5e2002a310b1e275692ad0dbf",
+      "audience": "women",
+      "category_l1": "jewelry",
+      "color_families": ["silver"],
+      "confidence": 0.9,
+      "display_title": "Silver-tone drop earrings",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["earrings", "drop", "silver_tone"],
+      "image_path": "query_images/exact_match/abo-core-0019.jpg",
+      "image_sha256": "22d9b7d68bcd3b47c4e90d1390ad535d83082112e01a38eaa91982eed495012f",
+      "product_id": "abo:B01LZ56YXI",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_7.json.gz",
+        "item_id": "B01LZ56YXI",
+        "main_image_id": "71wxwS2qesL",
+        "product_type": "FINEEARRING"
+      },
+      "source_record_id": "listing:B01LZ56YXI/image:71wxwS2qesL"
+    },
+    {
+      "asset_id": "asset.v2.fc91423fe8e4467e6887d23fb2daae6465e6923dddc36fb346a0ac76a92b64ab",
+      "audience": "women",
+      "category_l1": "jewelry",
+      "color_families": ["blue", "gold"],
+      "compatible_anchor_color_families": ["blue", "turquoise", "gold", "yellow"],
+      "confidence": 0.86,
+      "display_title": "Blue-stone gold-tone stud earrings",
+      "eligibility_mode": "compatible_palette",
+      "feature_tags": ["earrings", "stud", "blue_stone", "gold_tone"],
+      "image_path": "query_images/exact_match/abo-core-0141.jpg",
+      "image_sha256": "80e6594322eb7caf360d3e034a6c653a7e985eab1408777eb194dd7b6c0f06db",
+      "product_id": "abo:B07HP4322L",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_c.json.gz",
+        "item_id": "B07HP4322L",
+        "main_image_id": "61aH6DdmsdL",
+        "product_type": "EARRING"
+      },
+      "source_record_id": "listing:B07HP4322L/image:61aH6DdmsdL"
+    },
+    {
+      "asset_id": "asset.v2.e6e631e03821b736c5b1aea4589fca72d8f1084aa4142dd0486f2742a093b447",
+      "audience": "women",
+      "category_l1": "jewelry",
+      "color_families": ["blue", "silver"],
+      "compatible_anchor_color_families": ["blue", "turquoise", "gold", "yellow"],
+      "confidence": 0.86,
+      "display_title": "Blue-stone silver-tone pendant necklace",
+      "eligibility_mode": "compatible_palette",
+      "feature_tags": ["necklace", "pendant", "blue_stone", "silver_tone"],
+      "image_path": "query_images/exact_match/abo-core-0023.jpg",
+      "image_sha256": "279e3c9598822a6dd1ad1bd0fa7a37cf4a259182859b2f03dc4a5706d50d4a93",
+      "product_id": "abo:B01M7OSEP5",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_5.json.gz",
+        "item_id": "B01M7OSEP5",
+        "main_image_id": "7180eCpb9uL",
+        "product_type": "FINENECKLACEBRACELETANKLET"
+      },
+      "source_record_id": "listing:B01M7OSEP5/image:7180eCpb9uL"
+    },
+    {
+      "asset_id": "asset.v2.ae7d95f86d9f24cbd221678955f7c32852c2d2dfe000b52774cfee88a7183fe3",
+      "audience": "women",
+      "category_l1": "jewelry",
+      "color_families": ["silver"],
+      "confidence": 0.9,
+      "display_title": "Silver-tone circle pendant necklace",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["necklace", "pendant", "circle", "silver_tone", "minimal"],
+      "image_path": "query_images/exact_match/abo-core-0005.jpg",
+      "image_sha256": "2406e8a1a870f9a453c8f1e764c8cd792e7c4b11a019c6ab636ce82f6cc68cf7",
+      "product_id": "abo:B00J0DUESG",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_7.json.gz",
+        "item_id": "B00J0DUESG",
+        "main_image_id": "71U2SjUixmL",
+        "product_type": "NECKLACE"
+      },
+      "source_record_id": "listing:B00J0DUESG/image:71U2SjUixmL"
+    },
+    {
+      "asset_id": "asset.v2.e01de85f294e2e2cce45f2a4dfb2a661d10cd274ec32b6f0993e261bfeddb067",
+      "audience": "men",
+      "category_l1": "footwear",
+      "color_families": ["black"],
+      "confidence": 0.9,
+      "display_title": "Black men's suede loafer",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["loafer", "slip_on", "low_heel"],
+      "image_path": "query_images/exact_match/abo-core-0069.jpg",
+      "image_sha256": "b0adc4212f6a5228b0118db72c8e48dde0ab5abc3d348186c1c14cf800ef225d",
+      "product_id": "abo:B075SY59SG",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_0.json.gz",
+        "item_id": "B075SY59SG",
+        "main_image_id": "81xDa6CLzsL",
+        "product_type": "SHOES"
+      },
+      "source_record_id": "listing:B075SY59SG/image:81xDa6CLzsL"
+    },
+    {
+      "asset_id": "asset.v2.53912acd19d8b6d3c463957449cbec45a37113f682fc3f55674e10dfc02b6d85",
+      "audience": "men",
+      "category_l1": "footwear",
+      "color_families": ["neutral", "olive"],
+      "confidence": 0.9,
+      "display_title": "Neutral olive men's slip-on sneaker",
+      "eligibility_mode": "neutral_universal",
+      "feature_tags": ["sneaker", "slip_on", "flat"],
+      "image_path": "query_images/exact_match/abo-core-0045.jpg",
+      "image_sha256": "947137e26b4b510d18f30fe6c883d15959cada26cd3d4c346b0f90d5f7433769",
+      "product_id": "abo:B074DY8C3P",
+      "source_metadata": {
+        "archive_member": "listings/metadata/listings_f.json.gz",
+        "item_id": "B074DY8C3P",
+        "main_image_id": "91vvWoMtLUL",
+        "product_type": "SHOES"
+      },
+      "source_record_id": "listing:B074DY8C3P/image:91vvWoMtLUL"
+    }
+  ],
+  "kind": "portfolio-style-coordination-candidate-seed",
+  "policy_version": "portfolio-style-coordination-candidate-review-v1",
+  "review_boundary": {
+    "coordination_claim": "Deterministic portfolio curation from exact Core images and verified visible attributes",
+    "native_outfit_cooccurrence_claimed": false,
+    "review_method": "Codex visual review of exact Core image plus ABO listing metadata"
+  },
+  "schema_version": 1
+}

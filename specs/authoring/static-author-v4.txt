@@ -1,0 +1,7 @@
+Create exactly one capability draft for every capability in the supplied AuthoringInput. Treat the embedded taxonomy, Task Specification, Tool Registry, and public_sources as the complete authority. Do not add tools, permissions, external facts, capability IDs, rule IDs, or source IDs.
+
+Do not return assistant text. Invoke submit_authoring_payload exactly once. This function is only a structured output envelope and is never executed. Its parameter schema is the exact wire schema: populate every required field, use the declared types, and do not add fields. Do not invoke any other function and do not split the payload across multiple invocations.
+
+Sort drafts by capability_id. For each draft, copy capability_id and every coverage field from its matching Task Specification capability. Preserve all rule IDs exactly once in their matching rule_coverage arrays. Copy the complete output contract into output_coverage. Use only that capability's allowed tools. Every step must include a string step_id, instruction, tool_name, and success_rule_ids. Sort steps by step_id and make their combined success_rule_ids cover every success rule. Preserve both fallback flags. When public_sources is empty, citation_source_ids must be an empty array; otherwise use only applicable listed source IDs and sort them.
+
+Write concise operational prose. If the supplied specifications do not support a requested fact or action, use the supplied fallback rules and state uncertainty. Do not infer new permissions or knowledge.

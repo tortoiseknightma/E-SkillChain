@@ -1,0 +1,114 @@
+{
+  "artifact_type": "acquisition_candidate_manifest",
+  "schema_version": 1,
+  "adapter_id": "wikimedia-revision-api-v1",
+  "status": "candidate_only",
+  "formal_eligible": false,
+  "discovered_on": "2026-07-21",
+  "purpose": "Candidate pages for a 12+12 auditable mini KB. This file is not a source lock and must never be passed to formal ingestion.",
+  "api_contract": {
+    "documentation_uri": "https://www.mediawiki.org/wiki/API:Revisions",
+    "method": "GET",
+    "path": "/w/api.php",
+    "one_revision_per_response": true,
+    "parameters": {
+      "action": "query",
+      "format": "json",
+      "formatversion": "2",
+      "prop": "revisions",
+      "revids": "<fixed-positive-revision-id>",
+      "rvprop": "ids|timestamp|sha1|contentmodel|content",
+      "rvslots": "main"
+    },
+    "user_agent_required": true,
+    "raw_response_receipt_required": true,
+    "receipt_required_fields": [
+      "raw_response_sha256",
+      "http_status",
+      "final_uri",
+      "http_date",
+      "x_request_id",
+      "validator_kind",
+      "etag_and_or_last_modified_when_present",
+      "validator_absent_reason_when_neither_is_present",
+      "acquired_at"
+    ],
+    "network_allowed_only_during_acquisition": true,
+    "formal_build_network_allowed": false
+  },
+  "license_policy": {
+    "license_id": "CC-BY-SA-4.0",
+    "license_uri": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "wikipedia_policy_revision_uri": "https://foundation.wikimedia.org/w/index.php?title=Policy:Terms_of_Use/en&oldid=554852",
+    "wikibooks_policy_revision_uri": "https://foundation.wikimedia.org/w/index.php?title=Policy:Terms_of_Use/en&oldid=554852",
+    "zh_wikibooks_license_notice_revision_uri": "https://zh.wikibooks.org/w/index.php?title=Template:Cc-by-sa-4.0&oldid=178127",
+    "permission_matrix": {
+      "local_research_allowed": true,
+      "cloud_processing_allowed": true,
+      "redistribution_allowed": true,
+      "public_demo_allowed": true,
+      "attribution_required": true,
+      "license_notice_required": true,
+      "indicate_changes_required": true,
+      "share_alike_on_adaptations": true,
+      "preserve_additional_attribution_notices": true,
+      "no_endorsement": true
+    },
+    "human_review_required_per_page": [
+      "page footer",
+      "page history",
+      "talk page",
+      "visible imported-text and additional-attribution notices"
+    ]
+  },
+  "tracks": {
+    "encyclopedia": {
+      "project_domain": "zh.wikipedia.org",
+      "kind": "encyclopedia",
+      "candidates": [
+        {"page_id": 3182, "revision_id": 93404844, "title": "猫"},
+        {"page_id": 5844, "revision_id": 90112465, "title": "钢琴"},
+        {"page_id": 6039, "revision_id": 93017562, "title": "吉他"},
+        {"page_id": 7850, "revision_id": 93431651, "title": "苹果"},
+        {"page_id": 22345, "revision_id": 93536987, "title": "向日葵"},
+        {"page_id": 24298, "revision_id": 93434445, "title": "茶"},
+        {"page_id": 38843, "revision_id": 93403065, "title": "咖啡"},
+        {"page_id": 55834, "revision_id": 93141064, "title": "香蕉"},
+        {"page_id": 77042, "revision_id": 73988496, "title": "狗"},
+        {"page_id": 100389, "revision_id": 93414805, "title": "番茄"},
+        {"page_id": 308464, "revision_id": 92571185, "title": "大熊猫"},
+        {"page_id": 7357301, "revision_id": 63992186, "title": "自行车"}
+      ]
+    },
+    "recipe": {
+      "project_domain": "zh.wikibooks.org",
+      "kind": "recipe",
+      "required_title_prefixes": ["食谱/", "食譜/"],
+      "candidates": [
+        {"page_id": 7278, "revision_id": 183196, "title": "食谱/回锅肉"},
+        {"page_id": 8798, "revision_id": 183199, "title": "食谱/水煮肉片"},
+        {"page_id": 8807, "revision_id": 53032, "title": "食譜/三杯雞"},
+        {"page_id": 11280, "revision_id": 53051, "title": "食谱/小松饼"},
+        {"page_id": 11557, "revision_id": 183202, "title": "食谱/四川泡菜"},
+        {"page_id": 11648, "revision_id": 183212, "title": "食谱/西湖醋鱼"},
+        {"page_id": 13054, "revision_id": 178873, "title": "食谱/豆浆"},
+        {"page_id": 13829, "revision_id": 173845, "title": "食譜/味噌湯"},
+        {"page_id": 15518, "revision_id": 61518, "title": "食譜/東坡肉"},
+        {"page_id": 22319, "revision_id": 183334, "title": "食譜/義大利燉飯"},
+        {"page_id": 24427, "revision_id": 183333, "title": "食谱/白飯"},
+        {"page_id": 25789, "revision_id": 101447, "title": "食譜/西式蔬菜湯"}
+      ]
+    }
+  },
+  "formalization_required": [
+    "Fetch each listed revision through its canonical revids API request with a descriptive User-Agent.",
+    "Store each raw response, a canonical HTTP acquisition receipt (raw SHA-256, status, final URI, HTTP Date, x-request-id, acquisition time, and every ETag or Last-Modified validator returned), and the deterministically derived canonical snapshot as three distinct regular files. If the origin returns neither validator, record validator_kind=none plus the exact absence reason; the fixed revision_id, response revision_sha1, raw SHA-256, and re-derived snapshot remain mandatory.",
+    "Human-review each fixed revision's footer, history, talk page, imported-text notices, and any additional attribution requirements.",
+    "Choose an exact non-empty wikitext character span, record start/end and SHA-256, and do not paraphrase or LLM-synthesize factual gold.",
+    "Create a canonical WikimediaSelectionLock containing 10-20 reviewed entries per track, binding all raw responses, acquisition receipts, canonical snapshots, license-evidence files, and the conservative permission matrix.",
+    "Create a canonical row-level human review ledger binding every page, revision, evidence span, approval decision, human reviewer, and review time; automated models may assist preparation but cannot approve their own selections.",
+    "Publish the two license-evidence file SHA-256 values and the human-review-ledger SHA-256 through independent caller-owned channels.",
+    "Publish the selection-lock SHA-256 through an independent caller-owned channel such as a reviewed config or CI secret; never derive it inside the formal builder.",
+    "Run build_wikimedia_kb_bundle offline against only the fixed snapshot directory and the externally pinned selection lock."
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "capabilities": [
+    {
+      "capability_id": "knowledge.visual_encyclopedia",
+      "definition": "Explain a visually indicated entity using cited encyclopedia evidence and explicit uncertainty.",
+      "intent_id": "encyclopedia",
+      "requires_card": false,
+      "selection_rationale": "Selected because object detection and encyclopedia lookup provide a grounded visual-to-text path.",
+      "title": "Grounded visual encyclopedia"
+    },
+    {
+      "capability_id": "product.exact_match",
+      "definition": "Identify the same catalog product from grounded product-retrieval evidence.",
+      "intent_id": "exact_match",
+      "requires_card": true,
+      "selection_rationale": "Selected because the product gallery and image/text retrieval contracts can provide product-level evidence.",
+      "title": "Exact product match"
+    },
+    {
+      "capability_id": "product.multi_search",
+      "definition": "Separate multiple visible products and return grounded candidates for each requested item.",
+      "intent_id": "multi_product",
+      "requires_card": true,
+      "selection_rationale": "Selected because object detection and product retrieval form an implemented composition path.",
+      "title": "Multi-product decomposition and search"
+    },
+    {
+      "capability_id": "product.style_recommendation",
+      "definition": "Return relevant but meaningfully diverse style alternatives grounded in the product gallery.",
+      "intent_id": "divergent_rec",
+      "requires_card": true,
+      "selection_rationale": "Selected because the style-similarity tool exposes a diversity-aware retrieval contract.",
+      "title": "Style-diverse recommendation"
+    },
+    {
+      "capability_id": "utility.document_reading",
+      "definition": "Transcribe or extract requested fields from an approved document image while retaining line evidence.",
+      "intent_id": "utility",
+      "requires_card": false,
+      "selection_rationale": "Selected because document OCR exposes line-level evidence and an approval-gated runtime contract.",
+      "title": "Grounded document reading"
+    },
+    {
+      "capability_id": "utility.recipe_guidance",
+      "definition": "Provide recipe guidance for an identified dish using cited recipe evidence and explicit uncertainty.",
+      "intent_id": "utility",
+      "requires_card": false,
+      "selection_rationale": "Selected because recipe lookup provides a separate cited evidence path with distinct safety constraints.",
+      "title": "Grounded recipe guidance"
+    }
+  ],
+  "intents": [
+    {
+      "candidate_capability_ids": [
+        "product.barcode_lookup",
+        "product.brand_identification",
+        "product.catalog_linking",
+        "product.cross_view_match",
+        "product.exact_match",
+        "product.logo_lookup",
+        "product.model_identification",
+        "product.packaging_match",
+        "product.text_attribute_match",
+        "product.variant_identification"
+      ],
+      "definition": "The user asks for the same catalog product rather than a merely similar item.",
+      "intent_id": "exact_match",
+      "mvp_capability_ids": [
+        "product.exact_match"
+      ],
+      "primary_capability_id": "product.exact_match",
+      "title": "Exact match intent"
+    },
+    {
+      "candidate_capability_ids": [
+        "product.bundle_breakdown",
+        "product.count_and_search",
+        "product.cross_category_search",
+        "product.item_comparison",
+        "product.multi_card_summary",
+        "product.multi_search",
+        "product.region_search",
+        "product.scene_inventory",
+        "vision.object_inventory",
+        "vision.object_localization"
+      ],
+      "definition": "The user asks to separate, identify, search, or compare more than one visible product.",
+      "intent_id": "multi_product",
+      "mvp_capability_ids": [
+        "product.multi_search"
+      ],
+      "primary_capability_id": "product.multi_search",
+      "title": "Multi-product intent"
+    },
+    {
+      "candidate_capability_ids": [
+        "product.brand_diversification",
+        "product.category_alternative",
+        "product.color_coordination",
+        "product.material_similarity",
+        "product.novelty_recommendation",
+        "product.occasion_recommendation",
+        "product.outfit_completion",
+        "product.price_diversification",
+        "product.style_recommendation",
+        "product.visual_similarity"
+      ],
+      "definition": "The user asks for relevant alternatives whose usefulness depends on both similarity and meaningful diversity.",
+      "intent_id": "divergent_rec",
+      "mvp_capability_ids": [
+        "product.style_recommendation"
+      ],
+      "primary_capability_id": "product.style_recommendation",
+      "title": "Divergent recommendation intent"
+    },
+    {
+      "candidate_capability_ids": [
+        "knowledge.category_explanation",
+        "knowledge.citation_summary",
+        "knowledge.comparison",
+        "knowledge.entity_identification",
+        "knowledge.feature_explanation",
+        "knowledge.origin_history",
+        "knowledge.term_definition",
+        "knowledge.uncertainty_resolution",
+        "knowledge.usage_explanation",
+        "knowledge.visual_encyclopedia"
+      ],
+      "definition": "The user asks for factual explanatory knowledge about a visually indicated entity.",
+      "intent_id": "encyclopedia",
+      "mvp_capability_ids": [
+        "knowledge.visual_encyclopedia"
+      ],
+      "primary_capability_id": "knowledge.visual_encyclopedia",
+      "title": "Visual encyclopedia intent"
+    },
+    {
+      "candidate_capability_ids": [
+        "utility.counting",
+        "utility.document_reading",
+        "utility.field_extraction",
+        "utility.object_detection",
+        "utility.recipe_guidance",
+        "utility.safety_check",
+        "utility.step_by_step_guidance",
+        "utility.text_extraction",
+        "utility.translation",
+        "utility.visual_assistance"
+      ],
+      "definition": "The user asks for a supported practical operation on visible objects, documents, or dishes.",
+      "intent_id": "utility",
+      "mvp_capability_ids": [
+        "utility.document_reading",
+        "utility.recipe_guidance"
+      ],
+      "primary_capability_id": "utility.document_reading",
+      "title": "Visual utility intent"
+    }
+  ],
+  "schema_version": 1,
+  "status": "frozen",
+  "taxonomy_sha256": "af23dbe76e8c0cffdbb056b44c6595af6c508eaa0158f96227cbc92e244ca315",
+  "taxonomy_version": "ecommerce-mvp-taxonomy-v0"
+}
