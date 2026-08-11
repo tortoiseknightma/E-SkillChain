@@ -82,6 +82,13 @@ FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS = 4096
 FEEDBACK_JUDGE_TIMEOUT_SECONDS = 600
 FEEDBACK_JUDGE_TEMPERATURE = None
 FEEDBACK_JUDGE_TOP_P = None
+# Forward-use capacity settings measured on 2026-08-12 with the exact Qwen3.7
+# thinking/JSON-Schema wire.  The immutable historical selected48 execution
+# remains concurrency two; new 240-row Portfolio work may use this paced cap.
+FEEDBACK_JUDGE_MAX_CONCURRENCY = 240
+FEEDBACK_JUDGE_REQUESTS_PER_SECOND = 8.0
+FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE = 0.02
+FEEDBACK_JUDGE_SERVICE_ERROR_RATE = 0.0
 
 # Exact historical Kimi Feedback controls remain available so immutable v7/v8
 # receipts can still be reconstructed and verified after the active role move.
