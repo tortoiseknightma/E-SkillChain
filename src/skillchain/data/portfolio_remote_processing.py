@@ -59,6 +59,8 @@ PortfolioProcessor = Literal[
     "dashscope-kimi-feedback",
     "dashscope-kimi-judge",
     "dashscope-qwen-assistant",
+    "dashscope-qwen37-feedback",
+    "dashscope-qwen38-feedback",
 ]
 PortfolioRemoteProcessingScope = Literal[
     "dev_mini-selected-query-assets",

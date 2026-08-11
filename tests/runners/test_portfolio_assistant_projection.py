@@ -83,7 +83,11 @@ def test_gcs_v2_response_contract_has_frozen_query_independent_identity() -> Non
 
     assert payload["gold_query_label_used"] is False
     assert payload["scorer_sidecar_used"] is False
-    assert payload["response_rewrite_or_renderer"] is False
+    assert payload["response_rewrite_or_renderer"] == (
+        "at_most_one_fixed_model_format_repair"
+    )
+    assert payload["repair_tool_surface"] == "none"
+    assert payload["repair_image_attachment"] is False
     assert (
         sha256_bytes(canonical_json_bytes(payload))
         == GCS_V2_MODEL_RESPONSE_CONTRACT_SHA256

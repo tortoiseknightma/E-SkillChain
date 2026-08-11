@@ -5,6 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from scripts.finalize_portfolio_treatment_runtime import (
+    StageSource,
+    _load_evolution_source,
+)
 from scripts.run_portfolio_evolution_model import (
     CODEX_COMMAND_SHAPE,
     CodexProcessResult,
@@ -19,11 +23,14 @@ from scripts.run_portfolio_evolution_model import (
     S3_INVOCATION_POLICY_VERSION,
     S1_IMPLEMENTATION_VERSION,
     S1_INVOCATION_POLICY_VERSION,
+    S1_SPARSE_IMPLEMENTATION_VERSION,
+    S1_SPARSE_INVOCATION_POLICY_VERSION,
     S3_TEXTOPT_COMPILER_PATH,
     S3_TEXTOPT_COMPILER_SNAPSHOT_FILE,
     _actionable_mutation_scope,
     _mutation_schema,
     _parse_mutation_changes,
+    _s1_sparse_creator_projection,
     _STAGE_INPUT_KIND,
     _sha_regular_file,
     run_portfolio_evolution_model,
@@ -52,7 +59,10 @@ from skillchain.evaluation.portfolio_s3_textopt import (
     build_empty_portfolio_s3_rejected_edit_buffer,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
-from skillchain.evaluation.portfolio_gcs import GCS_V2_POLICY_SHA256
+from skillchain.evaluation.portfolio_gcs import (
+    GCS_CAPABILITY_ORDER,
+    GCS_V2_POLICY_SHA256,
+)
 from skillchain.evaluation.portfolio_s1_feedback import (
     PortfolioS1FeedbackBundleEntryV1,
     PortfolioS1FeedbackBundleV1,
@@ -61,7 +71,15 @@ from skillchain.evaluation.portfolio_s1_feedback import (
     PortfolioS1FeedbackModelProjectionV1,
     PortfolioS1FeedbackRepresentativeExampleV1,
 )
+from skillchain.evaluation.portfolio_s1_experiment_runtime import (
+    _load_s1_creator_lineage,
+)
 from skillchain.schemas import ConversationTurn
+from skillchain.evolution.s1_sparse_patch import (
+    ENCYCLOPEDIA_CAPABILITY,
+    SparseCompilationReceiptV1,
+    _decode_parent_authoring_content,
+)
 from skillchain.tools.serialization import (
     canonical_json_bytes,
     parse_canonical_json,
@@ -1220,6 +1238,373 @@ def test_s1_final_larger_than_64k_consumes_one_rejected_attempt(
     assert receipt.max_final_output_bytes == 65536
 
 
+@pytest.mark.parametrize("feedback_schema_version", (5, 6, 7, 8, 9, 10))
+def test_s1_sparse_bundle_compiles_parent_protected_patch_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    feedback_schema_version: int,
+) -> None:
+    (
+        parent,
+        parent_path,
+        parent_sha,
+        _old_bundle,
+        feedback_path,
+        _old_feedback_sha,
+        semantic_path,
+        codex_path,
+    ) = _write_s1_bound_inputs(tmp_path)
+    bundle_bytes = canonical_json_bytes(
+        {
+            "schema_version": feedback_schema_version,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": (
+                f"portfolio-s1-feedback-bundle-v{feedback_schema_version}"
+            ),
+        }
+    )
+    feedback_path.write_bytes(bundle_bytes)
+    feedback_sha = sha256_bytes(bundle_bytes)
+    capability_counts = (55, 40, 40, 40, 24, 41)
+    projection = {
+        "schema_version": 5,
+        "kind": "portfolio-s1-feedback-model-projection",
+        "status": "complete_policy_filtered_feedback",
+        "selected_count": 240,
+        "parsed_count": 240,
+        "coverage": [
+            {
+                "capability": capability,
+                "role": role,
+                "selected_count": count if role == "failure" else 0,
+                "parsed_count": count if role == "failure" else 0,
+            }
+            for capability, count in zip(
+                GCS_CAPABILITY_ORDER, capability_counts, strict=True
+            )
+            for role in ("failure", "success_anchor", "partial_anchor")
+        ],
+        "actionable_suggestions": [
+            {
+                "selection_ordinal": 1,
+                "capability": ENCYCLOPEDIA_CAPABILITY,
+                "text": "Use the exact fail-closed phrase for missing evidence.",
+            }
+        ],
+        "actionable_suggestion_count": 1,
+        "gcs_contract": {
+            "policy_version": "portfolio-grounded-contract-success-v2",
+            "capability_contracts": [
+                {
+                    "capability": capability,
+                    "required_sections": ["answer", "evidence", "uncertainty"],
+                    "fallback_markers": ["not enough evidence"],
+                    "preferred_fallback_marker": "not enough evidence",
+                    "card_requirement": "forbidden",
+                    "legal_tool_sequences": [["encyclopedia_lookup"]],
+                    "detector_label_policy": (
+                        "prediction_only_never_verified_identity"
+                    ),
+                    "evidence_policy": (
+                        "material_facts_require_visible_tool_evidence"
+                    ),
+                }
+                for capability in GCS_CAPABILITY_ORDER
+            ],
+            "suggestion_policy": "only_policy_compatible_is_actionable",
+        },
+        "aggregate_diagnostics": {
+            "policy_version": "portfolio-s1-feedback-aggregate-diagnostics-v1",
+            "selected_count": 240,
+            "capabilities": [
+                {
+                    "capability": capability,
+                    "selected_count": count,
+                    "gcs_success_count": 0,
+                    "gcs_failure_count": count,
+                    "answer_mode_counts": [],
+                    "role_counts": [],
+                    "primary_cluster_counts": [],
+                    "reason_code_counts": [],
+                    "gcs_component_failure_counts": {},
+                    "diagnostic_counts": {
+                        "entries_with_rule_violations": 0,
+                        "rule_violation_count": 0,
+                        "entries_with_ideal_response_gaps": 0,
+                        "ideal_response_gap_count": 0,
+                        "policy_compatible_actionable_suggestion_count": (
+                            1 if index == 0 else 0
+                        ),
+                        "filtered_non_actionable_suggestion_count": 0,
+                    },
+                }
+                for index, (capability, count) in enumerate(
+                    zip(GCS_CAPABILITY_ORDER, capability_counts, strict=True)
+                )
+            ],
+        },
+        "representative_examples": [
+            {
+                "selection_ordinal": index,
+                "capability": GCS_CAPABILITY_ORDER[(index - 1) % 6],
+                "role": "failure",
+                "primary_cluster": "contract-check",
+                "gcs_diagnostics": {},
+                "turns": [],
+                "response_text": "Current grounded response.",
+                "cards": [],
+                "tool_evidence": [],
+                "structured_feedback": {
+                    "schema_version": 1,
+                    "summary": "Contract-safe diagnostic.",
+                    "rule_violations": [],
+                    "ideal_response_gaps": [],
+                    "policy_compatible_actionable_suggestions": (
+                        [
+                            "Use the exact fail-closed phrase for missing evidence."
+                        ]
+                        if index == 1
+                        else []
+                    ),
+                },
+            }
+            for index in range(1, 13)
+        ],
+    }
+    with pytest.raises(
+        PortfolioEvolutionModelError, match="sanitized V5 shape"
+    ):
+        _s1_sparse_creator_projection({**projection, "feedback_entries": []})
+    labeled_projection = json.loads(json.dumps(projection))
+    labeled_projection["representative_examples"][0]["structured_feedback"][
+        "summary"
+    ] = "[rejected] Unsupported advice must stay hidden."
+    with pytest.raises(
+        PortfolioEvolutionModelError, match="noncompatible suggestion"
+    ):
+        _s1_sparse_creator_projection(labeled_projection)
+
+    class _LoadedSparseBundle:
+        schema_version = feedback_schema_version
+        selected_count = 240
+        parsed_count = 240
+        provider_call_count = (
+            243
+            if feedback_schema_version == 10
+            else 245
+            if feedback_schema_version == 9
+            else 243
+            if feedback_schema_version == 8
+            else 241
+            if feedback_schema_version == 7
+            else 240
+        )
+        run_sha256 = "e" * 64
+        run_file_sha256 = "f" * 64
+        round3_run_sha256 = run_sha256
+        round3_run_file_sha256 = run_file_sha256
+        authorization_sha256 = "1" * 64
+        round3_authorization_sha256 = authorization_sha256
+        control_sha256 = "2" * 64
+        round3_control_sha256 = control_sha256
+        retry_claim_count = 3
+        retry_claim_sha256s = ("3" * 64, "4" * 64, "5" * 64)
+        fresh_output_count = 240
+        historical_feedback_outputs_imported = 0
+        round3_artifact_set_sha256 = "7" * 64
+        bound_artifact_set_sha256 = "6" * 64
+        entry_provenance = tuple(
+            type(
+                "_Provenance",
+                (),
+                {
+                    "bound_artifact_sha256": f"{index:064x}",
+                    "feedback_result_sha256": f"{index + 240:064x}",
+                    "final_global_call_ordinal": index,
+                },
+            )()
+            for index in range(1, 241)
+        )
+        parent_static_bank_sha256 = parent.bank_sha256
+        bundle_sha256 = "d" * 64
+
+        @classmethod
+        def model_validate_json(
+            cls,
+            content: bytes,
+            *,
+            strict: bool,
+        ) -> "_LoadedSparseBundle":
+            assert strict
+            assert content == bundle_bytes
+            return cls()
+
+        def canonical_bytes(self) -> bytes:
+            return bundle_bytes
+
+        def model_projection_payload(self) -> dict[str, object]:
+            return projection
+
+    def _load_sparse_bundle(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedSparseBundle:
+        assert Path(candidate) == feedback_path
+        assert expected_file_sha256 == feedback_sha
+        return _LoadedSparseBundle()
+
+    loader_name = f"load_portfolio_s1_feedback_bundle_v{feedback_schema_version}"
+    bundle_type_name = f"PortfolioS1FeedbackBundleV{feedback_schema_version}"
+
+    loader_module = (
+        "skillchain.evaluation.portfolio_s1_feedback_round3_v1"
+        if feedback_schema_version == 10
+        else "skillchain.evaluation.portfolio_s1_feedback_recovery_v1"
+        if feedback_schema_version == 9
+        else "skillchain.evaluation.portfolio_s1_feedback_retry_v3"
+        if feedback_schema_version == 8
+        else "skillchain.evaluation.portfolio_s1_feedback"
+    )
+    monkeypatch.setattr(
+        f"{loader_module}.{loader_name}",
+        _load_sparse_bundle,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        f"skillchain.evaluation.portfolio_s1_experiment_runtime.{loader_name}",
+        _load_sparse_bundle,
+    )
+    monkeypatch.setattr(
+        f"scripts.finalize_portfolio_treatment_runtime.{bundle_type_name}",
+        _LoadedSparseBundle,
+    )
+    semantic = static_authoring_module.load_authoring_packet(
+        semantic_path,
+        expected_file_sha256=_file_sha(semantic_path),
+    )
+    content_by_capability = {
+        item.capability_id: item
+        for item in _decode_parent_authoring_content(parent, semantic)
+    }
+    sparse_skills: list[dict[str, object]] = []
+    for skill in sorted(parent.skills, key=lambda item: item.capability_id):
+        row: dict[str, object] = {
+            "capability_id": skill.capability_id,
+            "action": "inherit",
+            "parent_skill_sha256": skill.skill_sha256,
+        }
+        if skill.capability_id == ENCYCLOPEDIA_CAPABILITY:
+            source = content_by_capability[skill.capability_id]
+            row.update(
+                {
+                    "action": "patch",
+                    "patch": {
+                        "objective": source.objective
+                        + " Preserve unresolved visual identity.",
+                        "steps": [
+                            item.model_dump(mode="json") for item in source.steps
+                        ],
+                        "fallback_instruction": source.fallback_instruction
+                        + " Say not enough evidence when support is absent.",
+                        "citation_source_ids": list(source.citation_source_ids),
+                    },
+                }
+            )
+        sparse_skills.append(row)
+    raw = canonical_json_bytes({"schema_version": 1, "skills": sparse_skills})
+    model = _MockCodex(raw)
+    result = run_portfolio_evolution_model(
+        stage="s1_creator",
+        output_dir=tmp_path / f"s1-sparse-v{feedback_schema_version}",
+        stage_input_path=feedback_path,
+        expected_stage_input_file_sha256=feedback_sha,
+        semantic_authoring_input_path=semantic_path,
+        expected_semantic_authoring_input_file_sha256=_file_sha(semantic_path),
+        codex_authoring_input_path=codex_path,
+        expected_codex_authoring_input_file_sha256=_file_sha(codex_path),
+        parent_bank_path=parent_path,
+        expected_parent_bank_file_sha256=parent_sha,
+        tool_registry_runtime_sha256="a" * 64,
+        codex_executable=_fake_codex_executable(tmp_path),
+        process_runner=model,
+    )
+
+    assert len(model.calls) == 1
+    receipt = _load_receipt(result.receipt_path)
+    assert receipt.implementation_version == S1_SPARSE_IMPLEMENTATION_VERSION
+    assert receipt.policy_version == S1_SPARSE_INVOCATION_POLICY_VERSION
+    assert receipt.s1_sparse_compiler_file_sha256 is not None
+    assert result.sparse_compilation_receipt_path is not None
+    sparse_receipt = SparseCompilationReceiptV1.model_validate_json(
+        result.sparse_compilation_receipt_path.read_bytes(), strict=True
+    )
+    assert sparse_receipt.parent_bank_sha256 == parent.bank_sha256
+    assert (
+        sparse_receipt.sparse_compiler_file_sha256
+        == receipt.s1_sparse_compiler_file_sha256
+    )
+    assert (
+        sha256_bytes(
+            (result.output_dir / "s1-sparse-compiler-source.py").read_bytes()
+        )
+        == receipt.s1_sparse_compiler_file_sha256
+    )
+    assert sparse_receipt.candidate_bank_sha256 == result.candidate_bank.bank_sha256
+    assert sum(item.action == "patch" for item in sparse_receipt.bindings) == 1
+    request_bytes = model.calls[0][1].split(
+        b"<portfolio_evolution_request>\n", 1
+    )[1].split(b"\n</portfolio_evolution_request>", 1)[0]
+    request = parse_canonical_json(request_bytes, label="sparse S1 model request")
+    creator_projection = request["model_inputs"]["feedback_bundle"]
+    assert "feedback_entries" not in creator_projection
+    assert len(creator_projection["representative_examples"]) == 12
+    assert sum(
+        item["selected_count"]
+        for item in creator_projection["aggregate_diagnostics"]["capabilities"]
+    ) == 240
+    assert "Unsupported advice must stay hidden." not in request_bytes.decode("utf-8")
+    creator_projection_bytes = canonical_json_bytes(creator_projection)
+    assert b"requires_new_evidence" not in creator_projection_bytes
+    assert b'"rejected"' not in creator_projection_bytes
+    assert creator_projection["actionable_suggestions"] == projection[
+        "actionable_suggestions"
+    ]
+    assert "SparsePatchDraftV1" in request["instruction"]
+
+    lineage = _load_s1_creator_lineage(
+        creator_output_root=result.output_dir,
+        expected_invocation_receipt_file_sha256=_file_sha(result.receipt_path),
+        expected_model_invocation_receipt_file_sha256=_file_sha(
+            result.model_invocation_receipt_path
+        ),
+        expected_candidate_bank_file_sha256=_file_sha(result.candidate_bank_path),
+        parent_bank=parent,
+        parent_semantic=semantic,
+        parent_semantic_file_sha256=_file_sha(semantic_path),
+    )
+    assert lineage.sparse_draft is not None
+    assert lineage.sparse_compilation_receipt == sparse_receipt
+    assert lineage.candidate_bank == result.candidate_bank
+
+    finalized_source = _load_evolution_source(
+        StageSource(
+            key="s1",
+            root=result.output_dir,
+            expected_invocation_receipt_file_sha256=_file_sha(result.receipt_path),
+        ),
+        parent_bank=parent,
+        prior_stage=None,
+        prior_gate=None,
+        semantic_bytes=semantic_path.read_bytes(),
+        codex_bytes=codex_path.read_bytes(),
+        common_authoring_input_sha256=semantic.input_sha256,
+        tool_registry_runtime_sha256=parent.tool_registry_runtime_sha256,
+    )
+    assert finalized_source.candidate == result.candidate_bank
+    assert finalized_source.stage_input.bundle_sha256 == "d" * 64
+
+
 def test_one_mock_session_compiles_s1_s2_and_s3_with_exact_field_scopes(
     tmp_path: Path,
 ) -> None:
@@ -1284,6 +1669,27 @@ def test_one_mock_session_compiles_s1_s2_and_s3_with_exact_field_scopes(
         "parent_static_bank",
         "semantic_authoring_input",
     )
+    replayed_historical_s1 = _load_evolution_source(
+        StageSource(
+            key="s1",
+            root=s1.output_dir,
+            expected_invocation_receipt_file_sha256=_file_sha(s1.receipt_path),
+        ),
+        parent_bank=parent_bank,
+        prior_stage=None,
+        prior_gate=None,
+        semantic_bytes=semantic_path.read_bytes(),
+        codex_bytes=codex_path.read_bytes(),
+        common_authoring_input_sha256=(
+            static_authoring_module.load_authoring_packet(
+                semantic_path,
+                expected_file_sha256=_file_sha(semantic_path),
+            ).input_sha256
+        ),
+        tool_registry_runtime_sha256=runtime_sha256,
+    )
+    assert replayed_historical_s1.candidate == s1.candidate_bank
+    assert replayed_historical_s1.stage_input == feedback_bundle
     prompt = author.calls[0][1]
     request_bytes = prompt.split(b"<portfolio_evolution_request>\n", 1)[1].split(
         b"\n</portfolio_evolution_request>", 1

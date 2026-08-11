@@ -18,6 +18,7 @@ from skillchain.evaluation.evaluator_outputs import (
     parse_final_judge_output,
     parse_visual_feedback_output,
 )
+from skillchain.evaluation.feedback_runtime import visual_feedback_response_format_v1
 from skillchain.llm import LLMResponse, chat
 from skillchain.synthesis.store import canonical_json_bytes, sha256_bytes
 
@@ -57,7 +58,7 @@ def test_qwen_vision_hello(red_image):
 
 @pytest.mark.integration
 @_requires("DASHSCOPE_API_KEY")
-def test_kimi_k26_visual_feedback_json(red_image):
+def test_qwen38_visual_feedback_json(red_image):
     prompt = (
         "Inspect the image. Return exactly one JSON object with no Markdown: "
         '{"schema_version":1,"summary":"a nonblank summary naming the visible '
@@ -65,15 +66,19 @@ def test_kimi_k26_visual_feedback_json(red_image):
         '"skill_suggestions":[]}. Return no other keys or text.'
     )
     response = chat(
-        "kimi",
+        "qwen",
         [{"role": "user", "content": prompt}],
         model=config.FEEDBACK_JUDGE_MODEL,
         images=[red_image],
         temperature=config.FEEDBACK_JUDGE_TEMPERATURE,
         top_p=config.FEEDBACK_JUDGE_TOP_P,
         thinking=config.FEEDBACK_JUDGE_THINKING,
-        max_tokens=256,
+        thinking_budget=config.FEEDBACK_JUDGE_THINKING_BUDGET,
+        max_tokens=None,
+        max_completion_tokens=config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS,
+        response_format=visual_feedback_response_format_v1(),
         max_attempts=1,
+        timeout_seconds=config.FEEDBACK_JUDGE_TIMEOUT_SECONDS,
     )
     parsed = parse_visual_feedback_output(response.text)
     assert "red" in parsed.summary.casefold() or "红" in parsed.summary
@@ -109,18 +114,36 @@ def test_gemini_36_visual_judge_json(red_image):
 
 
 def test_active_portfolio_role_selection_is_self_hashed_and_matches_runtime():
-    historical = config.ROOT / "specs" / "authoring" / "model-role-selection-v7.json"
-    path = config.ROOT / "specs" / "authoring" / "model-role-selection-v8.json"
+    historical = config.ROOT / "specs" / "authoring" / "model-role-selection-v8.json"
+    historical_v9 = (
+        config.ROOT / "specs" / "authoring" / "model-role-selection-v9.json"
+    )
+    historical_v10 = (
+        config.ROOT / "specs" / "authoring" / "model-role-selection-v10.json"
+    )
+    historical_v11 = (
+        config.ROOT / "specs" / "authoring" / "model-role-selection-v11.json"
+    )
+    path = config.ROOT / "specs" / "authoring" / "model-role-selection-v12.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     unsigned = {
         key: value for key, value in payload.items() if key != "selection_sha256"
     }
 
     assert sha256_bytes(historical.read_bytes()) == (
-        "fbfbe9437731052743b3025962a22e4d3cd6432c2212b7cc418b2118e9fd2ba4"
+        "31ebdbe0af7d844ce3bf88bb0ab17d0c05640082618a4c24e1f022e38868efe8"
+    )
+    assert sha256_bytes(historical_v9.read_bytes()) == (
+        "5289e3a233247ddfff339456fd3dab9e1d550a6fd37347ad61001bdb1ef134e1"
+    )
+    assert sha256_bytes(historical_v10.read_bytes()) == (
+        "39e8d099f0b303725ee0be59f758560627ecbc3ce156524da4f2a2d3d20f3501"
+    )
+    assert sha256_bytes(historical_v11.read_bytes()) == (
+        "048362dd770c626ac4c2293b1d8a28cb4fcb2a3a240c4f79dca745e4dbb5c50c"
     )
     assert sha256_bytes(path.read_bytes()) == (
-        "31ebdbe0af7d844ce3bf88bb0ab17d0c05640082618a4c24e1f022e38868efe8"
+        "474826b4fdd89af7df3f520e5bc27af880291b2b76239a4abca7fd40679f1cef"
     )
     assert payload["selection_sha256"] == sha256_bytes(canonical_json_bytes(unsigned))
     feedback = payload["feedback_evaluator"]
@@ -128,29 +151,50 @@ def test_active_portfolio_role_selection_is_self_hashed_and_matches_runtime():
         config.FEEDBACK_JUDGE_PROVIDER,
         config.FEEDBACK_JUDGE_MODEL,
     )
-    assert feedback["cache_namespace"] == "feedback-evaluator-v9"
+    assert feedback["cache_namespace"] == "feedback-evaluator-v12"
     assert feedback["endpoint_configuration"] == "DASHSCOPE_BASE_URL"
     assert feedback["prompt_policy_version"] == (
-        "visual-feedback-response-schema-v1-prompt-v5"
+        "visual-feedback-gcs-policy-labels-prompt-v6"
     )
     assert feedback["prompt_policy_sha256"] == (
-        "024c1a8831b3497a904272cd9b9c2352fbbb97b633755388536da8475cbdfffb"
+        "c4c6a0afcc472de09a1c8c27c1eaa276590b60ecfceb348b3b634a56f24a2f3f"
     )
     assert feedback["transport_policy_version"] == (
-        "visual-feedback-qwen-dashscope-json-schema-v5"
+        "visual-feedback-qwen38-dashscope-json-schema-v7"
     )
     assert feedback["transport_policy_sha256"] == (
-        "092f36be5eb08e4fd58edc888fe273bee2b4295059048dbd9715d472e534f20c"
+        "462b2ef6f7afb0d618f0f29f0d24590aaac45a00ece52cd99643151045a36a0b"
     )
     assert feedback["requested_response_format"] == "json_schema"
     assert feedback["requested_json_schema_strict"] is True
     assert feedback["max_tokens"] is None
-    assert feedback["max_completion_tokens"] == 4096
+    assert feedback["max_completion_tokens"] == 6144
     assert feedback["max_completion_tokens_documented_upper_tolerance_tokens"] == 10
     assert feedback["input_token_reservation_ceiling_per_call"] == 20_000
-    assert feedback["output_token_reservation_ceiling_per_call"] == 4106
-    assert feedback["per_call_reservation_cny"] == "0.072848000000"
-    assert feedback["worst_case_reservation_cny"] == "3.496704000000"
+    assert feedback["output_token_reservation_ceiling_per_call"] == 6154
+    assert feedback["per_call_reservation_cny"] == "0.461544000000"
+    assert feedback["provider_call_ceiling"] == 243
+    assert feedback["worst_case_reservation_cny"] == "112.155192000000"
+    assert feedback["technical_phase_hard_cap_cny"] == "113.000000000000"
+    assert feedback["owner_authorized_budget_ceiling_cny"] == "150.000000000000"
+    assert feedback["live_provider_calls_authorized"] is True
+    assert feedback["budget_authorization_status"] == (
+        "fresh_v3_live_authorized_cny150_owner_ceiling_cny113_technical_stop"
+    )
+    assert feedback["normal_attempts_per_selected_query"] == 1
+    assert feedback["global_retry_token_count"] == 3
+    assert feedback["max_attempts_per_retried_query"] == 2
+    assert feedback["retry_eligible_error_codes"] == ["invalid_feedback_json"]
+    assert feedback["retry_eligible_finish_reasons"] == ["stop", "length"]
+    assert feedback["attempt_transport_retry_policy"] == (
+        "no_internal_retry_each_provider_attempt"
+    )
+    assert feedback["outer_orchestration_policy_version"] == (
+        "portfolio-s1-feedback-global-schema-or-length-retry-v2"
+    )
+    assert feedback["outer_orchestration_policy_sha256"] == (
+        "f6ca1511748f0965831f5fda3a9df0e1c7b141f322b21ca82aba8a443837071a"
+    )
     final = payload["offline_judge"]
     assert (final["provider"], final["model"]) == (
         config.PORTFOLIO_JUDGE_PROVIDER,
@@ -606,7 +650,7 @@ def test_deepseek_identity_and_default_thinking_guard(tmp_path, monkeypatch):
     assert calls[0]["extra_body"] == {"enable_thinking": False}
 
 
-def test_qwen37_feedback_sends_strict_json_schema_and_thinking_contract(
+def test_qwen38_feedback_sends_strict_json_schema_and_thinking_contract(
     tmp_path, monkeypatch, red_image
 ):
     calls: list[dict] = []
@@ -614,7 +658,7 @@ def test_qwen37_feedback_sends_strict_json_schema_and_thinking_contract(
     def create(**kwargs):
         calls.append(kwargs)
         return SimpleNamespace(
-            id="req-qwen37-1",
+            id="req-qwen38-1",
             model=config.FEEDBACK_JUDGE_MODEL,
             choices=[
                 SimpleNamespace(
@@ -669,7 +713,7 @@ def test_qwen37_feedback_sends_strict_json_schema_and_thinking_contract(
         "thinking_budget": 2048,
     }
     assert "max_tokens" not in calls[0]
-    assert calls[0]["max_completion_tokens"] == 4096
+    assert calls[0]["max_completion_tokens"] == 6144
     assert calls[0]["timeout"] == 600
     assert "temperature" not in calls[0]
     assert "top_p" not in calls[0]
@@ -700,12 +744,12 @@ def test_qwen37_feedback_sends_strict_json_schema_and_thinking_contract(
         (SimpleNamespace(prompt_tokens=11, completion_tokens=7), "qwen-wrong-snapshot"),
     ),
 )
-def test_qwen37_feedback_rejects_missing_or_invalid_provider_usage(
+def test_qwen38_feedback_rejects_missing_or_invalid_provider_usage(
     tmp_path, monkeypatch, usage, response_model
 ):
     def create(**_kwargs):
         return SimpleNamespace(
-            id="req-qwen37-invalid-usage",
+            id="req-qwen38-invalid-usage",
             model=response_model,
             choices=[
                 SimpleNamespace(
@@ -737,7 +781,7 @@ def test_qwen37_feedback_rejects_missing_or_invalid_provider_usage(
         strict=True,
     )
 
-    with pytest.raises(llm.LLMContractError, match="Qwen3.7 Feedback"):
+    with pytest.raises(llm.LLMContractError, match="Qwen3.8-Max Feedback"):
         chat(
             "qwen",
             [{"role": "user", "content": "feedback"}],
@@ -745,11 +789,72 @@ def test_qwen37_feedback_rejects_missing_or_invalid_provider_usage(
             thinking=True,
             thinking_budget=2048,
             max_tokens=None,
-            max_completion_tokens=4096,
+            max_completion_tokens=6144,
             response_format=response_format,
             max_attempts=1,
             timeout_seconds=600,
         )
+
+
+def test_historical_qwen37_feedback_wire_remains_reconstructable(
+    tmp_path, monkeypatch
+):
+    calls: list[dict] = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            id="req-qwen37-historical-1",
+            model=config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="{}", tool_calls=[]),
+                    finish_reason="stop",
+                )
+            ],
+            usage=SimpleNamespace(prompt_tokens=11, completion_tokens=7),
+        )
+
+    llm._clients["qwen"] = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(config, "USAGE_LOG", tmp_path / "usage.jsonl")
+    response_format = llm.LLMJsonSchemaResponseFormat.model_validate(
+        {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "historical_feedback_test_v1",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            },
+        },
+        strict=True,
+    )
+
+    response = chat(
+        "qwen",
+        [{"role": "user", "content": "historical feedback"}],
+        model=config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+        thinking=True,
+        thinking_budget=2048,
+        max_tokens=None,
+        max_completion_tokens=4096,
+        response_format=response_format,
+        max_attempts=1,
+        timeout_seconds=600,
+    )
+
+    assert response.requested_model == config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL
+    assert calls[0]["stream"] is False
+    assert calls[0]["max_completion_tokens"] == 4096
+    assert calls[0]["extra_body"] == {
+        "enable_thinking": True,
+        "thinking_budget": 2048,
+    }
 
 
 def test_historical_kimi_feedback_adapter_remains_available(tmp_path, monkeypatch):
@@ -925,6 +1030,7 @@ def test_kimi_k26_rejects_unsupported_contract_before_client(kwargs):
         {"max_tokens": 2048},
         {"max_completion_tokens": None},
         {"max_completion_tokens": 2048},
+        {"max_completion_tokens": 4096},
         {"timeout_seconds": None},
         {"json_mode": True, "temperature": 0.2},
         {"json_mode": True, "top_p": 0.95},
@@ -932,7 +1038,7 @@ def test_kimi_k26_rejects_unsupported_contract_before_client(kwargs):
         {"json_mode": True, "reasoning_effort": "max"},
     ],
 )
-def test_qwen37_feedback_rejects_unfrozen_contract_before_client(kwargs):
+def test_qwen38_feedback_rejects_unfrozen_contract_before_client(kwargs):
     controls = {
         "response_format": llm.LLMJsonSchemaResponseFormat.model_validate(
             {
@@ -952,7 +1058,7 @@ def test_qwen37_feedback_rejects_unfrozen_contract_before_client(kwargs):
         "thinking": True,
         "thinking_budget": 2048,
         "max_tokens": None,
-        "max_completion_tokens": 4096,
+        "max_completion_tokens": 6144,
         "timeout_seconds": 600,
     }
     controls.update(kwargs)

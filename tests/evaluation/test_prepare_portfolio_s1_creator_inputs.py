@@ -370,3 +370,267 @@ def test_typed_feedback_loader_dispatches_exact_v4_identity(
         )
         is loaded
     )
+
+
+def test_typed_feedback_loader_dispatches_exact_v5_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 5,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v5",
+        }
+    )
+    path = tmp_path / "feedback-v5.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV5:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV5()
+
+    def _load_v5(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV5:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v5",
+        _load_v5,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )
+
+
+def test_typed_feedback_loader_dispatches_exact_v6_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 6,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v6",
+        }
+    )
+    path = tmp_path / "feedback-v6.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV6:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV6()
+
+    def _load_v6(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV6:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v6",
+        _load_v6,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )
+
+
+def test_typed_feedback_loader_dispatches_exact_v7_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 7,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v7",
+        }
+    )
+    path = tmp_path / "feedback-v7.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV7:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV7()
+
+    def _load_v7(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV7:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v7",
+        _load_v7,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )
+
+
+def test_typed_feedback_loader_dispatches_exact_v8_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 8,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v8",
+        }
+    )
+    path = tmp_path / "feedback-v8.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV8:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV8()
+
+    def _load_v8(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV8:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v8",
+        _load_v8,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )
+
+
+def test_typed_feedback_loader_dispatches_exact_v9_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 9,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v9",
+        }
+    )
+    path = tmp_path / "feedback-v9.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV9:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV9()
+
+    def _load_v9(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV9:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v9",
+        _load_v9,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )
+
+
+def test_typed_feedback_loader_dispatches_exact_v10_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 10,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v10",
+        }
+    )
+    path = tmp_path / "feedback-v10.json"
+    path.write_bytes(content)
+    expected_sha256 = sha256_bytes(content)
+
+    class _LoadedV10:
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    loaded = _LoadedV10()
+
+    def _load_v10(
+        candidate: str | Path,
+        *,
+        expected_file_sha256: str,
+    ) -> _LoadedV10:
+        assert Path(candidate) == path
+        assert expected_file_sha256 == expected_sha256
+        return loaded
+
+    monkeypatch.setattr(
+        "scripts.prepare_portfolio_s1_creator_inputs."
+        "load_portfolio_s1_feedback_bundle_v10",
+        _load_v10,
+    )
+    assert (
+        _load_typed_s1_feedback_bundle(
+            path,
+            expected_file_sha256=expected_sha256,
+        )
+        is loaded
+    )

@@ -64,7 +64,7 @@ def test_active_evaluator_isolation_follows_swapped_runtime_roles() -> None:
 
     assert (lock.feedback.provider, lock.feedback.model) == (
         "qwen",
-        "qwen3.7-plus-2026-05-26",
+        "qwen3.8-max",
     )
     assert (lock.final.provider, lock.final.model) == (
         "gemini",

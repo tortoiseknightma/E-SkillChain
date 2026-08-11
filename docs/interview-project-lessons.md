@@ -65,6 +65,7 @@
 | 47 | accepted 必须晚于 durable ledger；编码错误应在此前 fail-closed | 已验证并落地 | 事务顺序、编码可靠性、可恢复执行、不可变审计 |
 | 48 | 验证幂等不等于内存幂等：Core catalog 深验要复用证明并控制图像副本 | 已验证主修复；跨进程残留已进 backlog | 内存诊断、信任边界、多进程资源治理 |
 | 49 | 跨品类搭配不能伪装成同类视觉相似：需要 query-independent evidence graph | 工具分支与真实 smoke 完成；Core 重锁/模型增益待验证 | 检索建模、Codex 辅助数据闭环、证据边界、实验隔离 |
+| 50 | JSON Schema 能收紧结构契约，但不能让 reasoning-only 空正文变得不可能 | canary 已验证；phase60/全量未执行 | LLM 结构化输出、故障恢复、不可变审计、成本治理 |
 
 ---
 
@@ -5166,6 +5167,73 @@ Core Gate 0 的 Style card 违规主要不是 renderer 漏字段，而是跨品�
 - `tests/evaluation/test_build_portfolio_style_coordination_graph.py`
 - `tests/tools/test_portfolio_runtime_style.py`
 - `tests/runners/test_portfolio_assistant_projection.py`
+
+---
+
+## 50. JSON Schema 能收紧结构契约，但不能让 reasoning-only 空正文变得不可能
+
+**状态：canary 已验证；phase60/全量未执行**
+
+### 一句话问题
+
+Qwen3.8-Max 的 JSON Object 运行出现不可解析终态；改用 strict JSON Schema 后固定 12 条 canary 最终全部解析，但仍有三次首试失败，其中两次只有 reasoning、最终正文为空，说明结构契约与单次调用可靠性是两个问题。
+
+### 背景与影响
+
+Feedback 模型永久切换为 Qwen3.8-Max 后，原 Round 3 JSON Object root 在 14 次调用后只有 10/12 条解析成功，状态为 `stopped_nonparsed`。直接覆盖旧 root、复用其中输出或无限重试，都会破坏实验身份、失败证据和成本边界；同时，把 JSON Schema 当成“每次一定有正文”的保证也会掩盖真实 provider 故障。
+
+### 观察到的证据
+
+- 旧 JSON Object root 保持只读；新 Schema root 导入旧输出数为 0，并使用独立的 authorization/control/launch/run 身份。
+- 新请求使用 `response_format.type=json_schema`、`strict=true` 和冻结的视觉 Feedback schema；固定 canary 为 12 条，provider 调用上限为 15 次，即 12 次首试加全局最多 3 次 retry。
+- 实际共调用 15 次，三次首试均记为 `invalid_feedback_json`。其中两次 `finish_reason=stop`，reasoning 分别有 3,672/3,036 bytes，但 final content 为 0 bytes；另一次有非空正文但未通过本地严格解析。三次 retry 后最终 `parsed_count=12`、`error_count=0`、`retry_count=3`。
+- create-only reservation、provider-attempt、retry-claim 与 bound artifact 均先落盘再推进状态；本轮新增实际费用为 CNY 1.944600。
+
+### 根因
+
+已验证的实现问题是旧 Round 3 专用路径仍发送 JSON Object，没有使用项目已有的严格 JSON Schema 契约。已验证的运行现象是：即使请求已切成 Schema，Qwen3.8-Max 在开启 thinking 时仍可能返回 reasoning 而没有 final content，或返回未通过本地契约的正文。其 provider 内部原因没有外部证据，因此只能推断为模型/服务的瞬态输出行为，不能归因成“Schema 无效”或本地解析器吞掉了正文。
+
+### 考虑过的方案与取舍
+
+1. 原地修改 JSON Object root 或导入 10 条成功输出：成本更低，但会混合传输契约和历史身份，拒绝。
+2. 关闭 thinking 或放宽本地 parser：可能减少失败，却同时改变已冻结模型契约或接受不合规内容，未采用。
+3. 改为 strict JSON Schema，并在新 identity 下做固定 12 条 canary：能单独验证传输修复；代价是必须重建治理绑定并支付新调用成本，采用。
+4. 无界重试：能提高表面成功率，但不可审计且会挑选幸运结果；改为 create-only 全局 retry 额度 3。
+
+### 最终方案
+
+新增 forward-only Schema transport、result/cache 版本和独立 Schema Round 3 CLI；旧 JSON Object artifacts 字节不变。新 authorization 绑定模型/source/pricing/role 治理版本，选择集固定 12 条，先预留 15 个调用槽和预算；每次调用、失败与 retry claim 都使用 create-only ledger，且 retry 是全局上限 3，不是每条各重试 3 次。canary 完成即停止，phase60 必须获得新的 owner 批准。
+
+### 如何验证
+
+聚焦测试覆盖 SDK 实际 wire 中 `json_schema.strict/schema` 的位置、旧结果反序列化、零调用 preflight、预算预留、并发与全局 retry 竞争、崩溃恢复和 create-only 冲突。真实 canary 的 run receipt 进一步证明：12 条最终全部 parsed、历史输出导入为 0、三张 retry claim 与 15 份 provider attempt 对应、费用为 CNY 1.944600。
+
+### 剩余限制
+
+这只是 12 条 canary，不证明 60/120/240 阶段也会保持同样成功率，更不证明 Feedback 质量或 S1 指标提升。三次 retry 额度已全部用完；若扩大阶段仍出现 reasoning-only 或 schema-invalid 输出，必须在新批准和新预算下诚实停止或另行诊断，不能把重试成功写成零失败。
+
+### 30 秒回答
+
+“Qwen3.8-Max 的旧 JSON Object canary 最终只有 10/12 可解析。我没有覆盖旧产物，而是用 forward-only identity 切到 strict JSON Schema，固定跑 12 条，并把 retry 做成 create-only ledger 上的全局 3 次额度。结果最终 12/12 parsed，新增费用 CNY 1.9446；但中间确实用了三次 retry，其中两次只有 reasoning、final content 为空。这说明 Schema 修好了结构契约，却不能保证 provider 每次都给有效正文，所以我保留失败证据，也没有把 canary 外推成全量结论。”
+
+### 2 分钟回答
+
+“这次问题有两层。第一层是确定的工程缺陷：通用适配器已经支持 JSON Schema，但旧 Round 3 专用执行路径仍发送 JSON Object，因此 Qwen3.8-Max 跑到 14 次调用后只得到 10/12 条可解析结果。第二层是 provider 可靠性：把 wire 改成 strict JSON Schema 后，也不能假设单次调用必然成功。
+
+我没有修补或复用旧 root，因为那会把两个传输契约混成同一个实验身份。我建立了新的 authorization/control/launch/run 链，冻结 schema、模型、source、price 和 role；历史输出导入数必须为 0。执行范围固定为 12 条 canary，最多预留 15 次调用。每个 reservation、provider attempt 和 retry claim 都先 create-only 落盘，retry 是所有样本共享的 3 次上限，因此并发或崩溃都不能偷偷超预算。
+
+真实运行最终是 12/12 parsed、15 次调用、三次 retry、新增 CNY 1.9446。两次失败的证据很关键：`finish_reason=stop`，reasoning 非空，但 final content 是 0 bytes；另一次正文非空却没通过严格 parser。三次重试都成功了，但我不会说‘Schema 消除了失败’，准确结论是它关闭了旧结构契约缺口，而受控重试吸收了少量瞬态故障。由于样本只有 12 条、retry 额度也已用完，phase60 和全量仍需新的批准，且不能从这次 canary 推断 Feedback 质量或最终算法增益。”
+
+### 证据入口
+
+- `src/skillchain/evaluation/portfolio_s1_feedback_recovery_v1.py`
+- `src/skillchain/evaluation/portfolio_s1_feedback_round3_schema_v1.py`
+- `src/skillchain/evaluation/portfolio_s1_qwen_governance.py`
+- `scripts/run_portfolio_s1_feedback_round3_schema_v1.py`
+- `tests/evaluation/test_portfolio_s1_feedback_round3_schema_v1.py`
+- `tests/evaluation/test_portfolio_s1_qwen_round3_schema_governance.py`
+- `runs/portfolio/core-s1/s1-feedback-round3-qwen38-v1/run-round3-v1.json`
+- `runs/portfolio/core-s1/s1-feedback-round3-qwen38-schema-v1/run-round3-schema-v2.json`
 
 ---
 

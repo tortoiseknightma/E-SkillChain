@@ -143,6 +143,20 @@ class LLMResponse(_FrozenModel):
         pattern=r"^[0-9a-f]{64}$",
         exclude_if=lambda value: value is None,
     )
+    refusal_present: bool = Field(
+        default=False,
+        exclude_if=lambda value: value is False,
+    )
+    refusal_bytes: int = Field(
+        default=0,
+        ge=0,
+        exclude_if=lambda value: value == 0,
+    )
+    refusal_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        exclude_if=lambda value: value is None,
+    )
 
     @field_validator(
         "endpoint", "requested_model", "response_model", "request_id", "finish_reason"
@@ -178,6 +192,17 @@ class LLMResponse(_FrozenModel):
             raise ValueError(
                 "reasoning bytes and SHA-256 must be present or absent together"
             )
+        if self.refusal_present is not (self.refusal_bytes > 0) or (
+            self.refusal_sha256 is None
+            and (self.refusal_present or self.refusal_bytes != 0)
+        ):
+            raise ValueError("refusal metadata fields are inconsistent")
+        if (
+            self.refusal_sha256 is not None
+            and self.refusal_bytes == 0
+            and self.refusal_sha256 != hashlib.sha256(b"").hexdigest()
+        ):
+            raise ValueError("empty refusal commitment is invalid")
         return self
 
 
@@ -245,6 +270,9 @@ def _log_usage(response: LLMResponse) -> None:
         "reasoning_tokens": response.reasoning_tokens,
         "reasoning_bytes": response.reasoning_bytes,
         "reasoning_sha256": response.reasoning_sha256,
+        "refusal_present": response.refusal_present,
+        "refusal_bytes": response.refusal_bytes,
+        "refusal_sha256": response.refusal_sha256,
     }
     with config.USAGE_LOG.open("a", encoding="utf-8", newline="\n") as file:
         file.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
@@ -353,6 +381,24 @@ def _extract_openai_reasoning_metadata(
     }
 
 
+def _extract_openai_refusal_metadata(message: object) -> dict[str, object]:
+    """Commit to a provider refusal without retaining refusal text."""
+
+    refusal = getattr(message, "refusal", None)
+    if refusal is None:
+        model_extra = getattr(message, "model_extra", None)
+        if isinstance(model_extra, dict):
+            refusal = model_extra.get("refusal")
+    if refusal is not None and not isinstance(refusal, str):
+        raise LLMContractError("provider refusal must be text when present")
+    refusal_bytes = b"" if not refusal else refusal.encode("utf-8")
+    return {
+        "refusal_present": bool(refusal_bytes),
+        "refusal_bytes": len(refusal_bytes),
+        "refusal_sha256": hashlib.sha256(refusal_bytes).hexdigest(),
+    }
+
+
 def chat(
     provider: str,
     messages: list[dict[str, Any]],
@@ -366,6 +412,7 @@ def chat(
     max_completion_tokens: int | None = None,
     json_mode: bool = False,
     response_format: LLMJsonSchemaResponseFormat | None = None,
+    qwen_feedback_recovery_json_object: bool = False,
     tools: list[dict[str, Any]] | None = None,
     tool_choice: dict[str, Any] | str | None = None,
     parallel_tool_calls: bool | None = None,
@@ -404,28 +451,71 @@ def chat(
         raise ValueError("seed must be non-negative")
     if typed_provider == "claude" and seed is not None:
         raise ValueError("claude endpoint does not expose deterministic seed control")
-    if typed_provider == "qwen" and selected_model == config.FEEDBACK_JUDGE_MODEL:
+    qwen38_feedback_model = (
+        typed_provider == "qwen" and selected_model == config.FEEDBACK_JUDGE_MODEL
+    )
+    legacy_qwen37_feedback_model = (
+        typed_provider == "qwen"
+        and selected_model == config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL
+    )
+    qwen_feedback_model = qwen38_feedback_model or legacy_qwen37_feedback_model
+    qwen_feedback_label = (
+        "Qwen3.8-Max Feedback"
+        if selected_model == config.FEEDBACK_JUDGE_MODEL
+        else "Qwen3.7 Plus Feedback"
+    )
+    if qwen_feedback_recovery_json_object and not qwen38_feedback_model:
+        raise ValueError(
+            "Qwen Feedback recovery JSON-object mode is limited to qwen3.8-max"
+        )
+    if qwen_feedback_model:
+        required_thinking = (
+            config.FEEDBACK_JUDGE_THINKING
+            if qwen38_feedback_model
+            else config.LEGACY_QWEN37_FEEDBACK_JUDGE_THINKING
+        )
+        required_thinking_budget = (
+            config.FEEDBACK_JUDGE_THINKING_BUDGET
+            if qwen38_feedback_model
+            else config.LEGACY_QWEN37_FEEDBACK_JUDGE_THINKING_BUDGET
+        )
+        required_max_completion_tokens = (
+            config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS
+            if qwen38_feedback_model
+            else config.LEGACY_QWEN37_FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS
+        )
+        required_timeout_seconds = (
+            config.FEEDBACK_JUDGE_TIMEOUT_SECONDS
+            if qwen38_feedback_model
+            else config.LEGACY_QWEN37_FEEDBACK_JUDGE_TIMEOUT_SECONDS
+        )
         if reasoning_effort is not None:
-            raise ValueError("Qwen3.7 Plus Feedback does not expose reasoning_effort")
-        if thinking is not config.FEEDBACK_JUDGE_THINKING:
-            raise ValueError("Qwen3.7 Plus Feedback requires enable_thinking=true")
-        if thinking_budget != config.FEEDBACK_JUDGE_THINKING_BUDGET:
-            raise ValueError("Qwen3.7 Plus Feedback requires thinking_budget=2048")
+            raise ValueError(f"{qwen_feedback_label} does not expose reasoning_effort")
+        if thinking is not required_thinking:
+            raise ValueError(f"{qwen_feedback_label} requires enable_thinking=true")
+        if thinking_budget != required_thinking_budget:
+            raise ValueError(f"{qwen_feedback_label} requires thinking_budget=2048")
         if max_tokens is not None:
-            raise ValueError("Qwen3.7 Plus Feedback requires max_tokens to be omitted")
-        if max_completion_tokens != config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS:
+            raise ValueError(f"{qwen_feedback_label} requires max_tokens to be omitted")
+        if max_completion_tokens != required_max_completion_tokens:
             raise ValueError(
-                "Qwen3.7 Plus Feedback requires max_completion_tokens=4096"
+                f"{qwen_feedback_label} requires "
+                f"max_completion_tokens={required_max_completion_tokens}"
             )
-        if timeout_seconds != config.FEEDBACK_JUDGE_TIMEOUT_SECONDS:
-            raise ValueError("Qwen3.7 Plus Feedback requires timeout_seconds=600")
+        if timeout_seconds != required_timeout_seconds:
+            raise ValueError(f"{qwen_feedback_label} requires timeout_seconds=600")
         if temperature is not None or top_p is not None:
-            raise ValueError("Qwen3.7 Plus Feedback sampling controls must be omitted")
+            raise ValueError(f"{qwen_feedback_label} sampling controls must be omitted")
         if seed is not None:
-            raise ValueError("Qwen3.7 Plus Feedback contract does not expose seed")
-        if json_mode or response_format is None:
+            raise ValueError(f"{qwen_feedback_label} contract does not expose seed")
+        if qwen_feedback_recovery_json_object:
+            if not json_mode or response_format is not None:
+                raise ValueError(
+                    "Qwen3.8-Max Feedback recovery requires response_format=json_object"
+                )
+        elif json_mode or response_format is None:
             raise ValueError(
-                "Qwen3.7 Plus Feedback requires typed response_format=json_schema"
+                f"{qwen_feedback_label} requires typed response_format=json_schema"
             )
     elif typed_provider == "kimi":
         if max_tokens is None or max_completion_tokens is not None:
@@ -500,11 +590,9 @@ def chat(
         raise ValueError("tools must be non-empty when supplied")
     if json_mode and response_format is not None:
         raise ValueError("json_mode and response_format are mutually exclusive")
-    if response_format is not None and not (
-        typed_provider == "qwen" and selected_model == config.FEEDBACK_JUDGE_MODEL
-    ):
+    if response_format is not None and not qwen_feedback_model:
         raise ValueError(
-            "typed JSON-Schema response format is limited to Qwen3.7 Feedback"
+            "typed JSON-Schema response format is limited to active Qwen Feedback"
         )
     if (json_mode or response_format is not None) and tools is not None:
         raise ValueError("structured response format and tools are mutually exclusive")
@@ -678,7 +766,16 @@ def _chat_once(
         kwargs["response_format"] = response_format.model_dump(
             mode="json", by_alias=True
         )
-    if provider == "qwen" and model == config.FEEDBACK_JUDGE_MODEL:
+    qwen_feedback_model = provider == "qwen" and model in {
+        config.FEEDBACK_JUDGE_MODEL,
+        config.LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL,
+    }
+    qwen_feedback_label = (
+        "Qwen3.8-Max Feedback"
+        if model == config.FEEDBACK_JUDGE_MODEL
+        else "Qwen3.7 Plus Feedback"
+    )
+    if qwen_feedback_model:
         kwargs["stream"] = False
     if tools is not None:
         kwargs["tools"] = tools
@@ -708,7 +805,7 @@ def _chat_once(
         for call in (message.tool_calls or ())
     )
     usage = raw_response.usage
-    if provider == "qwen" and model == config.FEEDBACK_JUDGE_MODEL:
+    if qwen_feedback_model:
         prompt_tokens = None if usage is None else usage.prompt_tokens
         completion_tokens = None if usage is None else usage.completion_tokens
         if (
@@ -718,7 +815,7 @@ def _chat_once(
             or completion_tokens < 0
         ):
             raise LLMContractError(
-                "Qwen3.7 Feedback requires captured positive input and "
+                f"{qwen_feedback_label} requires captured positive input and "
                 "non-negative output token usage"
             )
         total_tokens = getattr(usage, "total_tokens", None)
@@ -727,7 +824,7 @@ def _chat_once(
             or total_tokens != prompt_tokens + completion_tokens
         ):
             raise LLMContractError(
-                "Qwen3.7 Feedback provider token usage is inconsistent"
+                f"{qwen_feedback_label} provider token usage is inconsistent"
             )
     try:
         return LLMResponse(
@@ -745,11 +842,12 @@ def _chat_once(
             finish_reason=choice.finish_reason,
             latency_ms=0,
             **_extract_openai_reasoning_metadata(message, usage),
+            **_extract_openai_refusal_metadata(message),
         )
     except ValueError as error:
-        if provider == "qwen" and model == config.FEEDBACK_JUDGE_MODEL:
+        if qwen_feedback_model:
             raise LLMContractError(
-                "Qwen3.7 Feedback response identity violates the runtime contract"
+                f"{qwen_feedback_label} response identity violates the runtime contract"
             ) from error
         raise
 

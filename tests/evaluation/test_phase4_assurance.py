@@ -874,7 +874,12 @@ def test_v2_production_runner_locks_and_executes_composite_tool(
             )
             finish_reason = "tool_calls"
         else:
-            text = "Composite product result presented."
+            text = (
+                "answer:\nComposite product result presented.\n"
+                "item_mapping:\nnone\n"
+                "product_cards:\nnone\n"
+                "uncertainty:\nNo supported item was returned."
+            )
         return LLMResponse(
             provider="qwen",
             endpoint=project_config.PROVIDER_ENDPOINTS["qwen"],
@@ -989,7 +994,11 @@ def test_production_runner_enforces_selected_skill_operators_but_not_noskill(
             )
             finish_reason = "tool_calls"
         else:
-            text = "Operator-gate answer."
+            text = (
+                "answer:\nnot enough evidence\n"
+                "evidence:\nnot enough evidence\n"
+                "uncertainty:\nOperator-gate answer."
+            )
         return LLMResponse(
             provider="qwen",
             endpoint=project_config.PROVIDER_ENDPOINTS["qwen"],
@@ -1044,7 +1053,7 @@ def test_production_runner_enforces_selected_skill_operators_but_not_noskill(
         registry=registry,
     )
     for row in skilled.rows:
-        assert row.result.error_code is None
+        assert row.result.error_code == "response_contract_error"
         assert len(row.result.tool_trace) == 1
         assert row.result.tool_trace[0].tool_name == "encyclopedia_lookup"
         assert row.result.tool_trace[0].status == "error"

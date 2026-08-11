@@ -14,7 +14,7 @@ from scripts.smoke_portfolio_s1_feedback_loop import (
     _NetworkDenied,
     run_smoke_twice,
 )
-from skillchain.evaluation.evaluator_outputs import parse_visual_feedback_output
+from skillchain.evaluation.evaluator_outputs import parse_visual_feedback_output_v3
 from skillchain.evaluation.feedback_runtime import (
     load_feedback_evaluation_result,
     write_feedback_evaluation_result,
@@ -59,10 +59,10 @@ def test_deterministic_feedback_substitute_is_strict_and_zero_usage(
     )
 
     assert first == second
-    assert first.schema_version == 3
-    assert first.cache_namespace == "feedback-evaluator-v9"
+    assert first.schema_version == 5
+    assert first.cache_namespace == "feedback-evaluator-v11"
     assert first.provider == "qwen"
-    assert first.model == "qwen3.7-plus-2026-05-26"
+    assert first.model == "qwen3.8-max"
     assert first.requested_response_format == "json_schema"
     assert first.requested_thinking is True
     assert first.requested_thinking_budget == 2048
@@ -71,13 +71,16 @@ def test_deterministic_feedback_substitute_is_strict_and_zero_usage(
     assert first.max_completion_tokens == 4096
     assert first.status == "parsed"
     assert first.usage is not None and first.usage.total_tokens == 0
-    assert parse_visual_feedback_output(first.raw_response_text or "") == (
+    assert parse_visual_feedback_output_v3(first.raw_response_text or "") == (
         first.parsed_feedback
     )
     receipt = write_feedback_evaluation_result(tmp_path / "feedback.json", first)
-    assert load_feedback_evaluation_result(
-        receipt, expected_result_sha256=first.result_sha256
-    ) == first
+    assert (
+        load_feedback_evaluation_result(
+            receipt, expected_result_sha256=first.result_sha256
+        )
+        == first
+    )
     assert runner.calls == 2
 
 
@@ -148,8 +151,8 @@ def test_twice_report_requires_identical_canonical_invariants(
             "two_bank_runtime_lock_file_sha256": runtime_file_digit * 64,
             "parent_static_bank_sha256": "9" * 64,
             "style_tool_version": "2.3.0",
-            "selected_rows": 48,
-            "local_feedback_evaluations": 48,
+            "selected_rows": 240,
+            "local_feedback_evaluations": 240,
             "local_fake_codex_invocations": 1,
             "external_feedback_provider_calls": 0,
             "external_codex_provider_calls": 0,

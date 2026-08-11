@@ -28,6 +28,7 @@ from skillchain.data.portfolio_remote_processing import (
 from skillchain.evaluation.evaluator_isolation import (
     EvaluatorIsolationLock,
     build_bound_feedback_prompt,
+    build_bound_feedback_prompt_v6,
 )
 from skillchain.evaluation.evaluator_outputs import (
     EvaluatorOutputParseError,
@@ -42,10 +43,13 @@ from skillchain.evaluation.evaluator_outputs import (
 )
 from skillchain.evaluation.packets import (
     FeedbackPacket,
+    FeedbackPacketV3,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V4,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
+    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
     VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V4,
     VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
+    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
     evaluator_wire_messages,
 )
 from skillchain.evaluation.visual_runtime import (
@@ -84,10 +88,14 @@ VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V4 = (
 VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5 = (
     "visual-feedback-qwen-dashscope-json-schema-v5"
 )
-
-VISUAL_FEEDBACK_JSON_SCHEMA_POLICY_VERSION_V1 = (
-    "visual-feedback-output-json-schema-v1"
+VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6 = (
+    "visual-feedback-qwen38-dashscope-json-schema-v6"
 )
+VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7 = (
+    "visual-feedback-qwen38-dashscope-json-schema-v7"
+)
+
+VISUAL_FEEDBACK_JSON_SCHEMA_POLICY_VERSION_V1 = "visual-feedback-output-json-schema-v1"
 VISUAL_FEEDBACK_JSON_SCHEMA_NAME_V1 = "visual_feedback_output_v1"
 
 
@@ -355,6 +363,115 @@ VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5 = sha256_bytes(
 )
 
 
+def visual_feedback_transport_policy_v6() -> dict[str, object]:
+    """Return the active strict Qwen3.8-Max JSON-Schema transport."""
+
+    return {
+        "policy_version": VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6,
+        "provider": "qwen",
+        "model": "qwen3.8-max",
+        "json_mode": False,
+        "provider_response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": VISUAL_FEEDBACK_JSON_SCHEMA_NAME_V1,
+                "strict": True,
+                "schema_policy_version": VISUAL_FEEDBACK_JSON_SCHEMA_POLICY_VERSION_V1,
+                "schema_sha256": VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
+            },
+        },
+        "stream": False,
+        "stream_options": "omitted",
+        "enable_thinking": True,
+        "thinking_control": "explicit-enable_thinking-true",
+        "thinking_budget": 2048,
+        "max_tokens": "omitted",
+        "max_completion_tokens": 4096,
+        "timeout_seconds": 600,
+        "temperature": "omitted",
+        "top_p": "omitted",
+        "seed": "omitted",
+        "provider_guarantee": "requested_strict_json_schema",
+        "schema_enforcement": "provider_strict_plus_strict_local_parser_v3",
+        "wire_hash_payload": [
+            "messages",
+            "response_format",
+            "stream",
+            "invocation_controls",
+        ],
+        "rules": [
+            "Keep response-schema-v1, Feedback prompt v6, and parser v3 "
+            "unchanged for Discovery240.",
+            "Request one strict provider JSON Schema with exact root and nested "
+            "finding fields; retain parser v3 as independent local validation.",
+            "Do not salvage JSON prefixes, repair responses, retry, or replace "
+            "fixed samples.",
+        ],
+    }
+
+
+VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6 = sha256_bytes(
+    canonical_json_bytes(visual_feedback_transport_policy_v6())
+)
+
+
+def visual_feedback_transport_policy_v7() -> dict[str, object]:
+    """Return the fresh-v3 Qwen3.8-Max transport with a larger wire limit."""
+
+    return {
+        "policy_version": VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7,
+        "provider": "qwen",
+        "model": "qwen3.8-max",
+        "json_mode": False,
+        "provider_response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": VISUAL_FEEDBACK_JSON_SCHEMA_NAME_V1,
+                "strict": True,
+                "schema_policy_version": VISUAL_FEEDBACK_JSON_SCHEMA_POLICY_VERSION_V1,
+                "schema_sha256": VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
+            },
+        },
+        "stream": False,
+        "stream_options": "omitted",
+        "enable_thinking": True,
+        "thinking_control": "explicit-enable_thinking-true",
+        "thinking_budget": 2048,
+        "max_tokens": "omitted",
+        "max_completion_tokens": 6144,
+        "timeout_seconds": 600,
+        "temperature": "omitted",
+        "top_p": "omitted",
+        "seed": "omitted",
+        "provider_guarantee": "requested_strict_json_schema",
+        "schema_enforcement": "provider_strict_plus_strict_local_parser_v3",
+        "wire_hash_payload": [
+            "messages",
+            "response_format",
+            "stream",
+            "invocation_controls",
+        ],
+        "outer_orchestration_policy_version": (
+            "portfolio-s1-feedback-global-schema-or-length-retry-v2"
+        ),
+        "rules": [
+            "Keep response-schema-v1, Feedback prompt v6, and parser v3 "
+            "unchanged for Discovery240.",
+            "Request one strict provider JSON Schema with exact root and nested "
+            "finding fields; retain parser v3 as independent local validation.",
+            "Each provider invocation is exactly one internal attempt; do not "
+            "salvage JSON prefixes, repair responses, or replace fixed samples. "
+            "Only the separately hashed outer retry policy v2 may issue a "
+            "same-entry second call.",
+        ],
+    }
+
+
+VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7 = sha256_bytes(
+    canonical_json_bytes(visual_feedback_transport_policy_v7())
+)
+
+
 class FeedbackRuntimeError(RuntimeError):
     """The visual Feedback runtime or provider response violated its contract."""
 
@@ -366,7 +483,7 @@ class _StrictFrozenModel(BaseModel):
 class FeedbackEvaluationResult(_StrictFrozenModel):
     """One auditable visual Feedback response."""
 
-    schema_version: Literal[2, 3] = 2
+    schema_version: Literal[2, 3, 4, 5, 6] = 2
     result_kind: Literal["visual-feedback"] = "visual-feedback"
     cache_namespace: Literal[
         "feedback-evaluator-v2",
@@ -377,6 +494,9 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     ] = "feedback-evaluator-v2"
     parser_policy_version: (
         Literal[
@@ -390,6 +510,7 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
         Literal[
             "visual-feedback-exact-shape-prompt-v4",
             "visual-feedback-response-schema-v1-prompt-v5",
+            "visual-feedback-gcs-policy-labels-prompt-v6",
         ]
         | None
     ) = None
@@ -401,6 +522,8 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             "visual-feedback-kimi-dashscope-plain-json-v3",
             "visual-feedback-qwen-dashscope-json-object-v4",
             "visual-feedback-qwen-dashscope-json-schema-v5",
+            "visual-feedback-qwen38-dashscope-json-schema-v6",
+            "visual-feedback-qwen38-dashscope-json-schema-v7",
         ]
         | None
     ) = None
@@ -428,6 +551,7 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
         "gemini-3.6-flash",
         "kimi-k2.6",
         "qwen3.7-plus-2026-05-26",
+        "qwen3.8-max",
     ]
     endpoint: str
     max_tokens: int | None = Field(default=None, gt=0)
@@ -441,7 +565,9 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
     raw_response_bytes: int | None = Field(default=None, ge=0)
     tool_calls: tuple[LLMToolCall, ...] | None = None
     tool_call_count: int | None = Field(default=None, ge=0)
-    response_redaction_reason: Literal["input_image_echo"] | None = None
+    response_redaction_reason: (
+        Literal["input_image_echo", "creator_projection_privacy"] | None
+    ) = None
     parsed_feedback: VisualFeedbackOutput | None = None
     usage: LLMUsage | None = None
     finish_reason: str | None = None
@@ -466,13 +592,13 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
 
     @model_validator(mode="after")
     def validate_result(self) -> Self:
-        if (
-            self.cache_namespace == "feedback-evaluator-v9"
-            and self.schema_version != 3
-        ) or (
-            self.cache_namespace != "feedback-evaluator-v9"
-            and self.schema_version != 2
-        ):
+        expected_schema_version = {
+            "feedback-evaluator-v9": 3,
+            "feedback-evaluator-v10": 4,
+            "feedback-evaluator-v11": 5,
+            "feedback-evaluator-v12": 6,
+        }.get(self.cache_namespace, 2)
+        if self.schema_version != expected_schema_version:
             raise ValueError("Feedback result schema/cache identity mismatch")
         if self.cache_namespace == "feedback-evaluator-v2":
             if (
@@ -510,13 +636,58 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
                     VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
                     VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
                 ),
+                "feedback-evaluator-v10": (
+                    VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
+                    VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
+                ),
+                "feedback-evaluator-v11": (
+                    VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
+                    VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
+                ),
+                "feedback-evaluator-v12": (
+                    VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
+                    VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
+                ),
             }[self.cache_namespace]
             if (
                 self.parser_policy_version,
                 self.parser_policy_sha256,
             ) != expected_parser_identity:
                 raise ValueError("Feedback parser policy identity mismatch")
-        if self.cache_namespace in {
+        if self.cache_namespace == "feedback-evaluator-v10":
+            if (
+                self.prompt_policy_version,
+                self.prompt_policy_sha256,
+            ) != (
+                VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
+                VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+            ):
+                raise ValueError("Feedback prompt policy identity mismatch")
+        elif self.cache_namespace == "feedback-evaluator-v11":
+            if (
+                self.prompt_policy_version,
+                self.prompt_policy_sha256,
+            ) not in {
+                (
+                    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
+                    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
+                ),
+                (
+                    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
+                    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+                ),
+            }:
+                raise ValueError("Feedback prompt policy identity mismatch")
+        elif self.cache_namespace == "feedback-evaluator-v12":
+            if (
+                self.prompt_policy_version,
+                self.prompt_policy_sha256,
+            ) != (
+                VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
+                VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+            ):
+                raise ValueError("Feedback prompt policy identity mismatch")
+        elif self.cache_namespace in {
             "feedback-evaluator-v8",
             "feedback-evaluator-v9",
         }:
@@ -595,7 +766,10 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
                 0.95,
             ):
                 raise ValueError("Feedback transport policy identity mismatch")
-        elif self.cache_namespace == "feedback-evaluator-v9":
+        elif self.cache_namespace in {
+            "feedback-evaluator-v9",
+            "feedback-evaluator-v10",
+        }:
             if (
                 self.transport_policy_version,
                 self.transport_policy_sha256,
@@ -609,6 +783,52 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             ) != (
                 VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5,
                 VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5,
+                "json_schema",
+                VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
+                True,
+                2048,
+                600,
+                None,
+                None,
+            ):
+                raise ValueError("Feedback transport policy identity mismatch")
+        elif self.cache_namespace == "feedback-evaluator-v11":
+            if (
+                self.transport_policy_version,
+                self.transport_policy_sha256,
+                self.requested_response_format,
+                self.requested_json_schema_sha256,
+                self.requested_thinking,
+                self.requested_thinking_budget,
+                self.requested_timeout_seconds,
+                self.requested_temperature,
+                self.requested_top_p,
+            ) != (
+                VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6,
+                VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6,
+                "json_schema",
+                VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
+                True,
+                2048,
+                600,
+                None,
+                None,
+            ):
+                raise ValueError("Feedback transport policy identity mismatch")
+        elif self.cache_namespace == "feedback-evaluator-v12":
+            if (
+                self.transport_policy_version,
+                self.transport_policy_sha256,
+                self.requested_response_format,
+                self.requested_json_schema_sha256,
+                self.requested_thinking,
+                self.requested_thinking_budget,
+                self.requested_timeout_seconds,
+                self.requested_temperature,
+                self.requested_top_p,
+            ) != (
+                VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7,
+                VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7,
                 "json_schema",
                 VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
                 True,
@@ -632,15 +852,27 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             raise ValueError(
                 "historical Feedback result cannot claim JSON-object transport"
             )
-        if self.cache_namespace == "feedback-evaluator-v9":
-            if self.max_tokens is not None or self.max_completion_tokens != 4096:
-                raise ValueError(
-                    "Qwen Feedback completion-token identity mismatch"
-                )
-            if (self.provider, self.model) != (
-                "qwen",
-                "qwen3.7-plus-2026-05-26",
+        if self.cache_namespace in {
+            "feedback-evaluator-v9",
+            "feedback-evaluator-v10",
+            "feedback-evaluator-v11",
+            "feedback-evaluator-v12",
+        }:
+            expected_completion_tokens = (
+                6144 if self.cache_namespace == "feedback-evaluator-v12" else 4096
+            )
+            if (
+                self.max_tokens is not None
+                or self.max_completion_tokens != expected_completion_tokens
             ):
+                raise ValueError("Qwen Feedback completion-token identity mismatch")
+            expected_model = (
+                "qwen3.8-max"
+                if self.cache_namespace
+                in {"feedback-evaluator-v11", "feedback-evaluator-v12"}
+                else "qwen3.7-plus-2026-05-26"
+            )
+            if (self.provider, self.model) != ("qwen", expected_model):
                 raise ValueError("active Feedback provider identity mismatch")
             if self.endpoint != config.PROVIDER_ENDPOINTS["qwen"]:
                 raise ValueError("active Feedback endpoint identity mismatch")
@@ -688,12 +920,20 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
                     or len(self.tool_calls) != self.tool_call_count
                 ):
                     raise ValueError("feedback response commitment mismatch")
-            elif (
-                self.raw_response_text is not None
-                or self.tool_calls is not None
-                or self.response_redaction_reason != "input_image_echo"
-            ):
+            elif self.raw_response_text is not None or self.tool_calls is not None:
                 raise ValueError("redacted Feedback response leaked content")
+            elif (
+                self.response_redaction_reason == "creator_projection_privacy"
+                and self.cache_namespace
+                not in {
+                    "feedback-evaluator-v10",
+                    "feedback-evaluator-v11",
+                    "feedback-evaluator-v12",
+                }
+            ):
+                raise ValueError(
+                    "historical Feedback result cannot claim Creator privacy redaction"
+                )
         elif any(
             value is not None
             for value in (
@@ -710,17 +950,19 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             self.reasoning_bytes,
             self.reasoning_sha256,
         )
-        if self.cache_namespace == "feedback-evaluator-v9":
+        if self.cache_namespace in {
+            "feedback-evaluator-v9",
+            "feedback-evaluator-v10",
+            "feedback-evaluator-v11",
+            "feedback-evaluator-v12",
+        }:
             if has_response:
                 if (
                     self.reasoning_present is None
                     or self.reasoning_bytes is None
-                    or (self.reasoning_bytes > 0)
-                    is (self.reasoning_sha256 is None)
+                    or (self.reasoning_bytes > 0) is (self.reasoning_sha256 is None)
                 ):
-                    raise ValueError(
-                        "Qwen Feedback reasoning metadata is incomplete"
-                    )
+                    raise ValueError("Qwen Feedback reasoning metadata is incomplete")
                 observed = self.reasoning_bytes > 0 or bool(self.reasoning_tokens)
                 if self.reasoning_present is not observed:
                     raise ValueError(
@@ -748,6 +990,10 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             parser = _parser_for_cache_namespace(self.cache_namespace)
             try:
                 reconstructed = parser(self.raw_response_text)
+                if self.prompt_policy_version == (
+                    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6
+                ):
+                    _require_policy_labeled_suggestions(reconstructed)
             except EvaluatorOutputParseError as error:
                 raise ValueError(
                     "parsed Feedback result cannot be reconstructed from raw response"
@@ -758,22 +1004,47 @@ class FeedbackEvaluationResult(_StrictFrozenModel):
             if (
                 not has_response
                 or self.parsed_feedback is not None
-                or self.error_code not in {"invalid_feedback_json", "input_image_echo"}
+                or self.error_code
+                not in {
+                    "invalid_feedback_json",
+                    "input_image_echo",
+                    "creator_projection_privacy",
+                }
             ):
                 raise ValueError("parse-error Feedback result has an invalid field set")
+            if (
+                self.error_code == "creator_projection_privacy"
+                and self.response_redaction_reason != "creator_projection_privacy"
+            ):
+                raise ValueError(
+                    "Creator privacy failure must redact its provider response"
+                )
             if self.response_redaction_reason is not None:
-                if (
-                    self.response_redaction_reason != "input_image_echo"
-                    or self.error_code != "input_image_echo"
-                ):
+                if self.error_code != self.response_redaction_reason:
                     raise ValueError(
                         "redacted Feedback parse error has an invalid reason"
+                    )
+                if (
+                    self.response_redaction_reason == "creator_projection_privacy"
+                    and self.cache_namespace
+                    not in {
+                        "feedback-evaluator-v10",
+                        "feedback-evaluator-v11",
+                        "feedback-evaluator-v12",
+                    }
+                ):
+                    raise ValueError(
+                        "historical Feedback result cannot claim Creator privacy error"
                     )
             elif self.finish_reason == "stop" and not self.tool_calls:
                 assert self.raw_response_text is not None
                 try:
                     parser = _parser_for_cache_namespace(self.cache_namespace)
-                    parser(self.raw_response_text)
+                    reconstructed = parser(self.raw_response_text)
+                    if self.prompt_policy_version == (
+                        VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6
+                    ):
+                        _require_policy_labeled_suggestions(reconstructed)
                 except EvaluatorOutputParseError:
                     pass
                 else:
@@ -805,6 +1076,9 @@ def _result_hash(result: FeedbackEvaluationResult) -> str:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("prompt_policy_version", None)
         payload.pop("prompt_policy_sha256", None)
@@ -813,6 +1087,9 @@ def _result_hash(result: FeedbackEvaluationResult) -> str:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("transport_policy_version", None)
         payload.pop("transport_policy_sha256", None)
@@ -821,11 +1098,19 @@ def _result_hash(result: FeedbackEvaluationResult) -> str:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("requested_thinking", None)
         payload.pop("requested_temperature", None)
         payload.pop("requested_top_p", None)
-    if result.cache_namespace != "feedback-evaluator-v9":
+    if result.cache_namespace not in {
+        "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
+    }:
         payload.pop("max_completion_tokens", None)
         payload.pop("requested_json_schema_sha256", None)
         payload.pop("requested_thinking_budget", None)
@@ -847,6 +1132,9 @@ def _parser_for_cache_namespace(cache_namespace: str):
         "feedback-evaluator-v7": parse_visual_feedback_output_v3,
         "feedback-evaluator-v8": parse_visual_feedback_output_v3,
         "feedback-evaluator-v9": parse_visual_feedback_output_v3,
+        "feedback-evaluator-v10": parse_visual_feedback_output_v3,
+        "feedback-evaluator-v11": parse_visual_feedback_output_v3,
+        "feedback-evaluator-v12": parse_visual_feedback_output_v3,
     }[cache_namespace]
 
 
@@ -861,6 +1149,9 @@ def _result_bytes(result: FeedbackEvaluationResult) -> bytes:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("prompt_policy_version", None)
         payload.pop("prompt_policy_sha256", None)
@@ -869,6 +1160,9 @@ def _result_bytes(result: FeedbackEvaluationResult) -> bytes:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("transport_policy_version", None)
         payload.pop("transport_policy_sha256", None)
@@ -877,11 +1171,19 @@ def _result_bytes(result: FeedbackEvaluationResult) -> bytes:
         "feedback-evaluator-v7",
         "feedback-evaluator-v8",
         "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
     }:
         payload.pop("requested_thinking", None)
         payload.pop("requested_temperature", None)
         payload.pop("requested_top_p", None)
-    if result.cache_namespace != "feedback-evaluator-v9":
+    if result.cache_namespace not in {
+        "feedback-evaluator-v9",
+        "feedback-evaluator-v10",
+        "feedback-evaluator-v11",
+        "feedback-evaluator-v12",
+    }:
         payload.pop("max_completion_tokens", None)
         payload.pop("requested_json_schema_sha256", None)
         payload.pop("requested_thinking_budget", None)
@@ -907,8 +1209,76 @@ def _make_result(**payload) -> FeedbackEvaluationResult:
     )
 
 
+def redact_feedback_result_for_creator_privacy(
+    result: FeedbackEvaluationResult,
+) -> FeedbackEvaluationResult:
+    """Turn one parsed V10 provider receipt into a terminal privacy failure.
+
+    The provider call remains fully accountable through its immutable response
+    commitments and usage metadata, while the unsafe response body and parsed
+    projection are deliberately omitted.  This is forward-only: historical
+    Feedback receipts retain their exact schemas and byte projections.
+    """
+
+    if (
+        type(result) is not FeedbackEvaluationResult
+        or result.cache_namespace
+        not in {
+            "feedback-evaluator-v10",
+            "feedback-evaluator-v11",
+            "feedback-evaluator-v12",
+        }
+        or result.status != "parsed"
+        or result.parsed_feedback is None
+        or result.request_id is None
+    ):
+        raise FeedbackRuntimeError(
+            "Creator privacy redaction requires one parsed forward provider receipt"
+        )
+    payload = {
+        field_name: getattr(result, field_name)
+        for field_name in type(result).model_fields
+        if field_name != "result_sha256"
+    }
+    payload.update(
+        {
+            "status": "parse_error",
+            "raw_response_text": None,
+            "tool_calls": None,
+            "response_redaction_reason": "creator_projection_privacy",
+            "parsed_feedback": None,
+            "error_code": "creator_projection_privacy",
+        }
+    )
+    return _make_result(**payload)
+
+
+_POLICY_SUGGESTION_PREFIXES = (
+    "[policy_compatible] ",
+    "[requires_new_evidence] ",
+    "[rejected] ",
+)
+
+
+def _require_policy_labeled_suggestions(feedback: VisualFeedbackOutput) -> None:
+    for suggestion in feedback.skill_suggestions:
+        matches = tuple(
+            prefix
+            for prefix in _POLICY_SUGGESTION_PREFIXES
+            if suggestion.startswith(prefix)
+        )
+        if (
+            len(matches) != 1
+            or suggestion != suggestion.strip()
+            or not suggestion.removeprefix(matches[0]).strip()
+        ):
+            raise EvaluatorOutputParseError(
+                "Feedback suggestion lacks one exact GCS policy disposition"
+            )
+
+
 def run_visual_feedback(
-    packet: FeedbackPacket,
+    packet: FeedbackPacket | FeedbackPacketV3,
     evaluator_isolation: EvaluatorIsolationLock,
     *,
     remote_runtime: (
@@ -919,23 +1289,47 @@ def run_visual_feedback(
     timeout_seconds: int = config.FEEDBACK_JUDGE_TIMEOUT_SECONDS,
     record_usage: bool = True,
 ) -> FeedbackEvaluationResult:
-    """Invoke and strictly parse one DashScope Qwen visual Feedback call."""
+    """Invoke and strictly parse one active DashScope Qwen3.8-Max call.
+
+    Historical Qwen3.7 result/cache identities remain loadable, but this live
+    entry point is forward-only after the permanent model switch.
+    """
+
+    if type(packet) is FeedbackPacketV3:
+        policy_labeled = True
+    elif type(packet) is FeedbackPacket:
+        policy_labeled = False
+    else:
+        raise TypeError("Feedback runtime requires an exact Feedback packet type")
+    if max_completion_tokens not in {4096, 6144}:
+        raise FeedbackRuntimeError(
+            "Feedback max_completion_tokens is outside a frozen wire identity"
+        )
+    fresh_v3 = max_completion_tokens == 6144
+    if fresh_v3 and not policy_labeled:
+        raise FeedbackRuntimeError(
+            "fresh-v3 Feedback requires an exact policy-labeled FeedbackPacketV3"
+        )
 
     try:
         verified_runtime, image_bytes = load_verified_evaluator_image(
             remote_runtime,
-            processor="dashscope-qwen37-feedback",
+            processor="dashscope-qwen38-feedback",
             image=packet.image,
             query_id=packet.query_id,
         )
     except EvaluatorImageLoadError as error:
         raise FeedbackRuntimeError(str(error)) from error
-    bound = build_bound_feedback_prompt(packet, evaluator_isolation)
+    bound = (
+        build_bound_feedback_prompt_v6(packet, evaluator_isolation)
+        if policy_labeled
+        else build_bound_feedback_prompt(packet, evaluator_isolation)
+    )
     evaluator = bound.evaluator
     expected_identity = (
-        config.FEEDBACK_JUDGE_PROVIDER,
-        config.FEEDBACK_JUDGE_MODEL,
-        config.PROVIDER_ENDPOINTS[config.FEEDBACK_JUDGE_PROVIDER],
+        "qwen",
+        "qwen3.8-max",
+        config.PROVIDER_ENDPOINTS["qwen"],
     )
     actual_identity = (evaluator.provider, evaluator.model, evaluator.endpoint)
     if actual_identity != expected_identity:
@@ -970,14 +1364,32 @@ def run_visual_feedback(
         )
     )
     common = {
-        "schema_version": 3,
-        "cache_namespace": "feedback-evaluator-v9",
+        "schema_version": 6 if fresh_v3 else 5,
+        "cache_namespace": (
+            "feedback-evaluator-v12" if fresh_v3 else "feedback-evaluator-v11"
+        ),
         "parser_policy_version": VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
         "parser_policy_sha256": VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
-        "prompt_policy_version": VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
-        "prompt_policy_sha256": VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
-        "transport_policy_version": VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5,
-        "transport_policy_sha256": VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5,
+        "prompt_policy_version": (
+            VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6
+            if policy_labeled
+            else VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5
+        ),
+        "prompt_policy_sha256": (
+            VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6
+            if policy_labeled
+            else VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5
+        ),
+        "transport_policy_version": (
+            VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
+            if fresh_v3
+            else VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6
+        ),
+        "transport_policy_sha256": (
+            VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
+            if fresh_v3
+            else VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6
+        ),
         "requested_response_format": "json_schema",
         "requested_json_schema_sha256": VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
         "requested_thinking": config.FEEDBACK_JUDGE_THINKING,
@@ -997,17 +1409,17 @@ def run_visual_feedback(
         ),
         "remote_receipt_file_sha256": verified_runtime.receipt_file_sha256,
         "remote_receipt_sha256": verified_runtime.receipt.receipt_sha256,
-        "provider": config.FEEDBACK_JUDGE_PROVIDER,
-        "model": config.FEEDBACK_JUDGE_MODEL,
-        "endpoint": config.PROVIDER_ENDPOINTS[config.FEEDBACK_JUDGE_PROVIDER],
+        "provider": "qwen",
+        "model": "qwen3.8-max",
+        "endpoint": config.PROVIDER_ENDPOINTS["qwen"],
         "max_tokens": max_tokens,
         "max_completion_tokens": max_completion_tokens,
     }
     try:
         response = llm.chat(
-            config.FEEDBACK_JUDGE_PROVIDER,
+            "qwen",
             wire_messages,
-            model=config.FEEDBACK_JUDGE_MODEL,
+            model="qwen3.8-max",
             temperature=config.FEEDBACK_JUDGE_TEMPERATURE,
             top_p=config.FEEDBACK_JUDGE_TOP_P,
             thinking=config.FEEDBACK_JUDGE_THINKING,
@@ -1075,6 +1487,8 @@ def run_visual_feedback(
                 "Feedback response did not stop as one text answer"
             )
         parsed_feedback = parse_visual_feedback_output_v3(raw_response_text)
+        if policy_labeled:
+            _require_policy_labeled_suggestions(parsed_feedback)
     except EvaluatorOutputParseError:
         return _make_result(
             **common,
@@ -1135,13 +1549,26 @@ __all__ = [
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V1",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V2",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V3",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V4",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V1",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V2",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V3",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V4",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6",
+    "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7",
     "load_feedback_evaluation_result",
+    "redact_feedback_result_for_creator_privacy",
     "run_visual_feedback",
     "visual_feedback_transport_policy_v1",
     "visual_feedback_transport_policy_v2",
     "visual_feedback_transport_policy_v3",
+    "visual_feedback_transport_policy_v4",
+    "visual_feedback_transport_policy_v5",
+    "visual_feedback_transport_policy_v6",
+    "visual_feedback_transport_policy_v7",
     "write_feedback_evaluation_result",
 ]

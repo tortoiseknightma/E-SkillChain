@@ -31,6 +31,8 @@ from scripts.run_portfolio_evolution_model import (
     IMPLEMENTATION_ID,
     IMPLEMENTATION_VERSION,
     INVOCATION_POLICY_VERSION,
+    S1_SPARSE_IMPLEMENTATION_VERSION,
+    S1_SPARSE_INVOCATION_POLICY_VERSION,
     S3_IMPLEMENTATION_VERSION,
     S3_INVOCATION_POLICY_VERSION,
     _actionable_mutation_scope,
@@ -828,6 +830,133 @@ def _gate_source(
     )
 
 
+@pytest.mark.parametrize("schema_version", (6, 7, 8, 9, 10))
+def test_finalizer_dispatches_forward_sparse_bundle_only_to_sparse_s1(
+    monkeypatch: pytest.MonkeyPatch,
+    schema_version: int,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": schema_version,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": f"portfolio-s1-feedback-bundle-v{schema_version}",
+        }
+    )
+
+    class _LoadedSparseBundle:
+        selected_count = 240
+        parsed_count = 240
+        provider_call_count = 243
+        retry_claim_count = 3
+        retry_claim_sha256s = ("1" * 64, "2" * 64, "3" * 64)
+        fresh_output_count = 240
+        historical_feedback_outputs_imported = 0
+        run_sha256 = "4" * 64
+        round3_run_sha256 = run_sha256
+        run_file_sha256 = "5" * 64
+        round3_run_file_sha256 = run_file_sha256
+        authorization_sha256 = "6" * 64
+        round3_authorization_sha256 = authorization_sha256
+        control_sha256 = "7" * 64
+        round3_control_sha256 = control_sha256
+        round3_artifact_set_sha256 = "8" * 64
+        entry_provenance = tuple(
+            type(
+                "_Provenance",
+                (),
+                {
+                    "bound_artifact_sha256": f"{index:064x}",
+                    "feedback_result_sha256": f"{index + 240:064x}",
+                    "final_global_call_ordinal": index,
+                },
+            )()
+            for index in range(1, 241)
+        )
+
+        @classmethod
+        def model_validate_json(
+            cls,
+            candidate: bytes,
+            *,
+            strict: bool,
+        ) -> "_LoadedSparseBundle":
+            assert strict
+            assert candidate == content
+            return cls()
+
+        def canonical_bytes(self) -> bytes:
+            return content
+
+        def model_projection_payload(self) -> dict[str, object]:
+            return {
+                "schema_version": 5,
+                "selected_count": 240,
+                "parsed_count": 240,
+                "status": "complete_policy_filtered_feedback",
+            }
+
+    monkeypatch.setattr(
+        finalizer_module,
+        f"PortfolioS1FeedbackBundleV{schema_version}",
+        _LoadedSparseBundle,
+    )
+    assert isinstance(
+        finalizer_module._load_typed_feedback_bundle(content, sparse=True),
+        _LoadedSparseBundle,
+    )
+    with pytest.raises(
+        PortfolioTreatmentFinalizationError,
+        match="implementation and typed Feedback bundle version differ",
+    ):
+        finalizer_module._load_typed_feedback_bundle(content, sparse=False)
+
+
+def test_finalizer_rejects_bundle_v10_retry_provenance_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    content = canonical_json_bytes(
+        {
+            "schema_version": 10,
+            "kind": "portfolio-s1-feedback-bundle",
+            "policy_version": "portfolio-s1-feedback-bundle-v10",
+        }
+    )
+
+    class _DriftedV10:
+        selected_count = 240
+        provider_call_count = 242
+        retry_claim_count = 3
+        retry_claim_sha256s = ("1" * 64, "2" * 64, "3" * 64)
+        fresh_output_count = 240
+        historical_feedback_outputs_imported = 0
+        run_sha256 = round3_run_sha256 = "4" * 64
+        run_file_sha256 = round3_run_file_sha256 = "5" * 64
+        authorization_sha256 = round3_authorization_sha256 = "6" * 64
+        control_sha256 = round3_control_sha256 = "7" * 64
+        entry_provenance = tuple(range(240))
+
+        @classmethod
+        def model_validate_json(
+            cls, candidate: bytes, *, strict: bool
+        ) -> "_DriftedV10":
+            assert strict and candidate == content
+            return cls()
+
+        def canonical_bytes(self) -> bytes:
+            return content
+
+    monkeypatch.setattr(
+        finalizer_module,
+        "PortfolioS1FeedbackBundleV10",
+        _DriftedV10,
+    )
+    with pytest.raises(
+        PortfolioTreatmentFinalizationError,
+        match="fresh Round3 provenance drifted",
+    ):
+        finalizer_module._load_typed_feedback_bundle(content, sparse=True)
+
+
 def test_bank_only_scaffold_cannot_be_named_into_a_real_s1_stage(
     tmp_path: Path,
 ) -> None:
@@ -862,6 +991,26 @@ def test_legacy_real_s1_remains_compatible_but_old_s2_is_rejected() -> None:
         policy_version="portfolio-evolution-single-clean-turn-v1",
     )
     _require_current_mutation_implementation("s1", legacy)
+    sparse = SimpleNamespace(
+        implementation_id=IMPLEMENTATION_ID,
+        implementation_version=S1_SPARSE_IMPLEMENTATION_VERSION,
+        policy_version=S1_SPARSE_INVOCATION_POLICY_VERSION,
+        session_mode="ephemeral",
+    )
+    _require_current_mutation_implementation("s1", sparse)
+    with pytest.raises(
+        PortfolioTreatmentFinalizationError,
+        match="s1 does not use its required stage-specific implementation",
+    ):
+        _require_current_mutation_implementation(
+            "s1",
+            SimpleNamespace(
+                implementation_id=IMPLEMENTATION_ID,
+                implementation_version=S1_SPARSE_IMPLEMENTATION_VERSION,
+                policy_version=S1_SPARSE_INVOCATION_POLICY_VERSION,
+                session_mode="resume",
+            ),
+        )
     with pytest.raises(
         PortfolioTreatmentFinalizationError,
         match="s2 does not use its required stage-specific implementation",

@@ -1429,6 +1429,92 @@ class AssistantModelCallReceipt(_StrictFrozenModel):
         return _nonblank(value, info.field_name)
 
 
+class AssistantResponseContractRepairReceipt(_StrictFrozenModel):
+    """Bounded evidence for the runner's sole format-only final repair."""
+
+    schema_version: Literal[1] = 1
+    policy_version: Literal["assistant-response-fixed-repair-v1"] = (
+        "assistant-response-fixed-repair-v1"
+    )
+    attempt_count: Literal[1] = 1
+    initial_response_sha256: Sha256
+    initial_reason_codes: tuple[str, ...]
+    repair_call_index: int = Field(ge=1)
+    repair_call_usage: LLMUsage
+    repaired_response_sha256: Sha256
+    final_reason_codes: tuple[str, ...]
+    status: Literal["passed", "failed"]
+    tools_exposed: Literal[False] = False
+    image_attached: Literal[False] = False
+    material_atoms_added: bool
+    ambiguity_signal_policy: Literal[
+        "empty_sources_only_no_reliable_public_ambiguity_field"
+    ] = "empty_sources_only_no_reliable_public_ambiguity_field"
+    receipt_sha256: Sha256
+
+    @field_validator("initial_reason_codes", "final_reason_codes", mode="before")
+    @classmethod
+    def coerce_reason_codes(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def validate_repair(self) -> Self:
+        for reasons in (self.initial_reason_codes, self.final_reason_codes):
+            if reasons != tuple(sorted(set(reasons))):
+                raise ValueError(
+                    "response repair reason codes must be sorted and unique"
+                )
+        if not self.initial_reason_codes:
+            raise ValueError("response repair requires an invalid initial response")
+        if (self.status == "passed") != (not self.final_reason_codes):
+            raise ValueError("response repair status differs from final validation")
+        if self.material_atoms_added != (
+            "response_repair_new_material_atom" in self.final_reason_codes
+        ):
+            raise ValueError("response repair material-atom evidence is inconsistent")
+        if self.receipt_sha256 != _self_hash(self, "receipt_sha256"):
+            raise ValueError("response repair receipt self hash mismatch")
+        return self
+
+
+def make_assistant_response_contract_repair_receipt(
+    *,
+    initial_response_text: str,
+    initial_reason_codes: Sequence[str],
+    repair_call_index: int,
+    repair_call_usage: LLMUsage,
+    repaired_response_text: str,
+    final_reason_codes: Sequence[str],
+    material_atoms_added: bool,
+) -> AssistantResponseContractRepairReceipt:
+    """Create self-authenticating metadata for exactly one no-tool repair call."""
+
+    final_reasons = tuple(sorted(set(final_reason_codes)))
+    payload = {
+        "schema_version": 1,
+        "policy_version": "assistant-response-fixed-repair-v1",
+        "attempt_count": 1,
+        "initial_response_sha256": sha256_bytes(initial_response_text.encode("utf-8")),
+        "initial_reason_codes": tuple(sorted(set(initial_reason_codes))),
+        "repair_call_index": repair_call_index,
+        "repair_call_usage": repair_call_usage,
+        "repaired_response_sha256": sha256_bytes(
+            repaired_response_text.encode("utf-8")
+        ),
+        "final_reason_codes": final_reasons,
+        "status": "passed" if not final_reasons else "failed",
+        "tools_exposed": False,
+        "image_attached": False,
+        "material_atoms_added": material_atoms_added,
+        "ambiguity_signal_policy": (
+            "empty_sources_only_no_reliable_public_ambiguity_field"
+        ),
+    }
+    return AssistantResponseContractRepairReceipt.model_validate(
+        {**payload, "receipt_sha256": _hash_payload(payload)}, strict=True
+    )
+
+
 class AssistantRouteCallEvidence(_StrictFrozenModel):
     """Bounded, self-authenticating evidence for one captured route response.
 
@@ -1709,6 +1795,10 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    response_contract_repair: AssistantResponseContractRepairReceipt | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     aggregate_usage: LLMUsage
     runner_latency_ms: int = Field(ge=0)
     outcome: Literal["success", "timeout", "runtime_error"]
@@ -1729,6 +1819,8 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             payload.pop("route_attempt", None)
         if self.route_call_evidence is None:
             payload.pop("route_call_evidence", None)
+        if self.response_contract_repair is None:
+            payload.pop("response_contract_repair", None)
         return payload
 
     @model_validator(mode="after")
@@ -1784,6 +1876,18 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             != ASSISTANT_ROUTE_CALL_EVIDENCE_POLICY_VERSION
         ):
             raise ValueError("active runner receipt requires active route evidence")
+        repair = self.response_contract_repair
+        if repair is not None:
+            if repair.repair_call_index > len(self.model_calls):
+                raise ValueError("response repair references a missing model call")
+            repair_call = self.model_calls[repair.repair_call_index - 1]
+            if repair.repair_call_usage != LLMUsage(
+                input_tokens=repair_call.input_tokens,
+                output_tokens=repair_call.output_tokens,
+            ):
+                raise ValueError("response repair usage differs from its model call")
+            if (repair.status == "passed") != (self.outcome == "success"):
+                raise ValueError("response repair status differs from runner outcome")
         receipt_payload = self.model_dump(mode="json", exclude={"receipt_sha256"})
         if self.shared_route_reference is None:
             receipt_payload.pop("shared_route_reference")
@@ -2974,6 +3078,7 @@ __all__ = [
     "AssistantRegistryRuntimeLock",
     "AssistantExecutionReceipt",
     "AssistantModelCallReceipt",
+    "AssistantResponseContractRepairReceipt",
     "AssistantMatrixPlan",
     "AssistantQueryDefinition",
     "AssistantQueryInput",
@@ -3014,6 +3119,7 @@ __all__ = [
     "make_backbone_lock",
     "make_assistant_route_attempt",
     "make_assistant_route_call_evidence",
+    "make_assistant_response_contract_repair_receipt",
     "make_inference_budget",
     "make_phase4_input_selection_manifest",
     "require_verified_assistant_matrix_plan",

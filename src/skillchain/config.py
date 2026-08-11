@@ -54,9 +54,9 @@ JUDGE_REASONING_EFFORT = "max"
 JUDGE_TEMPERATURE = 1.0
 JUDGE_TOP_P = 0.95
 
-# Active Portfolio evaluator selection. Qwen3.7 Plus is the DashScope-deployed
-# multimodal Feedback model.  Gemini 3.6 Flash remains on the independent
-# AIFast final-Judge path.
+# Active Portfolio evaluator selection. Qwen3.8-Max is the permanently selected
+# DashScope multimodal Feedback model.  Gemini 3.6 Flash remains on the
+# independent AIFast final-Judge path.
 PORTFOLIO_JUDGE_PROVIDER = "gemini"
 PORTFOLIO_JUDGE_MODEL = "gemini-3.6-flash"
 # Gemini 3.6 deprecates temperature/top_p/top_k. The AIFast OpenAI-compatible
@@ -68,20 +68,33 @@ PORTFOLIO_JUDGE_TEMPERATURE = None
 PORTFOLIO_JUDGE_TOP_P = None
 
 FEEDBACK_JUDGE_PROVIDER = "qwen"
-FEEDBACK_JUDGE_MODEL = "qwen3.7-plus-2026-05-26"
-FEEDBACK_JUDGE_MODEL_REVISION = "2026-05-26"
-# Freeze the owner-selected thinking Qwen3.7 Plus structured-output path.
+FEEDBACK_JUDGE_MODEL = "qwen3.8-max"
+# Qwen3.8-Max is a provider alias rather than a dated snapshot.  Every response
+# must still echo this exact requested identity; source/pricing locks disclose
+# the alias status instead of pretending that it is a frozen revision.
+FEEDBACK_JUDGE_MODEL_REVISION = "moving-alias"
+# Freeze the owner-selected thinking Qwen3.8-Max structured-output path.
 # ``enable_thinking=true`` is sent explicitly.  Sampling controls and seed are
-# omitted because the selected snapshot's Feedback contract does not freeze
+# omitted because the selected alias's Feedback contract does not freeze
 # them; strict shape validation remains local after JSON-object decoding.
 FEEDBACK_JUDGE_THINKING = True
 FEEDBACK_JUDGE_THINKING_CONTROL = "explicit-enable_thinking-true"
 FEEDBACK_JUDGE_THINKING_BUDGET = 2048
 FEEDBACK_JUDGE_MAX_TOKENS = None
-FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS = 4096
+FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS = 6144
 FEEDBACK_JUDGE_TIMEOUT_SECONDS = 600
 FEEDBACK_JUDGE_TEMPERATURE = None
 FEEDBACK_JUDGE_TOP_P = None
+
+# The superseded Qwen3.7 Feedback identity remains named explicitly so its
+# immutable source, pricing, role-selection, and run artifacts can be verified.
+# It is not selected by any new Feedback execution.
+LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL = "qwen3.7-plus-2026-05-26"
+LEGACY_QWEN37_FEEDBACK_JUDGE_MODEL_REVISION = "2026-05-26"
+LEGACY_QWEN37_FEEDBACK_JUDGE_THINKING = True
+LEGACY_QWEN37_FEEDBACK_JUDGE_THINKING_BUDGET = 2048
+LEGACY_QWEN37_FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS = 4096
+LEGACY_QWEN37_FEEDBACK_JUDGE_TIMEOUT_SECONDS = 600
 
 # Exact historical Kimi Feedback controls remain available so immutable v7/v8
 # receipts can still be reconstructed and verified after the active role move.

@@ -36,6 +36,7 @@ from skillchain.evaluation.assistant_runs import (
     AssistantRouteCallEvidence,
     AssistantRouteFailureShape,
     AssistantRouteFailureSubtype,
+    AssistantResponseContractRepairReceipt,
     AssistantSharedRouteReference,
     RunnerOwnedAssistantExecution,
     Sha256,
@@ -43,6 +44,7 @@ from skillchain.evaluation.assistant_runs import (
     build_assistant_query_input,
     make_assistant_route_call_evidence,
     make_assistant_route_attempt,
+    make_assistant_response_contract_repair_receipt,
 )
 from skillchain.evaluation.portfolio_gcs_evidence import (
     GCS_SCORER_EVIDENCE_V2_POLICY_VERSION,
@@ -82,6 +84,14 @@ from skillchain.tools.serialization import (
     sha256_bytes,
 )
 from skillchain.tools.portfolio_runtime import require_portfolio_diagnostic_registry
+from skillchain.runners.assistant_response_contract import (
+    ASSISTANT_RESPONSE_REPAIR_POLICY_VERSION,
+    AssistantResponseContractValidation,
+    AssistantResponseToolObservation,
+    fixed_response_repair_prompt,
+    repair_preserves_material_atoms,
+    validate_assistant_response_contract,
+)
 
 
 SHARED_STAGE2_ROUTE_POLICY_VERSION = "shared-stage2-route-v6"
@@ -139,7 +149,7 @@ _MULTI_PRODUCT_PRESENTATION_PROTOCOL = (
     "or the raw tool payload into the answer."
 )
 GCS_V2_MODEL_RESPONSE_CONTRACT_VERSION = (
-    "portfolio-gcs-v2-model-visible-response-contract-v1"
+    "portfolio-gcs-v2-model-visible-response-contract-v2"
 )
 _GCS_V2_MODEL_RESPONSE_CONTRACT_TOOLS = (
     "document_ocr",
@@ -150,6 +160,14 @@ _GCS_V2_MODEL_RESPONSE_CONTRACT_TOOLS = (
     "style_similar_search",
     "text_product_search",
 )
+_GCS_V2_MODEL_RESPONSE_CONTRACT_CAPABILITY_TO_TOOL = {
+    "knowledge.visual_encyclopedia": "encyclopedia_lookup",
+    "product.exact_match": "image_product_search",
+    "product.multi_search": "multi_product_search",
+    "product.style_recommendation": "style_similar_search",
+    "utility.document_reading": "document_ocr",
+    "utility.recipe_guidance": "recipe_lookup",
+}
 
 
 def _gcs_v2_model_response_contract_for_tool(
@@ -166,6 +184,7 @@ def _gcs_v2_model_response_contract_for_tool(
         "Start the final answer with the first required ASCII heading; do not put any prose before it.",
         "Write every required ASCII heading exactly once, in the listed order, as `heading:`.",
         "Every required section must contain non-empty text. Do not add any other top-level section heading.",
+        "Never emit model control tokens such as `<|begin|>` or `<|im_end|>`.",
         "Copy only public handles and values present in this tool message; never invent or alter a handle.",
     ]
     contracts: dict[str, dict[str, JSONValue]] = {
@@ -280,6 +299,26 @@ def _gcs_v2_model_response_contract_for_tool(
     return contract
 
 
+def _gcs_v2_model_response_contract_for_capability(
+    capability_id: str | None,
+) -> dict[str, JSONValue] | None:
+    """Return the public contract for an accepted runtime route.
+
+    This fallback is intentionally keyed by the model-selected Bank route, not
+    by a private query label. It lets Static and S1 enforce section syntax even
+    when the Assistant attempts to answer before a successful tool call.
+    """
+
+    if capability_id is None:
+        return None
+    tool_name = _GCS_V2_MODEL_RESPONSE_CONTRACT_CAPABILITY_TO_TOOL.get(capability_id)
+    return (
+        None
+        if tool_name is None
+        else _gcs_v2_model_response_contract_for_tool(tool_name)
+    )
+
+
 def gcs_v2_model_response_contract_payload() -> dict[str, JSONValue]:
     contracts: dict[str, JSONValue] = {}
     for tool_name in _GCS_V2_MODEL_RESPONSE_CONTRACT_TOOLS:
@@ -289,10 +328,25 @@ def gcs_v2_model_response_contract_payload() -> dict[str, JSONValue]:
         contracts[tool_name] = contract
     payload: dict[str, JSONValue] = {
         "policy_version": GCS_V2_MODEL_RESPONSE_CONTRACT_VERSION,
-        "selection_input": "model-invoked public tool name only",
+        "selection_input": (
+            "last successful model-invoked public tool else accepted runtime route"
+        ),
+        "selected_capability_fallback": (
+            _GCS_V2_MODEL_RESPONSE_CONTRACT_CAPABILITY_TO_TOOL
+        ),
+        "selected_capability_source": "model-selected Bank route not query label",
         "gold_query_label_used": False,
         "scorer_sidecar_used": False,
-        "response_rewrite_or_renderer": False,
+        "runtime_preflight": "shared_parent_candidate_before_publication",
+        "response_rewrite_or_renderer": "at_most_one_fixed_model_format_repair",
+        "repair_policy_version": ASSISTANT_RESPONSE_REPAIR_POLICY_VERSION,
+        "repair_tool_surface": "none",
+        "repair_image_attachment": False,
+        "repair_new_facts": "forbidden_and_material_atoms_checked",
+        "encyclopedia_ambiguity_signal_policy": (
+            "empty_sources_only_no_reliable_public_ambiguity_field"
+        ),
+        "second_invalid_response": "deterministic_runtime_error",
         "contracts_by_tool": contracts,
     }
     validate_json_value(payload)
@@ -303,7 +357,7 @@ GCS_V2_MODEL_RESPONSE_CONTRACT_SHA256 = sha256_bytes(
     canonical_json_bytes(gcs_v2_model_response_contract_payload())
 )
 _GCS_V2_MODEL_RESPONSE_CONTRACT_EXPECTED_SHA256 = (
-    "5528c28d375dfbd2830e2015f45ec2cf40881a10c766df20870aa1f76a41c882"
+    "1633e59ad95368858f7e5a8b28e358590fe681a841849860eb0c29bd9757c162"
 )
 if (
     GCS_V2_MODEL_RESPONSE_CONTRACT_SHA256
@@ -1786,8 +1840,9 @@ class ProductionAssistantRunner:
             "When a tool is needed, call exactly one function and let the runner "
             "return its real result. Do not invent or quote a tool result before "
             "receiving it. When you have enough evidence, answer the user directly "
-            "in plain text. A successful tool message may include a runner-authored "
-            "final_response_contract. Treat it as mandatory runtime response policy, "
+            "in plain text. The selected Skill payload and a successful tool message "
+            "may include a runner-authored final_response_contract. Treat it as "
+            "mandatory runtime response policy, "
             "not as retrieved evidence. Before finalizing, strictly follow its "
             "common_rules, required_sections, supported_rules, and fallback_rule; "
             "do not translate, rename, omit, reorder, or duplicate its required "
@@ -1814,6 +1869,11 @@ class ProductionAssistantRunner:
         skill = {
             "body": selected.body,
             "operators": list(selected.operators),
+            "final_response_contract": (
+                _gcs_v2_model_response_contract_for_capability(
+                    selected.capability_id
+                )
+            ),
         }
         presentation_protocol = (
             _MULTI_PRODUCT_PRESENTATION_PROTOCOL
@@ -2655,6 +2715,7 @@ class ProductionAssistantRunner:
         )
         model_calls: list[AssistantModelCallReceipt] = []
         tool_trace: list[AssistantToolTrace] = []
+        response_contract_observations: list[AssistantResponseToolObservation] = []
         scorer_calls: list[PublicScorerCallEvidenceV2] = []
         visible_cards: list[VisibleCard] = []
         visible_tool_evidence: list[VisibleToolEvidence] = []
@@ -2671,6 +2732,7 @@ class ProductionAssistantRunner:
         forfeited_reservation_sha256: str | None = None
         budget_forfeit_sha256: str | None = None
         shared_route_reference: AssistantSharedRouteReference | None = None
+        response_contract_repair: AssistantResponseContractRepairReceipt | None = None
         reserved_route_usage = LLMUsage(input_tokens=0, output_tokens=0)
         reserved_route_turns = 0
 
@@ -2917,36 +2979,98 @@ class ProductionAssistantRunner:
             action_turn_budget = request.budget.max_turns - (
                 0 if request.config == "noskill" else 1
             )
+            repair_pending = False
+            repair_initial_text = ""
+            repair_initial_validation: AssistantResponseContractValidation | None = (
+                None
+            )
             for action_call_index in range(1, action_turn_budget + 1):
                 used_output = reserved_route_usage.output_tokens + sum(
                     item.output_tokens for item in model_calls
                 )
                 remaining_output = request.budget.max_output_tokens - used_output
-                response = self._chat(
-                    request,
-                    messages,
-                    remaining_output,
-                    absolute_image_path,
-                    authoritative_asset_id,
-                    json_mode=False,
-                    tools=action_tools,
-                    attach_image=True,
-                    timeout_seconds=remaining_timeout_seconds(),
-                    failure_stage="action",
-                    portfolio_budget_context=budget_context,
-                    budget_stage=(
-                        "assistant_action" if budget_context is not None else None
-                    ),
-                    budget_call_index=(
-                        action_call_index if budget_context is not None else None
-                    ),
-                )
+                try:
+                    response = self._chat(
+                        request,
+                        messages,
+                        remaining_output,
+                        absolute_image_path,
+                        authoritative_asset_id,
+                        json_mode=False,
+                        tools=None if repair_pending else action_tools,
+                        attach_image=not repair_pending,
+                        timeout_seconds=remaining_timeout_seconds(),
+                        failure_stage="action",
+                        portfolio_budget_context=budget_context,
+                        budget_stage=(
+                            "assistant_action" if budget_context is not None else None
+                        ),
+                        budget_call_index=(
+                            action_call_index if budget_context is not None else None
+                        ),
+                    )
+                except AssistantCapturedResponseContractError as captured_error:
+                    if not repair_pending:
+                        raise
+                    assert repair_initial_validation is not None
+                    response = captured_error.response
+                    record_model_call(response)
+                    material_atoms_added = not repair_preserves_material_atoms(
+                        repair_initial_text, response.text
+                    )
+                    repair_wire_reasons = {"response_repair_wire_invalid"}
+                    if material_atoms_added:
+                        repair_wire_reasons.add(
+                            "response_repair_new_material_atom"
+                        )
+                    response_contract_repair = (
+                        make_assistant_response_contract_repair_receipt(
+                            initial_response_text=repair_initial_text,
+                            initial_reason_codes=(
+                                repair_initial_validation.reason_codes
+                            ),
+                            repair_call_index=len(model_calls),
+                            repair_call_usage=response.usage,
+                            repaired_response_text=response.text,
+                            final_reason_codes=tuple(sorted(repair_wire_reasons)),
+                            material_atoms_added=material_atoms_added,
+                        )
+                    )
+                    error = "response_contract_error"
+                    break
                 record_model_call(response)
                 if response.finish_reason == "length":
+                    if repair_pending:
+                        assert repair_initial_validation is not None
+                        material_atoms_added = not repair_preserves_material_atoms(
+                            repair_initial_text, response.text
+                        )
+                        length_reasons = {"response_section_invalid"}
+                        if material_atoms_added:
+                            length_reasons.add("response_repair_new_material_atom")
+                        response_contract_repair = (
+                            make_assistant_response_contract_repair_receipt(
+                                initial_response_text=repair_initial_text,
+                                initial_reason_codes=(
+                                    repair_initial_validation.reason_codes
+                                ),
+                                repair_call_index=len(model_calls),
+                                repair_call_usage=response.usage,
+                                repaired_response_text=response.text,
+                                final_reason_codes=tuple(sorted(length_reasons)),
+                                material_atoms_added=material_atoms_added,
+                            )
+                        )
+                        error = "response_contract_error"
+                        break
                     raise AssistantBackendContractError(
                         "Assistant action exhausted its output-token allowance"
                     )
                 if response.tool_calls:
+                    if repair_pending:  # _chat normally rejects this wire shape.
+                        raise AssistantBackendContractError(
+                            "response repair attempted to call a tool"
+                        )
                     tool_call = response.tool_calls[0]
                     try:
                         arguments = parse_strict_json(
@@ -2972,6 +3096,41 @@ class ProductionAssistantRunner:
                         ) from action_error
                 else:
                     if response.finish_reason != "stop" or not response.text.strip():
+                        if repair_pending:
+                            assert repair_initial_validation is not None
+                            material_atoms_added = (
+                                not repair_preserves_material_atoms(
+                                    repair_initial_text, response.text
+                                )
+                            )
+                            incomplete_reasons = {
+                                (
+                                    "response_empty"
+                                    if not response.text.strip()
+                                    else "response_repair_wire_invalid"
+                                )
+                            }
+                            if material_atoms_added:
+                                incomplete_reasons.add(
+                                    "response_repair_new_material_atom"
+                                )
+                            response_contract_repair = (
+                                make_assistant_response_contract_repair_receipt(
+                                    initial_response_text=repair_initial_text,
+                                    initial_reason_codes=(
+                                        repair_initial_validation.reason_codes
+                                    ),
+                                    repair_call_index=len(model_calls),
+                                    repair_call_usage=response.usage,
+                                    repaired_response_text=response.text,
+                                    final_reason_codes=tuple(
+                                        sorted(incomplete_reasons)
+                                    ),
+                                    material_atoms_added=material_atoms_added,
+                                )
+                            )
+                            error = "response_contract_error"
+                            break
                         raise AssistantBackendContractError(
                             "Assistant final response is blank or incomplete"
                         )
@@ -2983,8 +3142,77 @@ class ProductionAssistantRunner:
                         strict=True,
                     )
                 if decision.kind == "final":
-                    final = decision
-                    break
+                    active_contract = None
+                    for observation in reversed(response_contract_observations):
+                        if observation.status == "success":
+                            active_contract = _gcs_v2_model_response_contract_for_tool(
+                                observation.tool_name
+                            )
+                            if active_contract is not None:
+                                break
+                    if active_contract is None:
+                        active_contract = (
+                            _gcs_v2_model_response_contract_for_capability(
+                                selected_capability
+                            )
+                        )
+                    validation = validate_assistant_response_contract(
+                        decision.response_text,
+                        observations=response_contract_observations,
+                        selected_capability=selected_capability,
+                        contract=active_contract,
+                    )
+                    if repair_pending:
+                        assert repair_initial_validation is not None
+                        final_reasons = set(validation.reason_codes)
+                        material_atoms_added = not repair_preserves_material_atoms(
+                            repair_initial_text, decision.response_text
+                        )
+                        if material_atoms_added:
+                            final_reasons.add("response_repair_new_material_atom")
+                        ordered_final_reasons = tuple(sorted(final_reasons))
+                        response_contract_repair = (
+                            make_assistant_response_contract_repair_receipt(
+                                initial_response_text=repair_initial_text,
+                                initial_reason_codes=(
+                                    repair_initial_validation.reason_codes
+                                ),
+                                repair_call_index=len(model_calls),
+                                repair_call_usage=response.usage,
+                                repaired_response_text=decision.response_text,
+                                final_reason_codes=ordered_final_reasons,
+                                material_atoms_added=material_atoms_added,
+                            )
+                        )
+                        if ordered_final_reasons:
+                            error = "response_contract_error"
+                            break
+                        final = decision
+                        break
+                    if validation.valid:
+                        final = decision
+                        break
+                    if action_call_index >= action_turn_budget:
+                        error = "response_contract_error"
+                        break
+                    repair_pending = True
+                    repair_initial_text = decision.response_text
+                    repair_initial_validation = validation
+                    messages.extend(
+                        (
+                            {
+                                "role": "assistant",
+                                "content": decision.response_text,
+                            },
+                            {
+                                "role": "user",
+                                "content": fixed_response_repair_prompt(
+                                    validation=validation
+                                ),
+                            },
+                        )
+                    )
+                    continue
                 if len(tool_trace) >= request.budget.max_tool_calls:
                     raise AssistantBackendContractError(
                         "Assistant attempted to exceed the tool-call budget"
@@ -3035,14 +3263,15 @@ class ProductionAssistantRunner:
                             0, (time.perf_counter_ns() - tool_started) // 1_000_000
                         ),
                     )
+                    public_tool_output = _model_visible_tool_output(
+                        invoked.tool_name,
+                        invoked.output,
+                        call_index=len(tool_trace) + 1,
+                    )
                     tool_message = {
                         "tool_name": invoked.tool_name,
                         "status": "success",
-                        "output": _model_visible_tool_output(
-                            invoked.tool_name,
-                            invoked.output,
-                            call_index=len(tool_trace) + 1,
-                        ),
+                        "output": public_tool_output,
                     }
                     final_response_contract = _gcs_v2_model_response_contract_for_tool(
                         invoked.tool_name
@@ -3067,6 +3296,11 @@ class ProductionAssistantRunner:
                         not in existing_cards
                     )
                     visible_tool_evidence.append(projected_evidence)
+                    response_contract_observation = AssistantResponseToolObservation(
+                        tool_name=invoked.tool_name,
+                        status="success",
+                        public_output=public_tool_output,
+                    )
                 except ToolCallError as tool_error:
                     code = _error_code(tool_error.code)
                     arguments_sha256 = sha256_bytes(
@@ -3091,7 +3325,12 @@ class ProductionAssistantRunner:
                         "status": "error",
                         "error_code": code,
                     }
+                    response_contract_observation = AssistantResponseToolObservation(
+                        tool_name=decision.tool_name,
+                        status="error",
+                    )
                 tool_trace.append(trace)
+                response_contract_observations.append(response_contract_observation)
                 messages.extend(
                     (
                         {
@@ -3117,7 +3356,7 @@ class ProductionAssistantRunner:
                         },
                     )
                 )
-            if final is None:
+            if final is None and error is None:
                 error = "runtime_error"
         except AssistantFatalProviderConfigurationError:
             raise
@@ -3242,6 +3481,8 @@ class ProductionAssistantRunner:
             unsigned_receipt["shared_route_reference"] = shared_route_reference
         if route_call_evidence is not None:
             unsigned_receipt["route_call_evidence"] = route_call_evidence
+        if response_contract_repair is not None:
+            unsigned_receipt["response_contract_repair"] = response_contract_repair
         receipt = AssistantExecutionReceipt.model_validate(
             {
                 **unsigned_receipt,

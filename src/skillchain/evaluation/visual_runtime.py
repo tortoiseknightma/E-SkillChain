@@ -27,6 +27,7 @@ _SELECTED_FEEDBACK_PROCESSORS = frozenset(
         "aifast-gemini-feedback",
         "dashscope-kimi-feedback",
         "dashscope-qwen37-feedback",
+        "dashscope-qwen38-feedback",
     }
 )
 
@@ -40,7 +41,7 @@ class SelectedFeedbackImageBinding:
 
 @dataclass(frozen=True)
 class VerifiedSelectedFeedbackRemoteRuntime:
-    """Independent selected48 authority; never aliases the Core DashScope scope."""
+    """Independent exact-selection authority; never aliases the Core scope."""
 
     authorization: object
     receipt: object
@@ -61,12 +62,19 @@ def _make_verified_selected_feedback_remote_runtime(
     receipt_file_sha256: str,
     selected_bindings: tuple[SelectedFeedbackImageBinding, ...],
     processor: PortfolioProcessor = "aifast-gemini-feedback",
+    expected_binding_count: int = 48,
 ) -> VerifiedSelectedFeedbackRemoteRuntime:
-    if len(selected_bindings) != 48:
-        raise EvaluatorImageLoadError("selected Feedback runtime requires 48 bindings")
     if (
-        len({item.query_id for item in selected_bindings}) != 48
-        or len({item.asset_id for item in selected_bindings}) != 48
+        type(expected_binding_count) is not int
+        or expected_binding_count <= 0
+        or len(selected_bindings) != expected_binding_count
+    ):
+        raise EvaluatorImageLoadError(
+            "selected Feedback runtime binding count differs from its exact authority"
+        )
+    if (
+        len({item.query_id for item in selected_bindings}) != expected_binding_count
+        or len({item.asset_id for item in selected_bindings}) != expected_binding_count
     ):
         raise EvaluatorImageLoadError(
             "selected Feedback runtime query/asset identities must be unique"
@@ -157,7 +165,8 @@ def load_verified_evaluator_image(
         selected_binding = selected_by_query.get(query_id)
         if selected_binding is None or selected_binding.image_sha256 != image.sha256:
             raise EvaluatorImageLoadError(
-                "evaluator image is outside the selected48 Feedback authority"
+                "evaluator image is outside the exact "
+                f"selected{len(remote_runtime.selected_bindings)} Feedback authority"
             )
         verified_runtime = remote_runtime
         matches = tuple(

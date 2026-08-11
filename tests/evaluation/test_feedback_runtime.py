@@ -23,13 +23,18 @@ from skillchain.evaluation.feedback_runtime import (
     VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V1,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V2,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V1,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V2,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V3,
     VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7,
     VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
     _make_result,
     load_feedback_evaluation_result,
+    redact_feedback_result_for_creator_privacy,
     run_visual_feedback,
     visual_feedback_json_schema_v1,
     visual_feedback_response_format_v1,
@@ -37,12 +42,18 @@ from skillchain.evaluation.feedback_runtime import (
 )
 from skillchain.evaluation.packets import (
     EvaluationImage,
+    FeedbackGCSComponentBitsV1,
+    FeedbackGCSContractV1,
+    FeedbackGCSDiagnosticsV1,
     FeedbackPacket,
+    FeedbackPacketV3,
     RubricSnapshot,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V4,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
+    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
     VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V4,
     VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
+    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
 )
 from skillchain.llm import LLMResponse, LLMUsage
 from skillchain.schemas import ConversationTurn
@@ -99,6 +110,46 @@ def _packet() -> FeedbackPacket:
     return FeedbackPacket.model_validate(
         {**payload, "packet_sha256": _hash_payload(payload)},
         strict=True,
+    )
+
+
+def _packet_v3() -> FeedbackPacketV3:
+    legacy = _packet()
+    payload = {
+        **legacy.model_dump(
+            mode="python",
+            exclude={"schema_version", "cache_namespace", "packet_sha256"},
+        ),
+        "schema_version": 3,
+        "cache_namespace": "feedback-evaluator-v10",
+        "gcs_diagnostics": FeedbackGCSDiagnosticsV1(
+            answer_mode="fallback",
+            gcs=0,
+            components=FeedbackGCSComponentBitsV1(
+                route_acceptable=1,
+                no_hard_error=1,
+                tool_contract_pass=1,
+                evidence_grounded=0,
+                output_contract_pass=1,
+            ),
+            reason_codes=("material_fact_uncited",),
+        ),
+        "gcs_contract": FeedbackGCSContractV1(
+            policy_sha256="a" * 64,
+            required_sections=("answer", "evidence", "uncertainty"),
+            fallback_markers=("not enough evidence",),
+            preferred_fallback_marker="not enough evidence",
+            card_requirement="forbidden",
+            legal_tool_sequences=(
+                ("encyclopedia_lookup",),
+                ("object_detect", "encyclopedia_lookup"),
+            ),
+        ),
+        "canonical_capability": "knowledge.visual_encyclopedia",
+        "acceptable_capabilities": ("knowledge.visual_encyclopedia",),
+    }
+    return FeedbackPacketV3.model_validate(
+        {**payload, "packet_sha256": _hash_payload(payload)}, strict=True
     )
 
 
@@ -235,6 +286,7 @@ def test_visual_feedback_runner_sends_real_image_url_array(
         packet,
         _lock(),
         remote_runtime=runtime,
+        max_completion_tokens=4096,
         record_usage=False,
     )
 
@@ -245,9 +297,9 @@ def test_visual_feedback_runner_sends_real_image_url_array(
     assert result.remote_authorization_file_sha256 == authorization_file_sha256
     assert result.remote_receipt_file_sha256 == receipt_file_sha256
     assert result.remote_receipt_sha256 == receipt_sha256
-    assert result.model == "qwen3.7-plus-2026-05-26"
-    assert result.schema_version == 3
-    assert result.cache_namespace == "feedback-evaluator-v9"
+    assert result.model == "qwen3.8-max"
+    assert result.schema_version == 5
+    assert result.cache_namespace == "feedback-evaluator-v11"
     assert result.parser_policy_version == "visual-feedback-free-text-trim-v3"
     assert (
         result.parser_policy_sha256
@@ -256,9 +308,9 @@ def test_visual_feedback_runner_sends_real_image_url_array(
     assert result.prompt_policy_version == VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5
     assert result.prompt_policy_sha256 == VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5
     assert (
-        result.transport_policy_version == VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5
+        result.transport_policy_version == VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6
     )
-    assert result.transport_policy_sha256 == VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5
+    assert result.transport_policy_sha256 == VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6
     assert result.requested_response_format == "json_schema"
     assert result.requested_json_schema_sha256 == VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1
     assert result.requested_thinking is True
@@ -275,7 +327,7 @@ def test_visual_feedback_runner_sends_real_image_url_array(
     assert result.raw_response_text.startswith("{")
     assert result.formal_eligible is False
     assert result.result_sha256
-    assert preflight_calls == [(runtime, "dashscope-qwen37-feedback", packet.image)]
+    assert preflight_calls == [(runtime, "dashscope-qwen38-feedback", packet.image)]
     provider, messages, kwargs = calls[0]
     assert provider == "qwen"
     assert result.wire_sha256 == sha256_bytes(
@@ -401,6 +453,224 @@ def test_visual_feedback_runner_sends_real_image_url_array(
         )
 
 
+@pytest.mark.parametrize(
+    ("suggestion", "expected_status"),
+    [
+        ("[policy_compatible] Preserve the exact fallback marker.", "parsed"),
+        ("Preserve the exact fallback marker.", "parse_error"),
+    ],
+)
+def test_round2_feedback_v11_binds_gcs_prompt_and_policy_labels(
+    monkeypatch,
+    suggestion: str,
+    expected_status: str,
+) -> None:
+    packet = _packet_v3()
+    runtime = SimpleNamespace(
+        authorization=SimpleNamespace(authorization_id="feedback-round2-v1"),
+        authorization_file_sha256="b" * 64,
+        receipt_file_sha256="c" * 64,
+        receipt=SimpleNamespace(receipt_sha256="d" * 64),
+        catalog=SimpleNamespace(catalog_sha256="a" * 64),
+    )
+    observed_messages: list[list[dict]] = []
+
+    def fake_chat(_provider, messages, **_kwargs):
+        observed_messages.append(messages)
+        payload = {
+            "schema_version": 1,
+            "summary": "The fallback contract must remain exact.",
+            "rule_violations": [],
+            "ideal_response_gaps": [],
+            "skill_suggestions": [suggestion],
+        }
+        return LLMResponse(
+            provider="qwen",
+            endpoint=config.PROVIDER_ENDPOINTS["qwen"],
+            requested_model=config.FEEDBACK_JUDGE_MODEL,
+            response_model=config.FEEDBACK_JUDGE_MODEL,
+            request_id="req-feedback-round2",
+            text=canonical_json_bytes(payload).decode().strip(),
+            usage=LLMUsage(input_tokens=20, output_tokens=8),
+            finish_reason="stop",
+            latency_ms=3,
+        )
+
+    monkeypatch.setattr(llm, "chat", fake_chat)
+    monkeypatch.setattr(
+        "skillchain.evaluation.feedback_runtime.load_verified_evaluator_image",
+        lambda *_, **__: (runtime, b"visual-feedback-image"),
+    )
+
+    result = run_visual_feedback(
+        packet,
+        _lock(),
+        remote_runtime=runtime,
+        max_completion_tokens=4096,
+        record_usage=False,
+    )
+
+    assert result.schema_version == 5
+    assert result.cache_namespace == "feedback-evaluator-v11"
+    assert result.model == "qwen3.8-max"
+    assert result.prompt_policy_version == VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6
+    assert result.prompt_policy_sha256 == VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6
+    assert result.status == expected_status
+    visible = json.loads(observed_messages[0][1]["content"][1]["text"])
+    assert visible["gcs_diagnostics"]["answer_mode"] == "fallback"
+    assert visible["gcs_contract"]["preferred_fallback_marker"] == (
+        "not enough evidence"
+    )
+    assert visible["output_contract"]["skill_suggestions_item_schema"][
+        "required_prefix_exactly_one_of"
+    ] == [
+        "[policy_compatible] ",
+        "[requires_new_evidence] ",
+        "[rejected] ",
+    ]
+
+
+def test_fresh_v3_feedback_defaults_to_result6_cache_v12_and_wire6144(
+    monkeypatch,
+) -> None:
+    packet = _packet_v3()
+    runtime = SimpleNamespace(
+        authorization=SimpleNamespace(authorization_id="feedback-fresh-v3"),
+        authorization_file_sha256="b" * 64,
+        receipt_file_sha256="c" * 64,
+        receipt=SimpleNamespace(receipt_sha256="d" * 64),
+        catalog=SimpleNamespace(catalog_sha256="a" * 64),
+    )
+    observed: list[dict] = []
+
+    def fake_chat(_provider, _messages, **kwargs):
+        observed.append(kwargs)
+        payload = {
+            "schema_version": 1,
+            "summary": "Fresh-v3 structured Feedback.",
+            "rule_violations": [],
+            "ideal_response_gaps": [],
+            "skill_suggestions": [
+                "[policy_compatible] Preserve the exact fallback marker."
+            ],
+        }
+        return LLMResponse(
+            provider="qwen",
+            endpoint=config.PROVIDER_ENDPOINTS["qwen"],
+            requested_model=config.FEEDBACK_JUDGE_MODEL,
+            response_model=config.FEEDBACK_JUDGE_MODEL,
+            request_id="req-feedback-fresh-v3",
+            text=canonical_json_bytes(payload).decode().strip(),
+            usage=LLMUsage(input_tokens=20, output_tokens=8),
+            finish_reason="stop",
+            latency_ms=3,
+        )
+
+    monkeypatch.setattr(llm, "chat", fake_chat)
+    monkeypatch.setattr(
+        "skillchain.evaluation.feedback_runtime.load_verified_evaluator_image",
+        lambda *_, **__: (runtime, b"visual-feedback-image"),
+    )
+    result = run_visual_feedback(
+        packet,
+        _lock(),
+        remote_runtime=runtime,
+        record_usage=False,
+    )
+    assert result.schema_version == 6
+    assert result.cache_namespace == "feedback-evaluator-v12"
+    assert result.max_completion_tokens == 6144
+    assert result.transport_policy_version == VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
+    assert result.transport_policy_sha256 == VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
+    assert observed[0]["max_completion_tokens"] == 6144
+
+
+def test_round2_creator_privacy_redaction_is_terminal_and_rebuildable(
+    tmp_path,
+) -> None:
+    packet = _packet_v3()
+    raw_response_text = (
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "summary": "A structurally valid provider response.",
+                "rule_violations": [],
+                "ideal_response_gaps": [],
+                "skill_suggestions": [
+                    "[policy_compatible] Preserve the exact fallback marker."
+                ],
+            }
+        )
+        .decode("utf-8")
+        .strip()
+    )
+    parsed = parse_visual_feedback_output_v3(raw_response_text)
+    result = _make_result(
+        schema_version=4,
+        cache_namespace="feedback-evaluator-v10",
+        parser_policy_version="visual-feedback-free-text-trim-v3",
+        parser_policy_sha256=(
+            "d2858a1aa2db6efc524c6f826817b0787e7506a67273066fbf2e891cbb1c5016"
+        ),
+        prompt_policy_version=VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
+        prompt_policy_sha256=VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+        transport_policy_version=VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5,
+        transport_policy_sha256=VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5,
+        requested_response_format="json_schema",
+        requested_json_schema_sha256=VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
+        requested_thinking=True,
+        requested_thinking_budget=2048,
+        requested_timeout_seconds=600,
+        requested_temperature=None,
+        requested_top_p=None,
+        query_id=packet.query_id,
+        packet_sha256=packet.packet_sha256,
+        prompt_sha256="1" * 64,
+        image_sha256=packet.image.sha256,
+        wire_sha256="2" * 64,
+        asset_catalog_sha256="3" * 64,
+        remote_authorization_id="feedback-round2-v1",
+        remote_authorization_file_sha256="4" * 64,
+        remote_receipt_file_sha256="5" * 64,
+        remote_receipt_sha256="6" * 64,
+        provider="qwen",
+        model="qwen3.7-plus-2026-05-26",
+        endpoint=config.PROVIDER_ENDPOINTS["qwen"],
+        max_tokens=None,
+        max_completion_tokens=4096,
+        status="parsed",
+        request_id="req-feedback-round2-privacy",
+        raw_response_text=raw_response_text,
+        raw_response_sha256=sha256_bytes(raw_response_text.encode("utf-8")),
+        raw_response_bytes=len(raw_response_text.encode("utf-8")),
+        tool_calls=(),
+        tool_call_count=0,
+        parsed_feedback=parsed,
+        usage=LLMUsage(input_tokens=20, output_tokens=8),
+        finish_reason="stop",
+        latency_ms=3,
+        reasoning_present=False,
+        reasoning_tokens=None,
+        reasoning_bytes=0,
+        reasoning_sha256=None,
+    )
+
+    redacted = redact_feedback_result_for_creator_privacy(result)
+
+    assert redacted.status == "parse_error"
+    assert redacted.error_code == "creator_projection_privacy"
+    assert redacted.response_redaction_reason == "creator_projection_privacy"
+    assert redacted.raw_response_text is None
+    assert redacted.tool_calls is None
+    assert redacted.parsed_feedback is None
+    assert redacted.raw_response_sha256 == result.raw_response_sha256
+    assert redacted.usage == result.usage
+    path = write_feedback_evaluation_result(
+        tmp_path / "privacy-terminal.json", redacted
+    )
+    assert load_feedback_evaluation_result(path) == redacted
+
+
 def test_visual_feedback_runner_rejects_image_outside_authorized_catalog(
     monkeypatch,
 ) -> None:
@@ -424,6 +694,7 @@ def test_visual_feedback_runner_rejects_image_outside_authorized_catalog(
             packet,
             _lock(),
             remote_runtime=runtime,
+            max_completion_tokens=4096,
             record_usage=False,
         )
 
@@ -477,6 +748,7 @@ def test_visual_feedback_parse_error_is_retained_without_retry(monkeypatch) -> N
         packet,
         _lock(),
         remote_runtime=runtime,
+        max_completion_tokens=4096,
         record_usage=False,
     )
 
@@ -917,6 +1189,7 @@ def test_visual_feedback_retains_wrapped_timeout(monkeypatch) -> None:
         packet,
         _lock(),
         remote_runtime=runtime,
+        max_completion_tokens=4096,
         record_usage=False,
     )
 
@@ -976,6 +1249,7 @@ def test_visual_feedback_redacts_input_image_echo(
         packet,
         _lock(),
         remote_runtime=runtime,
+        max_completion_tokens=4096,
         record_usage=False,
     )
 

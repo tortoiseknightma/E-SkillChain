@@ -31,6 +31,9 @@ from skillchain.evaluation.portfolio_execution import (
 from skillchain.evaluation.portfolio_gcs_evidence import (
     PublicScorerEvidenceIntegrityError,
 )
+from skillchain.evolution.s1_gcs_gate import (
+    make_s1_round2_response_contract_diagnostic,
+)
 from skillchain.llm import LLMResponse, LLMTimeoutError, LLMToolCall, LLMUsage
 from skillchain.runners.assistant import (
     NOSKILL_EXECUTION_CONTRACT_SHA256,
@@ -512,6 +515,329 @@ def test_noskill_final_is_plain_text_and_has_no_model_supplied_identity(
     assert execution.response.skill_slug is None
 
 
+def test_encyclopedia_contract_gets_one_no_tool_format_repair(
+    monkeypatch,
+    canonical_registry_factory,
+    tmp_path,
+) -> None:
+    fixture = canonical_registry_factory(name="encyclopedia-response-repair")
+    skill = _Skill(
+        slug="s1-encyclopedia",
+        capability_id="knowledge.visual_encyclopedia",
+        description="Explain the visible entity from encyclopedia evidence.",
+        body="# Objective\n\nUse retrieval evidence or a fail-closed fallback.",
+        operators=("encyclopedia_lookup",),
+    )
+    bank = _one_skill_bank(skill, "e")
+    request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=bank.bank_sha256,
+    )
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append((provider, messages, kwargs))
+        if len(calls) == 1:
+            return _route_response(
+                request_id="encyclopedia-repair-route",
+                selected_capability=skill.capability_id,
+            )
+        if len(calls) == 2:
+            return _response(
+                request_id="encyclopedia-repair-tool",
+                text="",
+                output_tokens=5,
+                finish_reason="tool_calls",
+                tool_calls=(
+                    LLMToolCall(
+                        call_id="encyclopedia-repair-tool-call",
+                        name="encyclopedia_lookup",
+                        arguments_json='{"entity":"unknown plant"}',
+                    ),
+                ),
+            )
+        if len(calls) == 3:
+            return _response(
+                request_id="encyclopedia-invalid-final",
+                text="identity remains unresolved <|im_end|>",
+                output_tokens=7,
+            )
+        if len(calls) == 4:
+            return _response(
+                request_id="encyclopedia-fixed-final",
+                text=(
+                    "answer:\nnot enough evidence\n"
+                    "evidence:\nnot enough evidence\n"
+                    "uncertainty:\nidentity remains unresolved"
+                ),
+                output_tokens=12,
+            )
+        pytest.fail("response contract allows at most one repair")
+
+    def fake_invoke(_registry, name, arguments, _context):
+        argument_bytes = canonical_json_bytes(arguments)
+        output = []
+        output_bytes = canonical_json_bytes(output)
+        return ToolInvocationResult(
+            tool_name=name,
+            spec_sha256="1" * 64,
+            arguments=arguments,
+            arguments_bytes=argument_bytes,
+            arguments_sha256=sha256_bytes(argument_bytes),
+            output=output,
+            output_bytes=output_bytes,
+            output_sha256=sha256_bytes(output_bytes),
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
+    budget_context = _budget_context(tmp_path, request, name="response-repair-ledger")
+    execution = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=PortfolioAssistantRunner,
+        banks={"s1": bank},
+    ).execute(request, budget_context=budget_context)
+
+    assert len(calls) == 4
+    assert calls[-1][2]["tools"] is None
+    assert calls[-1][2]["images"] is None
+    assert len(execution.response.tool_trace) == 1
+    assert execution.response.error_code is None
+    repair = execution.receipt.response_contract_repair
+    assert repair is not None
+    assert repair.status == "passed"
+    assert repair.attempt_count == 1
+    assert repair.repair_call_index == 4
+    assert repair.repair_call_usage.output_tokens == 12
+    assert repair.ambiguity_signal_policy == (
+        "empty_sources_only_no_reliable_public_ambiguity_field"
+    )
+    ledger = load_portfolio_budget_ledger(budget_context.ledger_root)
+    assert [item.identity.stage for item in ledger.reservations] == [
+        "assistant_route",
+        "assistant_action",
+        "assistant_action",
+        "assistant_action",
+    ]
+    assert [item.identity.call_index for item in ledger.reservations] == [1, 1, 2, 3]
+    assert len(ledger.settlements) == 4
+    assert [item.actual_output_tokens for item in ledger.settlements] == [8, 5, 7, 12]
+    assert ledger.settlements[-1].provider_request_id == "encyclopedia-fixed-final"
+    assert ledger.settlements[-1].actual_input_tokens == (
+        repair.repair_call_usage.input_tokens
+    )
+    assert ledger.settlements[-1].actual_output_tokens == (
+        repair.repair_call_usage.output_tokens
+    )
+    assert ledger.settlements[-1].actual_cost_cny > Decimal("0")
+    assert execution.receipt.aggregate_usage == LLMUsage(
+        input_tokens=sum(item.actual_input_tokens for item in ledger.settlements),
+        output_tokens=sum(item.actual_output_tokens for item in ledger.settlements),
+    )
+    assert ledger.settled_actual_cost_cny == sum(
+        (item.actual_cost_cny for item in ledger.settlements), Decimal("0")
+    )
+
+
+@pytest.mark.parametrize("config", ("llm_static", "s1"))
+@pytest.mark.parametrize(
+    "invalid_text",
+    (
+        (
+            "answer:\nno supported match\n"
+            "none\n"
+            "uncertainty:\ninsufficient evidence"
+        ),
+        (
+            "answer:\nno supported match\n"
+            "notes:\nnone\n"
+            "product_cards:\nnone\n"
+            "uncertainty:\ninsufficient evidence"
+        ),
+    ),
+    ids=("missing-section", "extra-section"),
+)
+def test_static_and_s1_direct_final_share_one_section_repair(
+    monkeypatch,
+    canonical_registry_factory,
+    config: str,
+    invalid_text: str,
+) -> None:
+    fixture = canonical_registry_factory(name=f"direct-final-contract-{config}")
+    skill = _Skill(
+        slug=f"{config}-exact",
+        capability_id="product.exact_match",
+        description="Find the exact product with public evidence.",
+        body="# Objective\n\nUse public retrieval evidence or fail closed.",
+        operators=("image_product_search", "text_product_search"),
+    )
+    bank = _one_skill_bank(skill, "e" if config == "llm_static" else "f")
+    request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config=config,
+        bank_sha256=bank.bank_sha256,
+    )
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append((provider, messages, kwargs))
+        if len(calls) == 1:
+            return _route_response(
+                request_id=f"direct-final-{config}-route",
+                selected_capability=skill.capability_id,
+            )
+        if len(calls) == 2:
+            return _response(
+                request_id=f"direct-final-{config}-invalid",
+                text=invalid_text,
+                output_tokens=10,
+            )
+        if len(calls) == 3:
+            return _response(
+                request_id=f"direct-final-{config}-repaired",
+                text=(
+                    "answer:\nno supported match\n"
+                    "product_cards:\nnone\n"
+                    "uncertainty:\ninsufficient evidence"
+                ),
+                output_tokens=12,
+            )
+        pytest.fail("direct final contract allows only one repair")
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    execution = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        banks={config: bank},
+    ).execute(request)
+
+    assert len(calls) == 3
+    assert '"final_response_contract"' in calls[1][1][0]["content"]
+    assert calls[2][2]["tools"] is None
+    assert calls[2][2]["images"] is None
+    assert execution.response.error_code is None
+    assert execution.response.tool_trace == ()
+    repair = execution.receipt.response_contract_repair
+    assert repair is not None
+    assert repair.attempt_count == 1
+    assert repair.status == "passed"
+    assert repair.initial_reason_codes == ("response_section_invalid",)
+    diagnostic = make_s1_round2_response_contract_diagnostic(
+        query_id=request.query.query_id,
+        config=config,
+        checkpoint_file_sha256="a" * 64,
+        checkpoint_row_sha256="b" * 64,
+        response=execution.response,
+        receipt=execution.receipt,
+    )
+    assert diagnostic.repair_status == "passed"
+    assert diagnostic.repair_attempt_count == 1
+    assert diagnostic.repair_receipt_sha256 == repair.receipt_sha256
+    assert diagnostic.mapped_contract_reason_codes == ()
+
+
+def test_second_invalid_encyclopedia_response_fails_without_another_repair(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="encyclopedia-response-repair-fails")
+    skill = _Skill(
+        slug="s1-encyclopedia",
+        capability_id="knowledge.visual_encyclopedia",
+        description="Explain the visible entity from encyclopedia evidence.",
+        body="# Objective\n\nUse retrieval evidence or a fail-closed fallback.",
+        operators=("encyclopedia_lookup",),
+    )
+    bank = _one_skill_bank(skill, "f")
+    request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=bank.bank_sha256,
+    )
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append((provider, messages, kwargs))
+        if len(calls) == 1:
+            return _route_response(
+                request_id="encyclopedia-failed-repair-route",
+                selected_capability=skill.capability_id,
+            )
+        if len(calls) == 2:
+            return _response(
+                request_id="encyclopedia-failed-repair-tool",
+                text="",
+                output_tokens=5,
+                finish_reason="tool_calls",
+                tool_calls=(
+                    LLMToolCall(
+                        call_id="encyclopedia-failed-repair-tool-call",
+                        name="encyclopedia_lookup",
+                        arguments_json='{"entity":"unknown plant"}',
+                    ),
+                ),
+            )
+        return _response(
+            request_id=f"encyclopedia-still-invalid-{len(calls)}",
+            text="identity remains unresolved <|im_end|>",
+            output_tokens=7,
+        )
+
+    def fake_invoke(_registry, name, arguments, _context):
+        argument_bytes = canonical_json_bytes(arguments)
+        output_bytes = canonical_json_bytes([])
+        return ToolInvocationResult(
+            tool_name=name,
+            spec_sha256="1" * 64,
+            arguments=arguments,
+            arguments_bytes=argument_bytes,
+            arguments_sha256=sha256_bytes(argument_bytes),
+            output=[],
+            output_bytes=output_bytes,
+            output_sha256=sha256_bytes(output_bytes),
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
+    execution = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        banks={"s1": bank},
+    ).execute(request)
+
+    assert len(calls) == 4
+    assert execution.response.error_code == "response_contract_error"
+    assert execution.response.response_text == ""
+    assert execution.receipt.response_contract_repair is not None
+    assert execution.receipt.response_contract_repair.status == "failed"
+    diagnostic = make_s1_round2_response_contract_diagnostic(
+        query_id=request.query.query_id,
+        config="s1",
+        checkpoint_file_sha256="a" * 64,
+        checkpoint_row_sha256="b" * 64,
+        response=execution.response,
+        receipt=execution.receipt,
+    )
+    assert diagnostic.assistant_response_sha256 == execution.receipt.response_sha256
+    assert diagnostic.assistant_receipt_sha256 == execution.receipt.receipt_sha256
+    assert diagnostic.repair_receipt_sha256 == (
+        execution.receipt.response_contract_repair.receipt_sha256
+    )
+    assert diagnostic.repair_status == "failed"
+    assert diagnostic.repair_attempt_count == 1
+    assert diagnostic.repair_input_tokens == 11
+    assert diagnostic.repair_output_tokens == 7
+    assert diagnostic.mapped_contract_reason_codes == (
+        "fallback_contract_failed",
+        "output_section_invalid",
+    )
+
+
 def test_response_text_with_nested_pseudo_tool_json_is_not_executed(
     monkeypatch,
     canonical_registry_factory,
@@ -743,7 +1069,11 @@ def test_text_product_search_has_empty_model_schema_and_runner_binds_query(
             )
         return _response(
             request_id="text-search-final",
-            text="No exact identifier candidate was found.",
+            text=(
+                "answer:\nno supported match\n"
+                "product_cards:\nnone\n"
+                "uncertainty:\nNo exact identifier candidate was found."
+            ),
             output_tokens=8,
         )
 
@@ -870,7 +1200,12 @@ def test_style_search_model_schema_hides_query_and_runner_binds_it(
             )
         return _response(
             request_id="style-final",
-            text="No evidence-backed style candidate was found.",
+            text=(
+                "answer:\nunable to recommend\n"
+                "diversity_rationale:\nnone\n"
+                "product_cards:\nnone\n"
+                "uncertainty:\nNo evidence-backed style candidate was found."
+            ),
             output_tokens=8,
         )
 
@@ -979,7 +1314,12 @@ def test_action_messages_expose_only_aliases_and_public_product_handles(
             )
         return _response(
             request_id="public-surface-final",
-            text=("候选：tool-call-1-product-1；证据：tool-call-1-evidence-1。"),
+            text=(
+                "answer:\n候选已找到。\n"
+                "product_cards:\ntool-call-1-product-1 "
+                "tool-call-1-evidence-1\n"
+                "uncertainty:\n仅依据返回候选。"
+            ),
             output_tokens=12,
         )
 
@@ -1039,7 +1379,7 @@ def test_action_messages_expose_only_aliases_and_public_product_handles(
     assert "tool-call-1-product-1" in action_messages
     assert "tool-call-1-evidence-1" in action_messages
     assert "final_response_contract" in action_messages
-    assert "portfolio-gcs-v2-model-visible-response-contract-v1" in action_messages
+    assert "portfolio-gcs-v2-model-visible-response-contract-v2" in action_messages
     final_tool_message = json.loads(calls[-1][1][-1]["content"])
     assert final_tool_message["final_response_contract"]["required_sections"] == [
         "answer",
@@ -1105,7 +1445,11 @@ def test_ocr_public_handle_binds_to_authoritative_asset_without_leaking(
             )
         return _response(
             request_id="ocr-authoritative-final",
-            text="The visible document text is Alice.",
+            text=(
+                "answer:\nname: Alice tool-call-1-line-1\n"
+                "evidence:\nname: Alice tool-call-1-line-1\n"
+                "uncertainty:\nuntrusted document text"
+            ),
             output_tokens=9,
         )
 
@@ -1277,6 +1621,11 @@ def test_skilled_final_is_not_forced_to_use_bank_external_evidence_tool(
         bank_sha256=bank.bank_sha256,
     )
     calls = []
+    final_text = (
+        "answer:\n无需调用 Bank 未声明的工具即可完成回答。\n"
+        "evidence:\n无需调用 Bank 未声明的工具即可完成回答。\n"
+        "uncertainty:\n未调用外部工具。"
+    )
 
     def fake_chat(provider, messages, **kwargs):
         calls.append((provider, messages, kwargs))
@@ -1288,7 +1637,7 @@ def test_skilled_final_is_not_forced_to_use_bank_external_evidence_tool(
             )
         return _response(
             request_id=f"bank-owned-evidence-final-{len(calls)}",
-            text="无需调用 Bank 未声明的工具即可完成回答。",
+            text=final_text,
             output_tokens=10,
         )
 
@@ -1312,9 +1661,7 @@ def test_skilled_final_is_not_forced_to_use_bank_external_evidence_tool(
         "Runtime multi-product presentation contract" not in calls[1][1][0]["content"]
     )
     assert execution.response.error_code is None
-    assert (
-        execution.response.response_text == "无需调用 Bank 未声明的工具即可完成回答。"
-    )
+    assert execution.response.response_text == final_text
     assert execution.response.selected_capability == skill.capability_id
     assert execution.response.skill_slug == skill.slug
     assert execution.response.tool_trace == ()
@@ -1827,7 +2174,11 @@ def test_route_schema_and_fixed_retry_are_minimal_and_receipted(
             )
         return _response(
             request_id="route-retry-action",
-            text="Grounded answer.",
+            text=(
+                "answer:\nGrounded answer.\n"
+                "evidence:\nGrounded answer.\n"
+                "uncertainty:\nNo external tool evidence."
+            ),
             output_tokens=8,
         )
 
@@ -2146,12 +2497,17 @@ def test_s1s2_and_full_share_capability_route_with_equal_action_budget(
                 selected_capability=capability,
                 output_tokens=7,
             )
+        answer = (
+            "S1+S2 action answer."
+            if "Use the original frozen procedure." in prompt
+            else "Full action answer."
+        )
         return _response(
             request_id=f"action-{len(calls)}",
             text=(
-                "S1+S2 action answer."
-                if "Use the original frozen procedure." in prompt
-                else "Full action answer."
+                f"answer:\n{answer}\n"
+                f"evidence:\n{answer}\n"
+                "uncertainty:\nNo external tool evidence."
             ),
             output_tokens=9,
         )
@@ -2286,7 +2642,11 @@ def test_legacy_shared_route_is_limited_to_exact_paired_full_diagnostic(
             )
         return _response(
             request_id=f"legacy-action-{len(calls)}",
-            text="Grounded document answer.",
+            text=(
+                "answer:\nGrounded document answer.\n"
+                "evidence:\nGrounded document answer.\n"
+                "uncertainty:\nNo external tool evidence."
+            ),
             output_tokens=8,
         )
 

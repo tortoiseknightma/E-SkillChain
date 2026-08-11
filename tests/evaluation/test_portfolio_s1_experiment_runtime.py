@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from dataclasses import replace
 import json
 from pathlib import Path
 import shutil
@@ -10,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import refresh_portfolio_llm_static_style_contract as refresh
+from scripts import prepare_portfolio_s1_experiment as prepare_s1_cli
 from scripts.run_portfolio_evolution_model import (
     CleanTurnAudit,
     CodexProcessResult,
@@ -27,7 +29,13 @@ from skillchain.evaluation.portfolio_core_inputs import (
     VerifiedPortfolioCoreInputs,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
-from skillchain.evaluation.portfolio_gcs import GCS_V2_POLICY_SHA256
+from skillchain.evaluation.portfolio_gcs import (
+    GCS_CAPABILITY_ORDER,
+    GCS_V2_POLICY_SHA256,
+    GCSQueryScoreV2,
+    build_gcs_population_v2,
+)
+from skillchain.evaluation import portfolio_s1_experiment_runtime as s1_runtime_module
 from skillchain.evaluation.portfolio_inputs import PortfolioQueryAssetBinding
 from skillchain.evaluation.portfolio_s1_experiment_runtime import (
     HISTORICAL_S1_REPLAY_V5_CONTROL_FILE_SHA256,
@@ -38,11 +46,28 @@ from skillchain.evaluation.portfolio_s1_experiment_runtime import (
     create_portfolio_s1_experiment_execution_control,
     create_portfolio_s1_experiment_launch_package,
     create_portfolio_s1_experiment_runtime,
+    create_portfolio_s1_screened_sparse_runtime,
     load_verified_portfolio_s1_experiment_launch,
     load_verified_portfolio_s1_experiment_runtime,
     load_verified_portfolio_s1_experiment_runtime_evidence,
+    load_verified_portfolio_s1_screened_sparse_runtime,
     require_verified_portfolio_s1_experiment_runtime,
     validate_portfolio_s1_experiment_evidence_control,
+)
+from skillchain.evolution.s1_gcs_gate import (
+    S1_ROUND2_RESPONSE_CONTRACT_DIAGNOSTIC_POLICY_VERSION,
+    S1_ROUND2_REQUIRED_REGRESSION_QUERY_IDS,
+    S1Round2ResponseContractDiagnostic,
+    evaluate_s1_development_composite,
+    make_s1_gcs_evidence_binding,
+    make_s1_round2_candidate_freeze,
+    make_s1_round2_response_contract_diagnostics,
+    screen_s1_round2_development_patches,
+)
+from skillchain.evolution.s1_sparse_patch import (
+    S1_SPARSE_COMPILATION_POLICY_VERSION,
+    SparseCompilationReceiptV1,
+    compose_screened_sparse_bank,
 )
 from skillchain.evaluation.portfolio_s1_feedback import (
     PortfolioS1FeedbackBundleEntryV1,
@@ -161,6 +186,95 @@ def _different_compatible_candidate(
     payload["construction_identity_sha256"] = "9" * 64
     payload["bank_sha256"] = sha256_bytes(canonical_json_bytes(payload))
     return StaticBankArtifact.model_validate(payload, strict=True)
+
+
+def _sparse_receipt_for_banks(
+    parent: StaticBankArtifact,
+    candidate: StaticBankArtifact,
+) -> SparseCompilationReceiptV1:
+    parent_by_capability = {item.capability_id: item for item in parent.skills}
+    candidate_by_capability = {item.capability_id: item for item in candidate.skills}
+    bindings = []
+    for capability_id in sorted(parent_by_capability):
+        parent_skill = parent_by_capability[capability_id]
+        candidate_skill = candidate_by_capability[capability_id]
+        parent_bytes = canonical_json_bytes(parent_skill.model_dump(mode="json"))
+        candidate_bytes = canonical_json_bytes(candidate_skill.model_dump(mode="json"))
+        action = (
+            "inherit"
+            if candidate_skill.skill_sha256 == parent_skill.skill_sha256
+            else "patch"
+        )
+        bindings.append(
+            {
+                "capability_id": capability_id,
+                "action": action,
+                "parent_skill_sha256": parent_skill.skill_sha256,
+                "parent_skill_bytes_sha256": sha256_bytes(parent_bytes),
+                "candidate_skill_sha256": candidate_skill.skill_sha256,
+                "candidate_skill_bytes_sha256": sha256_bytes(candidate_bytes),
+                "inherited_bytes_exact": action == "inherit",
+            }
+        )
+    payload = {
+        "schema_version": 1,
+        "artifact_kind": "portfolio-s1-sparse-compilation-receipt",
+        "policy_version": S1_SPARSE_COMPILATION_POLICY_VERSION,
+        "sparse_draft_sha256": "1" * 64,
+        "sparse_draft_file_sha256": "2" * 64,
+        "parent_bank_sha256": parent.bank_sha256,
+        "feedback_bundle_sha256": "3" * 64,
+        "authoring_input_sha256": "4" * 64,
+        "tool_registry_sha256": parent.tool_registry_sha256,
+        "tool_registry_runtime_sha256": parent.tool_registry_runtime_sha256,
+        "compiler_identity_sha256": "5" * 64,
+        "sparse_compiler_file_sha256": "6" * 64,
+        "compiler_owned_sections_sha256": "7" * 64,
+        "bindings": bindings,
+        "candidate_bank_sha256": candidate.bank_sha256,
+    }
+    return SparseCompilationReceiptV1.model_validate(
+        {
+            **payload,
+            "receipt_sha256": sha256_bytes(canonical_json_bytes(payload)),
+        },
+        strict=True,
+    )
+
+
+def _fake_sparse_creator_runtime(
+    root: Path,
+    runtime,
+):
+    fake_root = root / "raw-sparse-runtime"
+    shutil.copytree(runtime.root, fake_root)
+    receipt = _sparse_receipt_for_banks(
+        runtime.banks["llm_static"], runtime.banks["s1"]
+    )
+    receipt_path = fake_root / "fixture-sparse-receipt.json"
+    receipt_path.write_bytes(receipt.canonical_bytes())
+    lock = dict(runtime.runtime_lock)
+    lock.update(
+        {
+            "s1_sparse_compilation_receipt_file": receipt_path.name,
+            "s1_sparse_compilation_receipt_file_sha256": _sha(receipt_path),
+            "s1_sparse_compilation_receipt_sha256": receipt.receipt_sha256,
+            "s1_sparse_candidate_bank_sha256": runtime.banks["s1"].bank_sha256,
+        }
+    )
+    lock.pop("runtime_lock_sha256", None)
+    lock["runtime_lock_sha256"] = sha256_bytes(canonical_json_bytes(lock))
+    lock_bytes = canonical_json_bytes(lock)
+    (fake_root / "runtime-lock.json").write_bytes(lock_bytes)
+    return (
+        replace(
+            runtime,
+            root=fake_root,
+            runtime_lock=lock,
+            runtime_lock_file_sha256=sha256_bytes(lock_bytes),
+        ),
+        receipt,
+    )
 
 
 def _typed_feedback_bundle(parent_bank_sha256: str) -> PortfolioS1FeedbackBundleV1:
@@ -553,6 +667,160 @@ def synthetic_inputs() -> VerifiedPortfolioCoreInputs:
     )
 
 
+def _passing_contract_diagnostics(queries: tuple[Query, ...]):
+    rows = []
+    for query in sorted(queries, key=lambda item: item.query_id):
+        for config in ("llm_static", "s1"):
+            prefix = f"{query.query_id}:{config}".encode()
+            payload = {
+                "schema_version": 1,
+                "artifact_kind": ("portfolio-s1-round2-response-contract-diagnostic"),
+                "policy_version": (
+                    S1_ROUND2_RESPONSE_CONTRACT_DIAGNOSTIC_POLICY_VERSION
+                ),
+                "query_id": query.query_id,
+                "config": config,
+                "checkpoint_file_sha256": sha256_bytes(prefix + b":checkpoint"),
+                "checkpoint_row_sha256": sha256_bytes(prefix + b":row"),
+                "assistant_response_sha256": sha256_bytes(prefix + b":response"),
+                "assistant_receipt_sha256": sha256_bytes(prefix + b":receipt"),
+                "response_error_code": None,
+                "repair_status": "not_attempted",
+                "repair_attempt_count": 0,
+                "repair_receipt_sha256": None,
+                "repair_call_index": None,
+                "repair_input_tokens": 0,
+                "repair_output_tokens": 0,
+                "initial_reason_codes": [],
+                "final_reason_codes": [],
+                "mapped_contract_reason_codes": [],
+                "mapping_disposition": "not_applicable",
+            }
+            rows.append(
+                S1Round2ResponseContractDiagnostic.model_validate(
+                    {
+                        **payload,
+                        "diagnostic_sha256": sha256_bytes(
+                            canonical_json_bytes(payload)
+                        ),
+                    },
+                    strict=True,
+                )
+            )
+    return make_s1_round2_response_contract_diagnostics(
+        query_ids=tuple(item.query_id for item in queries), rows=tuple(rows)
+    )
+
+
+def _round2_development_artifacts(
+    inputs: VerifiedPortfolioCoreInputs,
+    parent: StaticBankArtifact,
+    candidate: StaticBankArtifact,
+):
+    opt_queries = [item for item in inputs.queries if item.split == "opt_pool"]
+    required = set(S1_ROUND2_REQUIRED_REGRESSION_QUERY_IDS)
+    source = [item for item in opt_queries if item.query_id in required]
+    source.extend(
+        item
+        for item in opt_queries
+        if item.query_id not in required and len(source) < 200
+    )
+    source = sorted(source, key=lambda item: item.query_id)
+    assert len(source) == 200
+    metadata = {
+        "knowledge.visual_encyclopedia": ("encyclopedia", False),
+        "product.exact_match": ("exact_match", True),
+        "product.multi_search": ("multi_product", True),
+        "product.style_recommendation": ("divergent_rec", True),
+        "utility.document_reading": ("utility", False),
+        "utility.recipe_guidance": ("utility", False),
+    }
+    rewritten = []
+    for index, item in enumerate(source):
+        capability = GCS_CAPABILITY_ORDER[index % 6]
+        intent, requires_card = metadata[capability]
+        payload = item.model_dump(mode="json")
+        payload.update(
+            {
+                "canonical_capability": capability,
+                "acceptable_capabilities": [capability],
+                "canonical_intent": intent,
+                "requires_card": requires_card,
+            }
+        )
+        payload["label_provenance"] = [
+            {
+                **decision,
+                "canonical_intent": intent,
+                "canonical_capability": capability,
+                "acceptable_capabilities": [capability],
+            }
+            for decision in payload["label_provenance"]
+        ]
+        rewritten.append(Query.model_validate(payload, strict=True))
+    queries = tuple(rewritten)
+    population = build_gcs_population_v2(queries)
+    component_by_id = {item.query_id: item.component_id for item in population.bindings}
+
+    def scores(config: str) -> tuple[GCSQueryScoreV2, ...]:
+        return tuple(
+            GCSQueryScoreV2(
+                query_id=query.query_id,
+                config=config,
+                canonical_capability=query.canonical_capability,
+                component_id=component_by_id[query.query_id],
+                route_disposition="pass",
+                answer_mode="supported",
+                oracle_available=True,
+                semantic_claim_support_resolved=True,
+                route_acceptable=1,
+                no_hard_error=1,
+                tool_contract_pass=1,
+                evidence_grounded=1,
+                output_contract_pass=1,
+                hard_error=0,
+                gcs=1,
+                reason_codes=(),
+                evaluated_capability=query.canonical_capability,
+                style_support_status=(
+                    "candidates"
+                    if query.canonical_capability == "product.style_recommendation"
+                    else None
+                ),
+            )
+            for query in queries
+        )
+
+    baseline = scores("llm_static")
+    candidate_scores = scores("s1")
+    diagnostics = _passing_contract_diagnostics(queries)
+    evidence = make_s1_gcs_evidence_binding(
+        phase="replay",
+        population_binding_file_sha256="1" * 64,
+        queries_file_sha256="2" * 64,
+        baseline_scores_file_sha256="3" * 64,
+        candidate_scores_file_sha256="4" * 64,
+        parent_bank_file_sha256=sha256_bytes(parent.canonical_bytes()),
+        candidate_bank_file_sha256=sha256_bytes(candidate.canonical_bytes()),
+    )
+    screen = screen_s1_round2_development_patches(
+        queries=queries,
+        baseline_scores=baseline,
+        raw_candidate_scores=candidate_scores,
+        response_contract_diagnostics=diagnostics,
+        source_evidence=evidence,
+        parent_bank_sha256=parent.bank_sha256,
+        raw_candidate_bank_sha256=candidate.bank_sha256,
+    )
+    development = evaluate_s1_development_composite(
+        queries=queries,
+        baseline_scores=baseline,
+        candidate_scores=candidate_scores,
+        response_contract_diagnostics=diagnostics,
+    )
+    return development, screen
+
+
 def _selection_files(tmp_path: Path, inputs: VerifiedPortfolioCoreInputs):
     opt_batches = tuple(batch for batch in inputs.batches if batch.split == "opt_pool")
     rows = []
@@ -621,6 +889,9 @@ def test_two_bank_runtime_is_independent_and_judge_free(experiment_runtime) -> N
     assert lock["legacy_final_judge_enabled"] is False
     assert "s1_population_runner_file_sha256" in lock["active_source_file_sha256s"]
     assert "s1_population_analyzer_file_sha256" in lock["active_source_file_sha256s"]
+    assert (
+        "assistant_response_contract_file_sha256" in lock["active_source_file_sha256s"]
+    )
     assert lock["s1_creator_invocation_receipt_file_sha256"] == _sha(
         experiment_runtime.root / "creator-invocation-receipt.json"
     )
@@ -637,6 +908,319 @@ def test_two_bank_runtime_is_independent_and_judge_free(experiment_runtime) -> N
     assert lock["s1_feedback_bundle_selected_count"] == 48
     assert lock["s1_feedback_bundle_parsed_count"] == 48
     assert lock["s1_feedback_bundle_provider_call_count"] == 48
+
+
+def test_sparse_creator_replay_freshly_runs_static_and_s1(
+    tmp_path: Path,
+    experiment_runtime,
+    synthetic_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sparse_runtime, _receipt = _fake_sparse_creator_runtime(
+        tmp_path, experiment_runtime
+    )
+    monkeypatch.setattr(
+        s1_runtime_module,
+        "require_verified_portfolio_s1_experiment_runtime",
+        lambda _value: sparse_runtime,
+    )
+    monkeypatch.setattr(
+        s1_runtime_module,
+        "require_verified_portfolio_core_inputs",
+        lambda value: value,
+    )
+    manifest, mapping, _gate = _selection_files(tmp_path, synthetic_inputs)
+    launch = create_portfolio_s1_experiment_launch_package(
+        synthetic_inputs,
+        sparse_runtime,
+        execution_scope=S1_OPT_REPLAY_SCOPE,
+        matrix_run_id="round2-raw-sparse-development",
+        output_dir=tmp_path / "raw-sparse-launch",
+        replay_manifest_path=manifest,
+        expected_replay_manifest_file_sha256=_sha(manifest),
+        replay_mapping_path=mapping,
+        expected_replay_mapping_file_sha256=_sha(mapping),
+    )
+    assert launch.plan["sparse_development_paired"] is True
+    assert launch.plan["config_order"] == ["llm_static", "s1"]
+    assert launch.plan["query_count"] == 200
+    assert launch.plan["shard_count"] == 16
+    assert launch.plan["instance_count"] == 400
+
+
+def test_screened_sparse_runtime_and_body_freeze_are_forward_bound(
+    tmp_path: Path,
+    experiment_runtime,
+    synthetic_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sparse_runtime, sparse_receipt = _fake_sparse_creator_runtime(
+        tmp_path, experiment_runtime
+    )
+    parent = sparse_runtime.banks["llm_static"]
+    creator_candidate = sparse_runtime.banks["s1"]
+    development, screen = _round2_development_artifacts(
+        synthetic_inputs, parent, creator_candidate
+    )
+    screen_bytes = screen.canonical_bytes()
+    retained = tuple(
+        item.capability_id for item in sparse_receipt.bindings if item.action == "patch"
+    )
+    composed = compose_screened_sparse_bank(
+        parent_bank=parent,
+        creator_candidate_bank=creator_candidate,
+        creator_compilation_receipt=sparse_receipt,
+        development_screen_sha256=sha256_bytes(screen_bytes),
+        retained_capability_ids=retained,
+    )
+    artifact_root = tmp_path / "screen-artifacts"
+    artifact_root.mkdir()
+    creator_bank_path = artifact_root / "creator-bank.json"
+    sparse_receipt_path = artifact_root / "sparse-receipt.json"
+    screen_path = artifact_root / "screen.json"
+    screened_bank_path = artifact_root / "screened-bank.json"
+    screened_receipt_path = artifact_root / "screened-receipt.json"
+    creator_bank_path.write_bytes(creator_candidate.canonical_bytes())
+    sparse_receipt_path.write_bytes(sparse_receipt.canonical_bytes())
+    screen_path.write_bytes(screen_bytes)
+    screened_bank_path.write_bytes(composed.bank.canonical_bytes())
+    screened_receipt_path.write_bytes(composed.receipt.canonical_bytes())
+
+    screened_output = tmp_path / "screened-runtime"
+    original_screened_loader = load_verified_portfolio_s1_screened_sparse_runtime
+
+    def load_runtime(root, *, expected_runtime_lock_file_sha256):
+        resolved = Path(root).absolute()
+        if resolved == sparse_runtime.root or resolved.name == (
+            "creator-sparse-runtime-evidence"
+        ):
+            return sparse_runtime
+        return original_screened_loader(
+            resolved,
+            expected_runtime_lock_file_sha256=(expected_runtime_lock_file_sha256),
+        )
+
+    monkeypatch.setattr(
+        s1_runtime_module,
+        "load_verified_portfolio_s1_experiment_runtime",
+        load_runtime,
+    )
+    monkeypatch.setattr(
+        s1_runtime_module,
+        "require_verified_portfolio_core_inputs",
+        lambda value: value,
+    )
+    screened_runtime = create_portfolio_s1_screened_sparse_runtime(
+        creator_sparse_runtime_root=sparse_runtime.root,
+        expected_creator_sparse_runtime_lock_file_sha256=(
+            sparse_runtime.runtime_lock_file_sha256
+        ),
+        creator_candidate_bank_path=creator_bank_path,
+        expected_creator_candidate_bank_file_sha256=_sha(creator_bank_path),
+        creator_sparse_compilation_receipt_path=sparse_receipt_path,
+        expected_creator_sparse_compilation_receipt_file_sha256=(
+            _sha(sparse_receipt_path)
+        ),
+        development_screen_path=screen_path,
+        expected_development_screen_file_sha256=_sha(screen_path),
+        screened_bank_path=screened_bank_path,
+        expected_screened_bank_file_sha256=_sha(screened_bank_path),
+        screened_bank_receipt_path=screened_receipt_path,
+        expected_screened_bank_receipt_file_sha256=_sha(screened_receipt_path),
+        output_dir=screened_output,
+    )
+    assert screened_runtime.banks["s1"].canonical_bytes() == (
+        composed.bank.canonical_bytes()
+    )
+    assert screened_runtime.runtime_lock["creator_candidate_bank_sha256"] == (
+        creator_candidate.bank_sha256
+    )
+    assert screened_runtime.runtime_lock["screened_bank_receipt_sha256"] == (
+        composed.receipt.receipt_sha256
+    )
+    with pytest.raises(PortfolioS1ExperimentError, match="output exists"):
+        create_portfolio_s1_screened_sparse_runtime(
+            creator_sparse_runtime_root=sparse_runtime.root,
+            expected_creator_sparse_runtime_lock_file_sha256=(
+                sparse_runtime.runtime_lock_file_sha256
+            ),
+            creator_candidate_bank_path=creator_bank_path,
+            expected_creator_candidate_bank_file_sha256=_sha(creator_bank_path),
+            creator_sparse_compilation_receipt_path=sparse_receipt_path,
+            expected_creator_sparse_compilation_receipt_file_sha256=(
+                _sha(sparse_receipt_path)
+            ),
+            development_screen_path=screen_path,
+            expected_development_screen_file_sha256=_sha(screen_path),
+            screened_bank_path=screened_bank_path,
+            expected_screened_bank_file_sha256=_sha(screened_bank_path),
+            screened_bank_receipt_path=screened_receipt_path,
+            expected_screened_bank_receipt_file_sha256=(_sha(screened_receipt_path)),
+            output_dir=screened_output,
+        )
+
+    _manifest, _mapping, gate = _selection_files(tmp_path, synthetic_inputs)
+    with pytest.raises(PortfolioS1ExperimentError, match="pre-existing"):
+        create_portfolio_s1_experiment_launch_package(
+            synthetic_inputs,
+            screened_runtime,
+            execution_scope=S1_BODY_GATE_SCOPE,
+            matrix_run_id="round2-body-without-freeze",
+            output_dir=tmp_path / "body-without-freeze",
+            validation_gate_path=tmp_path / "must-not-be-read.json",
+            expected_validation_gate_file_sha256="0" * 64,
+        )
+
+    development_path = tmp_path / "development-report.json"
+    development_path.write_bytes(development.canonical_bytes())
+    freeze = make_s1_round2_candidate_freeze(
+        development_report=development,
+        development_screen=screen,
+        development_screen_file_sha256=sha256_bytes(screen_bytes),
+        screened_bank_receipt_sha256=composed.receipt.receipt_sha256,
+        screened_bank_receipt_file_sha256=sha256_bytes(
+            composed.receipt.canonical_bytes()
+        ),
+        retained_capability_ids=retained,
+        parent_bank_sha256=screened_runtime.banks["llm_static"].bank_sha256,
+        parent_bank_file_sha256=screened_runtime.bank_file_sha256s["llm_static"],
+        candidate_bank_sha256=screened_runtime.banks["s1"].bank_sha256,
+        candidate_bank_file_sha256=screened_runtime.bank_file_sha256s["s1"],
+        runtime_lock_sha256=screened_runtime.runtime_lock["runtime_lock_sha256"],
+        runtime_lock_file_sha256=screened_runtime.runtime_lock_file_sha256,
+    )
+    freeze_path = tmp_path / "candidate-freeze.json"
+    freeze_path.write_bytes(freeze.canonical_bytes())
+    body = create_portfolio_s1_experiment_launch_package(
+        synthetic_inputs,
+        screened_runtime,
+        execution_scope=S1_BODY_GATE_SCOPE,
+        matrix_run_id="round2-frozen-body",
+        output_dir=tmp_path / "round2-body-launch",
+        validation_gate_path=gate,
+        expected_validation_gate_file_sha256=_sha(gate),
+        round2_candidate_freeze_path=freeze_path,
+        expected_round2_candidate_freeze_file_sha256=_sha(freeze_path),
+        round2_development_report_path=development_path,
+        expected_round2_development_report_file_sha256=_sha(development_path),
+    )
+    assert body.plan["instance_count"] == 150
+    assert body.plan["round2_candidate_freeze_sha256"] == freeze.freeze_sha256
+    assert body.plan["round2_development_report_sha256"] == (development.report_sha256)
+    control = create_portfolio_s1_experiment_execution_control(
+        body,
+        screened_runtime,
+        output_dir=tmp_path / "round2-body-control",
+        approved_dashscope_budget_cny=Decimal("1.000000000000"),
+        phase_cumulative_cap_cny=Decimal("1.000000000000"),
+    )
+    assert control["round2_candidate_freeze_sha256"] == freeze.freeze_sha256
+
+
+def test_prepare_cli_exposes_screened_runtime_and_round2_freeze_inputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    def create_screened(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            root=Path(kwargs["output_dir"]).absolute(),
+            runtime_lock_file_sha256="a" * 64,
+            runtime_lock={
+                "runtime_lock_sha256": "b" * 64,
+                "bank_sha256s": {"llm_static": "c" * 64, "s1": "d" * 64},
+                "creator_candidate_bank_sha256": "e" * 64,
+                "screened_bank_receipt_sha256": "f" * 64,
+            },
+        )
+
+    monkeypatch.setattr(
+        prepare_s1_cli,
+        "create_portfolio_s1_screened_sparse_runtime",
+        create_screened,
+    )
+    code = prepare_s1_cli.main(
+        [
+            "screened-runtime",
+            "--creator-sparse-runtime-root",
+            str(tmp_path / "creator-runtime"),
+            "--creator-sparse-runtime-lock-file-sha256",
+            "1" * 64,
+            "--creator-candidate-bank",
+            str(tmp_path / "creator-bank.json"),
+            "--creator-candidate-bank-file-sha256",
+            "2" * 64,
+            "--creator-sparse-compilation-receipt",
+            str(tmp_path / "sparse-receipt.json"),
+            "--creator-sparse-compilation-receipt-file-sha256",
+            "3" * 64,
+            "--development-screen",
+            str(tmp_path / "screen.json"),
+            "--development-screen-file-sha256",
+            "4" * 64,
+            "--screened-bank",
+            str(tmp_path / "screened-bank.json"),
+            "--screened-bank-file-sha256",
+            "5" * 64,
+            "--screened-bank-receipt",
+            str(tmp_path / "screened-receipt.json"),
+            "--screened-bank-receipt-file-sha256",
+            "6" * 64,
+            "--output-dir",
+            str(tmp_path / "screened-runtime"),
+        ]
+    )
+    assert code == 0
+    assert captured["development_screen_path"] == tmp_path / "screen.json"
+    assert captured["screened_bank_receipt_path"] == (
+        tmp_path / "screened-receipt.json"
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == "verified_ready"
+    assert output["provider_calls"] == 0
+
+    parsed = prepare_s1_cli.build_parser().parse_args(
+        [
+            "population",
+            "--scope",
+            S1_BODY_GATE_SCOPE,
+            "--matrix-run-id",
+            "round2-body",
+            "--core-input-binding-launch-root",
+            str(tmp_path / "core"),
+            "--core-input-binding-launch-plan-file-sha256",
+            "7" * 64,
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--runtime-lock-file-sha256",
+            "8" * 64,
+            "--validation-gates",
+            str(tmp_path / "gates.json"),
+            "--validation-gates-file-sha256",
+            "9" * 64,
+            "--round2-candidate-freeze",
+            str(tmp_path / "freeze.json"),
+            "--round2-candidate-freeze-file-sha256",
+            "a" * 64,
+            "--round2-development-report",
+            str(tmp_path / "development.json"),
+            "--round2-development-report-file-sha256",
+            "b" * 64,
+            "--launch-output-dir",
+            str(tmp_path / "launch"),
+            "--execution-output-dir",
+            str(tmp_path / "execution"),
+            "--approved-dashscope-budget-cny",
+            "1.000000000000",
+            "--phase-cumulative-cap-cny",
+            "1.000000000000",
+        ]
+    )
+    assert parsed.round2_candidate_freeze == tmp_path / "freeze.json"
+    assert parsed.round2_development_report == tmp_path / "development.json"
 
 
 @pytest.mark.skipif(
@@ -786,6 +1370,36 @@ def test_real_s1_runtime_v5_evidence_rejects_bound_byte_tamper(
             "portfolio-s1-feedback-bundle-v4",
             "load_portfolio_s1_feedback_bundle_v4",
         ),
+        (
+            5,
+            "portfolio-s1-feedback-bundle-v5",
+            "load_portfolio_s1_feedback_bundle_v5",
+        ),
+        (
+            6,
+            "portfolio-s1-feedback-bundle-v6",
+            "load_portfolio_s1_feedback_bundle_v6",
+        ),
+        (
+            7,
+            "portfolio-s1-feedback-bundle-v7",
+            "load_portfolio_s1_feedback_bundle_v7",
+        ),
+        (
+            8,
+            "portfolio-s1-feedback-bundle-v8",
+            "load_portfolio_s1_feedback_bundle_v8",
+        ),
+        (
+            9,
+            "portfolio-s1-feedback-bundle-v9",
+            "load_portfolio_s1_feedback_bundle_v9",
+        ),
+        (
+            10,
+            "portfolio-s1-feedback-bundle-v10",
+            "load_portfolio_s1_feedback_bundle_v10",
+        ),
     ),
 )
 def test_creator_lineage_dispatches_only_exact_feedback_bundle_versions(
@@ -838,6 +1452,198 @@ def test_creator_lineage_rejects_arbitrary_feedback_json(tmp_path: Path) -> None
         module._load_typed_s1_feedback_bundle(
             path,
             expected_file_sha256=_sha(path),
+        )
+
+
+def test_v7_v8_v9_and_v10_all_attempt_run_commitments_are_forward_only() -> None:
+    import skillchain.evaluation.portfolio_s1_experiment_runtime as module
+
+    run_sha256 = "a" * 64
+    run_file_sha256 = "b" * 64
+    v7 = SimpleNamespace(
+        schema_version=7,
+        run_sha256=run_sha256,
+        run_file_sha256=run_file_sha256,
+    )
+    assert module._s1_feedback_run_lock_values(v7) == {
+        "s1_feedback_bundle_run_sha256": run_sha256,
+        "s1_feedback_bundle_run_file_sha256": run_file_sha256,
+    }
+    v8 = SimpleNamespace(
+        schema_version=8,
+        run_sha256="c" * 64,
+        run_file_sha256="d" * 64,
+        selected_count=240,
+        provider_call_count=243,
+    )
+    assert module._s1_feedback_run_lock_values(v8) == {
+        "s1_feedback_bundle_run_sha256": "c" * 64,
+        "s1_feedback_bundle_run_file_sha256": "d" * 64,
+        "s1_feedback_bundle_run_schema_version": 5,
+        "s1_feedback_bundle_run_policy_version": "portfolio-s1-feedback-run-v5",
+        "s1_feedback_bundle_all_attempt_count": 243,
+        "s1_feedback_bundle_retry_count": 3,
+        "s1_feedback_bundle_retry_claim_count": 3,
+    }
+    v9 = SimpleNamespace(
+        schema_version=9,
+        run_sha256="e" * 64,
+        run_file_sha256="f" * 64,
+        selected_count=240,
+        provider_call_count=245,
+        parent_provider_call_count=76,
+        recovery_provider_call_count=169,
+        parent_run_sha256="1" * 64,
+        parent_run_file_sha256="2" * 64,
+        parent_evidence_sha256="3" * 64,
+        parent_evidence_file_sha256="4" * 64,
+        recovery_run_sha256="e" * 64,
+        recovery_run_file_sha256="f" * 64,
+        recovery_authorization_sha256="5" * 64,
+        recovery_control_sha256="6" * 64,
+        recovery_artifact_set_sha256="7" * 64,
+        recovery_claim_count=3,
+        recovery_claim_sha256s=("8" * 64, "9" * 64, "a" * 64),
+    )
+    assert module._s1_feedback_run_lock_values(v9) == {
+        "s1_feedback_bundle_run_sha256": "e" * 64,
+        "s1_feedback_bundle_run_file_sha256": "f" * 64,
+        "s1_feedback_bundle_run_schema_version": 1,
+        "s1_feedback_bundle_run_policy_version": (
+            "portfolio-s1-feedback-derived-recovery-run-v1"
+        ),
+        "s1_feedback_bundle_all_attempt_count": 245,
+        "s1_feedback_bundle_retry_count": 5,
+        "s1_feedback_bundle_retry_claim_count": 5,
+        "s1_feedback_bundle_parent_provider_call_count": 76,
+        "s1_feedback_bundle_parent_all_attempt_count": 76,
+        "s1_feedback_bundle_recovery_provider_call_count": 169,
+        "s1_feedback_bundle_recovery_all_attempt_count": 169,
+        "s1_feedback_bundle_recovery_claim_count": 3,
+        "s1_feedback_bundle_recovery_claim_sha256s": (
+            "8" * 64,
+            "9" * 64,
+            "a" * 64,
+        ),
+        "s1_feedback_bundle_parent_run_sha256": "1" * 64,
+        "s1_feedback_bundle_parent_run_file_sha256": "2" * 64,
+        "s1_feedback_bundle_parent_evidence_sha256": "3" * 64,
+        "s1_feedback_bundle_parent_evidence_file_sha256": "4" * 64,
+        "s1_feedback_bundle_recovery_run_sha256": "e" * 64,
+        "s1_feedback_bundle_recovery_run_file_sha256": "f" * 64,
+        "s1_feedback_bundle_recovery_artifact_set_sha256": "7" * 64,
+        "s1_feedback_bundle_recovery_authorization_sha256": "5" * 64,
+        "s1_feedback_bundle_recovery_control_sha256": "6" * 64,
+    }
+    v10 = SimpleNamespace(
+        schema_version=10,
+        run_sha256="b" * 64,
+        run_file_sha256="c" * 64,
+        selected_count=240,
+        provider_call_count=243,
+        retry_claim_count=3,
+        retry_claim_sha256s=("1" * 64, "2" * 64, "3" * 64),
+        fresh_output_count=240,
+        historical_feedback_outputs_imported=0,
+        round3_run_sha256="b" * 64,
+        round3_run_file_sha256="c" * 64,
+        authorization_sha256="4" * 64,
+        round3_authorization_sha256="4" * 64,
+        control_sha256="5" * 64,
+        round3_control_sha256="5" * 64,
+        predecessor_receipt_sha256="6" * 64,
+        predecessor_receipt_file_sha256="7" * 64,
+        round3_artifact_set_sha256="a" * 64,
+        bound_artifact_set_sha256="8" * 64,
+        transport_policy_sha256="9" * 64,
+        entry_provenance=tuple(
+            SimpleNamespace(
+                bound_artifact_sha256=f"{index:064x}",
+                feedback_result_sha256=f"{index + 240:064x}",
+                final_global_call_ordinal=index,
+            )
+            for index in range(1, 241)
+        ),
+    )
+    assert module._s1_feedback_run_lock_values(v10) == {
+        "s1_feedback_bundle_run_sha256": "b" * 64,
+        "s1_feedback_bundle_run_file_sha256": "c" * 64,
+        "s1_feedback_bundle_run_schema_version": 1,
+        "s1_feedback_bundle_run_policy_version": (
+            "portfolio-s1-feedback-round3-run-v1"
+        ),
+        "s1_feedback_bundle_all_attempt_count": 243,
+        "s1_feedback_bundle_retry_count": 3,
+        "s1_feedback_bundle_retry_claim_count": 3,
+        "s1_feedback_bundle_retry_claim_sha256s": (
+            "1" * 64,
+            "2" * 64,
+            "3" * 64,
+        ),
+        "s1_feedback_bundle_predecessor_receipt_sha256": "6" * 64,
+        "s1_feedback_bundle_predecessor_receipt_file_sha256": "7" * 64,
+        "s1_feedback_bundle_round3_run_sha256": "b" * 64,
+        "s1_feedback_bundle_round3_run_file_sha256": "c" * 64,
+        "s1_feedback_bundle_round3_authorization_sha256": "4" * 64,
+        "s1_feedback_bundle_round3_control_sha256": "5" * 64,
+        "s1_feedback_bundle_round3_artifact_set_sha256": "a" * 64,
+        "s1_feedback_bundle_bound_artifact_set_sha256": "8" * 64,
+        "s1_feedback_bundle_transport_policy_sha256": "9" * 64,
+        "s1_feedback_bundle_fresh_output_count": 240,
+        "s1_feedback_bundle_historical_feedback_outputs_imported": 0,
+    }
+    v10.round3_artifact_set_sha256 = "not-a-sha256"
+    with pytest.raises(
+        PortfolioS1ExperimentError,
+        match="fresh attempt or provenance",
+    ):
+        module._s1_feedback_run_lock_values(v10)
+    assert module._s1_feedback_run_lock_values(
+        SimpleNamespace(schema_version=6)
+    ) == {}
+
+
+def test_v9_run_lock_rejects_reconstructed_claim_count_drift() -> None:
+    import skillchain.evaluation.portfolio_s1_experiment_runtime as module
+
+    with pytest.raises(PortfolioS1ExperimentError, match="attempt or claim"):
+        module._s1_feedback_run_lock_values(
+            SimpleNamespace(
+                schema_version=9,
+                run_sha256="1" * 64,
+                run_file_sha256="2" * 64,
+                selected_count=240,
+                provider_call_count=244,
+                parent_provider_call_count=76,
+                recovery_provider_call_count=168,
+                recovery_claim_count=3,
+            )
+        )
+
+
+def test_v10_run_lock_rejects_fresh_retry_or_provenance_drift() -> None:
+    import skillchain.evaluation.portfolio_s1_experiment_runtime as module
+
+    with pytest.raises(PortfolioS1ExperimentError, match="fresh attempt or provenance"):
+        module._s1_feedback_run_lock_values(
+            SimpleNamespace(
+                schema_version=10,
+                run_sha256="1" * 64,
+                run_file_sha256="2" * 64,
+                selected_count=240,
+                provider_call_count=243,
+                retry_claim_count=2,
+                retry_claim_sha256s=("3" * 64, "4" * 64),
+                fresh_output_count=240,
+                historical_feedback_outputs_imported=0,
+                round3_run_sha256="1" * 64,
+                round3_run_file_sha256="2" * 64,
+                authorization_sha256="5" * 64,
+                round3_authorization_sha256="5" * 64,
+                control_sha256="6" * 64,
+                round3_control_sha256="6" * 64,
+                entry_provenance=tuple(range(240)),
+            )
         )
 
 

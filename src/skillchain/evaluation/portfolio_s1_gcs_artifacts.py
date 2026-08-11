@@ -1,10 +1,11 @@
 """Export deeply verified GCS-v2 inputs for the offline S1 gates.
 
-The replay population reuses the completed Static opt800 checkpoints and only
-executes the S1 Bank.  The body gate scores both physical Banks from its own
-75-query execution.  This module turns those two execution shapes into the
-same byte-bound files consumed by :mod:`skillchain.evolution.s1_gcs_gate`.
-It performs no provider calls and publishes into a new directory only.
+Historical replay populations reuse completed Static opt800 checkpoints.  A
+sparse Round 2 development replay instead scores both physical Banks in the
+same fresh execution, just like the body gate.  This module turns those
+execution shapes into the same byte-bound files consumed by
+:mod:`skillchain.evolution.s1_gcs_gate`.  It performs no provider calls and
+publishes into a new directory only.
 """
 
 from __future__ import annotations
@@ -57,7 +58,11 @@ from skillchain.evolution.s1_gcs_gate import (
     S1_GCS_GATE_POLICY_SHA256,
     S1_GCS_GATE_POLICY_VERSION,
     S1GCSEvidenceBinding,
+    S1Round2ResponseContractDiagnostic,
+    S1Round2ResponseContractDiagnostics,
     make_s1_gcs_evidence_binding,
+    make_s1_round2_response_contract_diagnostic,
+    make_s1_round2_response_contract_diagnostics,
 )
 from skillchain.schemas import Query
 from skillchain.static_authoring import StaticBankArtifact
@@ -109,6 +114,63 @@ _EXPECTED_GEOMETRY = {
         ("llm_static", "s1"),
     ),
 }
+
+
+def _expected_config_order(
+    phase: S1GCSArtifactPhase, launch_plan: Mapping[str, object]
+) -> tuple[str, ...]:
+    """Return the exact physical execution geometry for this launch lineage."""
+
+    if phase == "replay" and launch_plan.get("sparse_development_paired") is True:
+        return ("llm_static", "s1")
+    return _EXPECTED_GEOMETRY[phase][3]
+
+
+def _same_execution_baseline(
+    scored: Mapping[str, tuple[GCSQueryScoreV2, ...]],
+    *,
+    source_kind: str,
+    control_sha256: object,
+) -> tuple[tuple[GCSQueryScoreV2, ...], dict[str, object]]:
+    """Bind the baseline to the physical Static rows from this execution."""
+
+    baseline = scored.get("llm_static", ())
+    return baseline, {
+        "source_kind": source_kind,
+        "source_execution_control_sha256": control_sha256,
+        "provider_model_call_count": 0,
+    }
+
+
+def _fresh_execution_baseline(
+    scored: Mapping[str, tuple[GCSQueryScoreV2, ...]],
+    *,
+    phase: S1GCSArtifactPhase,
+    sparse_development_paired: bool,
+    control_sha256: object,
+    static_execution_root: str | Path | None,
+    static_expected_control_file_sha256: str | None,
+) -> tuple[tuple[GCSQueryScoreV2, ...], dict[str, object]] | None:
+    """Choose a fresh physical Static baseline when the launch requires one."""
+
+    if phase == "replay":
+        if not sparse_development_paired:
+            return None
+        if (
+            static_execution_root is not None
+            or static_expected_control_file_sha256 is not None
+        ):
+            raise PortfolioS1GCSArtifactError(
+                "paired sparse replay forbids a historical Static baseline"
+            )
+        source_kind = "same-development-replay-execution-physical-llm-static"
+    else:
+        source_kind = "same-body-gate-execution-physical-llm-static"
+    return _same_execution_baseline(
+        scored,
+        source_kind=source_kind,
+        control_sha256=control_sha256,
+    )
 
 
 class PortfolioS1GCSArtifactError(ValueError):
@@ -387,6 +449,22 @@ def _validate_export_semantics(
         raise PortfolioS1GCSArtifactError(
             "S1 GCS export population does not close over queries, scores, and Banks"
         )
+    raw_diagnostics = population_binding.get(
+        "round2_response_contract_diagnostics"
+    )
+    if raw_diagnostics is not None:
+        try:
+            diagnostics = S1Round2ResponseContractDiagnostics.model_validate(
+                raw_diagnostics, strict=True
+            )
+        except ValidationError as error:
+            raise PortfolioS1GCSArtifactError(
+                "S1 GCS Round 2 contract diagnostics are invalid"
+            ) from error
+        if diagnostics.query_ids != tuple(query_ids):
+            raise PortfolioS1GCSArtifactError(
+                "S1 GCS Round 2 contract diagnostics differ from queries"
+            )
 
 
 def load_verified_portfolio_s1_gcs_gate_export(
@@ -644,13 +722,18 @@ def _load_candidate_scores(
     assistant_query_by_id: Mapping[str, object],
     population,
     task_spec: TaskSpecification,
-) -> tuple[dict[str, tuple[GCSQueryScoreV2, ...]], tuple[dict[str, object], ...]]:
+) -> tuple[
+    dict[str, tuple[GCSQueryScoreV2, ...]],
+    tuple[dict[str, object], ...],
+    tuple[S1Round2ResponseContractDiagnostic, ...],
+]:
     facade = _launch_facade(launch)
     oracles = portfolio_gcs_oracles_v2()
     rows: dict[str, list[GCSQueryScoreV2]] = {
         config: [] for config in launch.plan["config_order"]
     }
     inventory: list[dict[str, object]] = []
+    contract_diagnostics: list[S1Round2ResponseContractDiagnostic] = []
     members = sorted(
         launch.instances,
         key=lambda item: (item.config, item.query_ordinal, item.query_id),
@@ -720,12 +803,23 @@ def _load_candidate_scores(
             population=population,
         )
         rows[member.config].append(score)
+        checkpoint_file_sha256 = sha256_bytes(content)
+        contract_diagnostics.append(
+            make_s1_round2_response_contract_diagnostic(
+                query_id=member.query_id,
+                config=member.config,
+                checkpoint_file_sha256=checkpoint_file_sha256,
+                checkpoint_row_sha256=raw["row_sha256"],
+                response=response,
+                receipt=receipt,
+            )
+        )
         inventory.append(
             {
                 "query_id": member.query_id,
                 "config": member.config,
                 "instance_sha256": member.instance_sha256,
-                "checkpoint_file_sha256": sha256_bytes(content),
+                "checkpoint_file_sha256": checkpoint_file_sha256,
                 "checkpoint_row_sha256": raw["row_sha256"],
                 "scorer_evidence_sha256": sidecar.evidence_sha256,
             }
@@ -745,6 +839,7 @@ def _load_candidate_scores(
             for config, values in rows.items()
         },
         tuple(inventory),
+        tuple(contract_diagnostics),
     )
 
 
@@ -835,7 +930,8 @@ def export_portfolio_s1_gcs_gate_inputs(
     phase: S1GCSArtifactPhase = (
         "replay" if scope == S1_OPT_REPLAY_SCOPE else "body_gate"
     )
-    expected_scope, split, count, configs = _EXPECTED_GEOMETRY[phase]
+    expected_scope, split, count, _legacy_configs = _EXPECTED_GEOMETRY[phase]
+    configs = _expected_config_order(phase, launch.plan)
     if (
         scope != expected_scope
         or tuple(launch.plan["config_order"]) != configs
@@ -866,7 +962,7 @@ def export_portfolio_s1_gcs_gate_inputs(
         raise PortfolioS1GCSArtifactError("S1 GCS query population is incomplete")
     population = build_gcs_population_v2(queries)
     task_spec = _task_spec(runtime)
-    scored, candidate_inventory = _load_candidate_scores(
+    scored, candidate_inventory, diagnostic_rows = _load_candidate_scores(
         execution_root=execution,
         launch=launch,
         runtime=runtime,
@@ -882,7 +978,20 @@ def export_portfolio_s1_gcs_gate_inputs(
     candidate = scored.get("s1", ())
     if len(candidate) != count:
         raise PortfolioS1GCSArtifactError("S1 candidate score population is incomplete")
-    if phase == "replay":
+    paired_sparse_replay = (
+        phase == "replay" and launch.plan.get("sparse_development_paired") is True
+    )
+    fresh_baseline = _fresh_execution_baseline(
+        scored,
+        phase=phase,
+        sparse_development_paired=paired_sparse_replay,
+        control_sha256=control["control_sha256"],
+        static_execution_root=static_execution_root,
+        static_expected_control_file_sha256=(static_expected_control_file_sha256),
+    )
+    if fresh_baseline is not None:
+        baseline, baseline_source = fresh_baseline
+    elif phase == "replay":
         if static_execution_root is None or static_expected_control_file_sha256 is None:
             raise PortfolioS1GCSArtifactError(
                 "replay export requires the completed Static opt800 execution"
@@ -899,13 +1008,8 @@ def export_portfolio_s1_gcs_gate_inputs(
             expected_parent_bank_sha256=runtime.banks["llm_static"].bank_sha256,
             task_spec=task_spec,
         )
-    else:
-        baseline = scored.get("llm_static", ())
-        baseline_source = {
-            "source_kind": "same-body-gate-execution-physical-llm-static",
-            "source_execution_control_sha256": control["control_sha256"],
-            "provider_model_call_count": 0,
-        }
+    else:  # pragma: no cover - every body gate returns a fresh baseline above
+        raise AssertionError("body gate lost its physical Static baseline")
     if (
         len(baseline) != count
         or {item.query_id for item in baseline} != query_ids
@@ -914,6 +1018,13 @@ def export_portfolio_s1_gcs_gate_inputs(
         or any(item.config != "s1" for item in candidate)
     ):
         raise PortfolioS1GCSArtifactError("S1 paired GCS rows are not rectangular")
+
+    response_contract_diagnostics: S1Round2ResponseContractDiagnostics | None = None
+    if configs == ("llm_static", "s1"):
+        response_contract_diagnostics = make_s1_round2_response_contract_diagnostics(
+            query_ids=tuple(item.query_id for item in queries),
+            rows=diagnostic_rows,
+        )
 
     queries_bytes = canonical_jsonl_bytes(
         tuple(item.model_dump(mode="json") for item in queries)
@@ -959,6 +1070,15 @@ def export_portfolio_s1_gcs_gate_inputs(
         "candidate_bank_sha256": runtime.banks["s1"].bank_sha256,
         "candidate_checkpoint_inventory_sha256": _checkpoint_inventory_sha256(
             candidate_inventory
+        ),
+        **(
+            {}
+            if response_contract_diagnostics is None
+            else {
+                "round2_response_contract_diagnostics": (
+                    response_contract_diagnostics.model_dump(mode="json")
+                )
+            }
         ),
         "baseline_source": baseline_source,
         "pairwise_judge_call_count": 0,

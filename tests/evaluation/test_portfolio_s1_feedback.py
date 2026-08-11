@@ -27,6 +27,8 @@ from skillchain.evaluation.feedback_runtime import (
 from skillchain.evaluation.packets import (
     EvaluationImage,
     FeedbackPacket,
+    FeedbackGCSComponentBitsV1,
+    FeedbackGCSDiagnosticsV1,
     RubricSnapshot,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V4,
     VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
@@ -35,6 +37,8 @@ from skillchain.evaluation.packets import (
 )
 from skillchain.evaluation.portfolio_gcs import GCS_CAPABILITY_ORDER
 from skillchain.evaluation.portfolio_s1_feedback import (
+    FeedbackGCSContractProjectionV5,
+    PolicyLabeledFeedbackSuggestionV1,
     PortfolioS1FeedbackAuthorizationV1,
     PortfolioS1FeedbackAuthorizationV2,
     PortfolioS1FeedbackControlV1,
@@ -42,7 +46,14 @@ from skillchain.evaluation.portfolio_s1_feedback import (
     PortfolioS1FeedbackFullGCSBindingV2,
     PortfolioS1FeedbackFullGCSSummaryV2,
     PortfolioS1FeedbackGCSCapabilitySummaryV2,
+    PortfolioS1FeedbackGCSContractSetV5,
     PortfolioS1FeedbackGCSStrataSummaryV2,
+    PortfolioS1FeedbackActionableSuggestionV5,
+    PortfolioS1FeedbackBundleV5,
+    PortfolioS1FeedbackCoverageCellV5,
+    PortfolioS1FeedbackModelEntryV5,
+    PortfolioS1FeedbackModelProjectionV5,
+    PortfolioS1FeedbackRepresentativeExampleV5,
     build_bound_feedback_artifact,
     build_feedback_call_reservation,
     build_portfolio_s1_feedback_bundle,
@@ -594,6 +605,575 @@ def test_selection_is_deterministic_balanced_unique_and_marks_partial_anchors(
         item for item in first.entries if item.capability == "utility.document_reading"
     ]
     assert sum(item.role == "partial_anchor" for item in document) == 2
+
+
+def test_selection_v2_uses_discovery600_quotas_and_component_quarantine(
+    monkeypatch,
+) -> None:
+    from skillchain.evaluation.portfolio_s1_feedback import (
+        FEEDBACK_CAPABILITY_QUOTAS_V2,
+        build_portfolio_s1_feedback_selection_v2,
+    )
+
+    rows = []
+    discovery_ids = []
+    ordinal = 0
+    for capability_index, capability in enumerate(GCS_CAPABILITY_ORDER):
+        for local_index in range(100):
+            ordinal += 1
+            query_id = f"discovery-{capability_index}-{local_index:03d}"
+            discovery_ids.append(query_id)
+            hard_error = int(capability_index == 0 and local_index == 99)
+            success = (
+                local_index < 5
+                if capability == "knowledge.visual_encyclopedia"
+                else local_index < 60
+                if capability == "product.exact_match"
+                else local_index < 10
+            )
+            atom = (
+                "quarantined-encyclopedia-component"
+                if capability_index == 0 and local_index in {97, 98, 99}
+                else f"atom-{ordinal:04d}"
+            )
+            reasons = (
+                ()
+                if success
+                else ("fallback_contract_failed",)
+                if local_index % 5 == 0
+                else ("output_section_invalid",)
+                if local_index % 5 == 1
+                else ("tool_contract_failed",)
+                if local_index % 5 == 2
+                else ("material_claim_uncited",)
+            )
+            bits = (1, 1, 1, 1, 1) if success else (1, 1 - hard_error, 1, 1, 0)
+            score = SimpleNamespace(
+                answer_mode="supported" if success else "fallback",
+                gcs=int(success),
+                hard_error=hard_error,
+                route_acceptable=bits[0],
+                no_hard_error=bits[1],
+                tool_contract_pass=bits[2],
+                evidence_grounded=bits[3],
+                output_contract_pass=bits[4],
+                reason_codes=tuple(sorted(reasons)),
+            )
+            query = SimpleNamespace(
+                query_id=query_id,
+                canonical_capability=capability,
+                asset_id=f"asset-v2-{ordinal:04d}",
+                leakage_group_id=(
+                    "quarantined-encyclopedia-component"
+                    if capability_index == 0 and local_index in {98, 99}
+                    else f"leak-v2-{ordinal:04d}"
+                ),
+            )
+            rows.append(
+                SimpleNamespace(
+                    query=query,
+                    result=SimpleNamespace(
+                        tool_trace=(
+                            (SimpleNamespace(tool_name="encyclopedia_lookup"),)
+                            if local_index % 2 == 0
+                            else ()
+                        )
+                    ),
+                    score=score,
+                    leakage_group_id=query.leakage_group_id,
+                    atomic_component_id=atom,
+                    image_sha256=hashlib.sha256(
+                        f"image-v2-{ordinal}".encode()
+                    ).hexdigest(),
+                    checkpoint_file_sha256=f"{ordinal + 1000:064x}",
+                    checkpoint_row_sha256=f"{ordinal + 2000:064x}",
+                    sidecar=SimpleNamespace(evidence_sha256=f"{ordinal + 3000:064x}"),
+                    strata=SimpleNamespace(
+                        source_dataset=f"source-{local_index % 4}",
+                        repair_status="r3_carry_forward",
+                        boundary_status=(
+                            "boundary" if local_index % 7 == 0 else "non_boundary"
+                        ),
+                        style_submode=(
+                            "same_category_alternative"
+                            if capability == "product.style_recommendation"
+                            else None
+                        ),
+                    ),
+                )
+            )
+    # A hard error outside Discovery600 must not widen this fixed selection's
+    # quarantine, even when it shares a Discovery row's leakage component.
+    outside_atomic_component = rows[-2].atomic_component_id
+    outside_leakage_group = rows[-2].leakage_group_id
+    outside_query = SimpleNamespace(
+        query_id="non-discovery-hard-error",
+        canonical_capability=rows[-1].query.canonical_capability,
+        asset_id="asset-v2-outside-discovery",
+        leakage_group_id=outside_leakage_group,
+    )
+    outside_score = SimpleNamespace(
+        **{
+            **vars(rows[-1].score),
+            "gcs": 0,
+            "hard_error": 1,
+            "no_hard_error": 0,
+            "output_contract_pass": 0,
+            "reason_codes": ("output_section_invalid",),
+        }
+    )
+    rows.append(
+        SimpleNamespace(
+            **{
+                **vars(rows[-1]),
+                "query": outside_query,
+                "score": outside_score,
+                "leakage_group_id": outside_query.leakage_group_id,
+                "atomic_component_id": outside_atomic_component,
+            }
+        )
+    )
+    row_by_id = {item.query.query_id: item for item in rows}
+    corpus = SimpleNamespace(
+        corpus_sha256="a" * 64,
+        runtime=SimpleNamespace(bank=SimpleNamespace(bank_sha256="b" * 64)),
+        rows=tuple(rows),
+        row_by_query_id=lambda: row_by_id,
+    )
+    monkeypatch.setattr(
+        "skillchain.evaluation.portfolio_s1_feedback."
+        "accept_loaded_verified_static_gcs_corpus",
+        lambda value: value,
+    )
+    discovery = tuple(discovery_ids)
+    discovery_sha = _hash(sorted(discovery))
+    first = build_portfolio_s1_feedback_selection_v2(
+        corpus,
+        discovery,
+        discovery_query_ids_sha256=discovery_sha,
+        fold_mapping_sha256="f" * 64,
+        seed=23,
+    )
+    second = build_portfolio_s1_feedback_selection_v2(
+        corpus,
+        tuple(reversed(discovery)),
+        discovery_query_ids_sha256=discovery_sha,
+        fold_mapping_sha256="f" * 64,
+        seed=23,
+    )
+
+    assert first == second
+    assert len(first.entries) == 240
+    assert {
+        capability: sum(item.capability == capability for item in first.entries)
+        for capability in GCS_CAPABILITY_ORDER
+    } == FEEDBACK_CAPABILITY_QUOTAS_V2
+    assert len({item.query_id for item in first.entries}) == 240
+    assert len({item.leakage_group_id for item in first.entries}) == 240
+    assert len({item.asset_id for item in first.entries}) == 240
+    assert all(
+        any(item.capability == capability and item.gcs == 0 for item in first.entries)
+        for capability in GCS_CAPABILITY_ORDER
+    )
+    assert all(
+        any(
+            item.capability == capability and item.role == "success_anchor"
+            for item in first.entries
+        )
+        for capability in GCS_CAPABILITY_ORDER
+    )
+    assert "quarantined-encyclopedia-component" in (
+        first.excluded_hard_error_component_ids
+    )
+    assert outside_leakage_group not in first.excluded_hard_error_component_ids
+    assert all(
+        item.leakage_group_id != "quarantined-encyclopedia-component"
+        for item in first.entries
+    )
+    assert {
+        "discovery-0-098",
+        "discovery-0-099",
+    }.issubset(first.excluded_hard_error_query_ids)
+    assert "discovery-0-097" not in first.excluded_hard_error_query_ids
+    assert (
+        sum(
+            item.capability == "knowledge.visual_encyclopedia"
+            and item.role == "success_anchor"
+            for item in first.entries
+        )
+        == 5
+    )
+    assert tuple(len(item) for item in first.phase_query_ids) == (12, 60, 120, 240)
+
+
+def test_feedback_source_v2_reuses_loaded_typed_catalog_without_rescan(
+    monkeypatch,
+) -> None:
+    from skillchain.evaluation import portfolio_s1_feedback as feedback
+
+    class TypedCatalog:
+        catalog_sha256 = "c" * 64
+
+        def __init__(self) -> None:
+            self.proof_checks = 0
+
+        def require_verified_files(self) -> None:
+            self.proof_checks += 1
+
+    class TypedCoreInputs:
+        expected_output_catalog_sha256 = "c" * 64
+
+        def __init__(self, catalog: TypedCatalog) -> None:
+            self._verified_catalogs = (catalog, catalog)
+
+        def runtime_asset_catalog(self):
+            pytest.fail("V2 sources must not rebuild the loaded Core catalog")
+
+    catalog = TypedCatalog()
+    core_inputs = TypedCoreInputs(catalog)
+    query = SimpleNamespace(
+        query_id="feedback-v2-query",
+        canonical_capability="knowledge.visual_encyclopedia",
+        asset_id="feedback-v2-asset",
+    )
+    score = SimpleNamespace(
+        answer_mode="fallback",
+        gcs=0,
+        route_acceptable=1,
+        no_hard_error=1,
+        tool_contract_pass=1,
+        evidence_grounded=1,
+        output_contract_pass=0,
+        reason_codes=("fallback_contract_failed",),
+    )
+    row = SimpleNamespace(
+        query=query,
+        result=SimpleNamespace(),
+        score=score,
+        leakage_group_id="feedback-v2-component",
+        atomic_component_id="feedback-v2-atomic",
+        image_sha256="d" * 64,
+        checkpoint_file_sha256="e" * 64,
+        checkpoint_row_sha256="f" * 64,
+        sidecar=SimpleNamespace(evidence_sha256="1" * 64),
+    )
+    entry = SimpleNamespace(
+        query_id=query.query_id,
+        capability=query.canonical_capability,
+        asset_id=query.asset_id,
+        leakage_group_id=row.leakage_group_id,
+        atomic_component_id=row.atomic_component_id,
+        image_sha256=row.image_sha256,
+        answer_mode=score.answer_mode,
+        gcs=score.gcs,
+        route_acceptable=score.route_acceptable,
+        no_hard_error=score.no_hard_error,
+        tool_contract_pass=score.tool_contract_pass,
+        evidence_grounded=score.evidence_grounded,
+        output_contract_pass=score.output_contract_pass,
+        reason_codes=score.reason_codes,
+        checkpoint_file_sha256=row.checkpoint_file_sha256,
+        checkpoint_row_sha256=row.checkpoint_row_sha256,
+        sidecar_sha256=row.sidecar.evidence_sha256,
+        entry_sha256="2" * 64,
+    )
+    corpus = SimpleNamespace(
+        corpus_sha256="3" * 64,
+        runtime=SimpleNamespace(bank=SimpleNamespace(bank_sha256="4" * 64)),
+        core_inputs=core_inputs,
+        row_by_query_id=lambda: {query.query_id: row},
+    )
+    selection_v2 = SimpleNamespace(
+        corpus_sha256=corpus.corpus_sha256,
+        selection_sha256="5" * 64,
+        entries=(entry,),
+    )
+    control_v9 = SimpleNamespace(
+        corpus_sha256=corpus.corpus_sha256,
+        selection_sha256=selection_v2.selection_sha256,
+        parent_static_bank_sha256=corpus.runtime.bank.bank_sha256,
+        control_sha256="6" * 64,
+        rubric=_rubric(),
+    )
+    contract = SimpleNamespace(policy_sha256="7" * 64)
+    accepted: list[object] = []
+    packet_catalogs: list[object] = []
+    packet = None
+
+    def accept_loaded(value):
+        accepted.append(value)
+        return value
+
+    def build_packet(
+        _query,
+        _result,
+        *,
+        asset_catalog,
+        rubric,
+        gcs_diagnostics,
+        gcs_contract,
+    ):
+        nonlocal packet
+        assert rubric == control_v9.rubric
+        assert gcs_contract is contract
+        packet_catalogs.append(asset_catalog)
+        if packet is None:
+            packet = SimpleNamespace(
+                query_id=query.query_id,
+                canonical_capability=query.canonical_capability,
+                image=SimpleNamespace(sha256=row.image_sha256),
+                gcs_diagnostics=gcs_diagnostics,
+                gcs_contract=gcs_contract,
+            )
+        return packet
+
+    monkeypatch.setattr(feedback, "AssetCatalog", TypedCatalog)
+    monkeypatch.setattr(feedback, "VerifiedPortfolioCoreInputs", TypedCoreInputs)
+    monkeypatch.setattr(
+        feedback, "accept_loaded_verified_static_gcs_corpus", accept_loaded
+    )
+    monkeypatch.setattr(
+        feedback,
+        "require_verified_static_gcs_corpus",
+        lambda _value: pytest.fail("V2 sources must not deep-load the corpus twice"),
+    )
+    monkeypatch.setattr(feedback, "build_feedback_packet_v3", build_packet)
+    monkeypatch.setattr(
+        feedback, "_feedback_gcs_contract_v1", lambda *_args: contract
+    )
+
+    sources = feedback.build_verified_static_feedback_sources_v2(
+        corpus, selection_v2, control_v9
+    )
+    assert len(sources) == 1
+    assert sources[0].asset_catalog is catalog
+    assert feedback.require_verified_static_feedback_source_v2(
+        sources[0], selection_v2, control_v9, entry
+    ) is sources[0]
+    assert accepted == [corpus, corpus]
+    assert packet_catalogs == [catalog, catalog]
+    assert catalog.proof_checks == 2
+
+
+def test_forward_authorization_hash_serializes_review_timestamp_as_json() -> None:
+    from skillchain.evaluation.portfolio_s1_feedback import _hash_payload
+
+    reviewed_at = datetime(2026, 8, 10, 12, 38, 31, tzinfo=timezone.utc)
+    assert _hash_payload({"reviewed_at": reviewed_at}) == _hash(
+        {"reviewed_at": reviewed_at.isoformat()}
+    )
+
+
+def test_feedback_v5_suggestion_policy_labels_fail_closed() -> None:
+    from skillchain.evaluation.portfolio_s1_feedback import (
+        parse_policy_labeled_feedback_suggestion_v1,
+    )
+
+    compatible = parse_policy_labeled_feedback_suggestion_v1(
+        "[policy_compatible] Preserve the exact fallback marker."
+    )
+    evidence = parse_policy_labeled_feedback_suggestion_v1(
+        "[requires_new_evidence] Add a fact from a new lookup hit."
+    )
+    rejected = parse_policy_labeled_feedback_suggestion_v1(
+        "[rejected] Treat the detector label as verified identity."
+    )
+
+    assert compatible.disposition == "policy_compatible"
+    assert evidence.disposition == "requires_new_evidence"
+    assert rejected.disposition == "rejected"
+    with pytest.raises(PortfolioS1FeedbackError, match="exact policy disposition"):
+        parse_policy_labeled_feedback_suggestion_v1(
+            "Add an unsupported look-alike species."
+        )
+
+
+def test_feedback_v3_contract_projects_effective_gcs_v2_policy() -> None:
+    from skillchain.evaluation import portfolio_s1_feedback as feedback_contract
+
+    output_contract = SimpleNamespace(
+        required_sections=("answer", "evidence", "uncertainty"),
+        card_requirement="forbidden",
+    )
+    verified = SimpleNamespace(
+        task_spec=SimpleNamespace(
+            capabilities_by_id={
+                capability: SimpleNamespace(output_contract=output_contract)
+                for capability in GCS_CAPABILITY_ORDER
+            }
+        )
+    )
+
+    encyclopedia = feedback_contract._feedback_gcs_contract_v1(
+        verified, "knowledge.visual_encyclopedia"
+    )
+    style = feedback_contract._feedback_gcs_contract_v1(
+        verified, "product.style_recommendation"
+    )
+
+    assert encyclopedia.preferred_fallback_marker == "not enough evidence"
+    assert encyclopedia.legal_tool_sequences == (
+        ("encyclopedia_lookup",),
+        ("object_detect", "encyclopedia_lookup"),
+    )
+    assert style.legal_tool_sequences == (("style_similar_search",),)
+
+
+def test_feedback_v2_reservation_and_bound_artifact_are_self_bound(
+    monkeypatch,
+) -> None:
+    from skillchain.evaluation.packets import (
+        FeedbackGCSComponentBitsV1,
+        FeedbackGCSContractV1,
+        FeedbackGCSDiagnosticsV1,
+        FeedbackPacketV3,
+    )
+    from skillchain.evaluation.portfolio_gcs import GCS_V2_POLICY_SHA256
+    from skillchain.evaluation.portfolio_s1_feedback import (
+        BoundFeedbackArtifactV2,
+        FeedbackCallReservationV2,
+        build_bound_feedback_artifact_v2,
+        build_feedback_call_reservation_v2,
+    )
+
+    entry = SimpleNamespace(
+        entry_sha256="1" * 64,
+        selection_ordinal=240,
+        query_id="discovery-query-240",
+        image_sha256="2" * 64,
+    )
+    selection_v2 = SimpleNamespace(
+        selection_sha256="3" * 64,
+        corpus_sha256="4" * 64,
+    )
+    control_v9 = SimpleNamespace(
+        control_sha256="5" * 64,
+        authorization_id="owner-qwen-feedback-v4",
+        authorization_file_sha256="6" * 64,
+    )
+    packet_payload = {
+        "schema_version": 3,
+        "packet_kind": "feedback",
+        "cache_namespace": "feedback-evaluator-v10",
+        "query_id": entry.query_id,
+        "turns": (ConversationTurn(role="user", content="Explain the entity."),),
+        "image": EvaluationImage(mime_type="image/jpeg", sha256=entry.image_sha256),
+        "canonical_capability": "knowledge.visual_encyclopedia",
+        "acceptable_capabilities": ("knowledge.visual_encyclopedia",),
+        "response_text": "answer: unknown\nevidence: none\nuncertainty: high",
+        "cards": (),
+        "tool_evidence": (),
+        "tool_trace": (),
+        "rubric": _rubric(),
+        "gcs_diagnostics": FeedbackGCSDiagnosticsV1(
+            answer_mode="fallback",
+            gcs=0,
+            components=FeedbackGCSComponentBitsV1(
+                route_acceptable=1,
+                no_hard_error=1,
+                tool_contract_pass=1,
+                evidence_grounded=1,
+                output_contract_pass=0,
+            ),
+            reason_codes=("fallback_contract_failed",),
+        ),
+        "gcs_contract": FeedbackGCSContractV1(
+            policy_sha256=GCS_V2_POLICY_SHA256,
+            required_sections=("answer", "evidence", "uncertainty"),
+            fallback_markers=("not enough evidence", "unable to verify"),
+            preferred_fallback_marker="not enough evidence",
+            card_requirement="forbidden",
+            legal_tool_sequences=(
+                ("encyclopedia_lookup",),
+                ("object_detect", "encyclopedia_lookup"),
+            ),
+        ),
+    }
+    packet_draft = FeedbackPacketV3.model_construct(
+        **packet_payload, packet_sha256="0" * 64
+    )
+    packet = FeedbackPacketV3.model_validate(
+        {
+            **packet_payload,
+            "packet_sha256": _hash(
+                packet_draft.model_dump(mode="json", exclude={"packet_sha256"})
+            ),
+        },
+        strict=True,
+    )
+    row = SimpleNamespace(
+        checkpoint_file_sha256="8" * 64,
+        checkpoint_row_sha256="9" * 64,
+        sidecar=SimpleNamespace(evidence_sha256="a" * 64),
+    )
+    source = SimpleNamespace(packet=packet, row=row)
+    monkeypatch.setattr(
+        "skillchain.evaluation.portfolio_s1_feedback."
+        "require_verified_static_feedback_source_v2",
+        lambda *_args, **_kwargs: source,
+    )
+    reservation = build_feedback_call_reservation_v2(
+        selection_v2,
+        control_v9,
+        entry,
+        verified_source=source,
+    )
+    assert isinstance(reservation, FeedbackCallReservationV2)
+    assert reservation.selection_ordinal == 240
+    assert reservation.cache_namespace == "feedback-evaluator-v10"
+
+    result = _make_result(
+        schema_version=4,
+        cache_namespace="feedback-evaluator-v10",
+        parser_policy_version=VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
+        parser_policy_sha256=VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
+        prompt_policy_version="visual-feedback-gcs-policy-labels-prompt-v6",
+        prompt_policy_sha256=(
+            "c4c6a0afcc472de09a1c8c27c1eaa276590b60ecfceb348b3b634a56f24a2f3f"
+        ),
+        transport_policy_version="visual-feedback-qwen-dashscope-json-schema-v5",
+        transport_policy_sha256=(
+            "092f36be5eb08e4fd58edc888fe273bee2b4295059048dbd9715d472e534f20c"
+        ),
+        requested_response_format="json_schema",
+        requested_json_schema_sha256=(
+            "af673bc72a52788b4a3871b030e95123e070d23cc51388e4abb06d0d5fa9667e"
+        ),
+        requested_thinking=True,
+        requested_thinking_budget=2048,
+        requested_timeout_seconds=600,
+        requested_temperature=None,
+        requested_top_p=None,
+        query_id=entry.query_id,
+        packet_sha256=packet.packet_sha256,
+        prompt_sha256="c" * 64,
+        image_sha256=entry.image_sha256,
+        wire_sha256="d" * 64,
+        asset_catalog_sha256="e" * 64,
+        remote_authorization_id=control_v9.authorization_id,
+        remote_authorization_file_sha256=(control_v9.authorization_file_sha256),
+        remote_receipt_file_sha256="f" * 64,
+        remote_receipt_sha256="0" * 64,
+        provider="qwen",
+        model="qwen3.7-plus-2026-05-26",
+        endpoint=config.PROVIDER_ENDPOINTS["qwen"],
+        max_tokens=None,
+        max_completion_tokens=4096,
+        status="provider_error",
+        error_code="provider_error",
+    )
+    artifact = build_bound_feedback_artifact_v2(
+        selection_v2,
+        control_v9,
+        entry,
+        packet,
+        result,
+        verified_source=source,
+        reservation=reservation,
+    )
+    assert isinstance(artifact, BoundFeedbackArtifactV2)
+    assert artifact.reservation_sha256 == reservation.reservation_sha256
+    assert artifact.provider_call_count == 1
 
 
 def test_selected_authorization_is_exact_and_control_is_self_bound(
@@ -1782,3 +2362,133 @@ def test_bundle_v4_requires_complete_qwen_parsed48_and_hides_reasoning(
             run,
             corpus=sources[0].corpus,
         )
+
+
+def test_bundle_v5_creator_projection_is_aggregate_and_compatible_only() -> None:
+    components = FeedbackGCSComponentBitsV1(
+        route_acceptable=1,
+        no_hard_error=1,
+        tool_contract_pass=1,
+        evidence_grounded=1,
+        output_contract_pass=1,
+    )
+    diagnostics = FeedbackGCSDiagnosticsV1(
+        answer_mode="supported",
+        gcs=1,
+        components=components,
+        reason_codes=(),
+    )
+    entries = tuple(
+        PortfolioS1FeedbackModelEntryV5(
+            selection_ordinal=index,
+            capability=GCS_CAPABILITY_ORDER[(index - 1) % 6],
+            role="failure",
+            primary_cluster="contract-check",
+            answer_mode="supported",
+            gcs=1,
+            gcs_components=components,
+            reason_codes=(),
+            diagnostic_feedback=VisualFeedbackOutput(
+                schema_version=1,
+                summary=f"Structured diagnostic {index}.",
+                rule_violations=(),
+                ideal_response_gaps=(),
+                skill_suggestions=(),
+            ),
+            labeled_suggestions=(
+                PolicyLabeledFeedbackSuggestionV1(
+                    disposition="policy_compatible",
+                    text=f"Compatible action {index}.",
+                ),
+                PolicyLabeledFeedbackSuggestionV1(
+                    disposition="requires_new_evidence",
+                    text=f"Hidden evidence action {index}.",
+                ),
+                PolicyLabeledFeedbackSuggestionV1(
+                    disposition="rejected",
+                    text=f"Hidden rejected action {index}.",
+                ),
+            ),
+            actionable_suggestions=(f"Compatible action {index}.",),
+        )
+        for index in range(1, 241)
+    )
+    representatives = tuple(
+        PortfolioS1FeedbackRepresentativeExampleV5(
+            selection_ordinal=index,
+            capability=entries[index - 1].capability,
+            role="failure",
+            primary_cluster="contract-check",
+            gcs_diagnostics=diagnostics,
+            turns=(ConversationTurn(role="user", content="Evaluate the item."),),
+            response_text="Current grounded response.",
+            cards=(),
+            tool_evidence=(),
+        )
+        for index in range(1, 13)
+    )
+    contracts = tuple(
+        FeedbackGCSContractProjectionV5(
+            capability=capability,
+            required_sections=("answer", "evidence", "uncertainty"),
+            fallback_markers=("not enough evidence",),
+            preferred_fallback_marker="not enough evidence",
+            card_requirement="forbidden",
+            legal_tool_sequences=(("encyclopedia_lookup",),),
+        )
+        for capability in GCS_CAPABILITY_ORDER
+    )
+    projection = PortfolioS1FeedbackModelProjectionV5(
+        coverage=tuple(
+            PortfolioS1FeedbackCoverageCellV5(
+                capability=capability,
+                role=role,
+                selected_count=40 if role == "failure" else 0,
+                parsed_count=40 if role == "failure" else 0,
+            )
+            for capability in GCS_CAPABILITY_ORDER
+            for role in ("failure", "success_anchor", "partial_anchor")
+        ),
+        gcs_contract=PortfolioS1FeedbackGCSContractSetV5(
+            capability_contracts=contracts
+        ),
+        feedback_entries=entries,
+        representative_examples=representatives,
+        actionable_suggestions=tuple(
+            PortfolioS1FeedbackActionableSuggestionV5(
+                selection_ordinal=item.selection_ordinal,
+                capability=item.capability,
+                text=item.actionable_suggestions[0],
+            )
+            for item in entries
+        ),
+        actionable_suggestion_count=240,
+    )
+    bundle = PortfolioS1FeedbackBundleV5.model_construct(
+        selected_query_ids=(),
+        model_projection=projection,
+    )
+
+    payload = bundle.model_projection_payload()
+    serialized = canonical_json_bytes(payload)
+
+    assert "feedback_entries" not in payload
+    assert len(payload["representative_examples"]) == 12
+    assert (
+        sum(
+            item["selected_count"]
+            for item in payload["aggregate_diagnostics"]["capabilities"]
+        )
+        == 240
+    )
+    assert b"Hidden evidence action" not in serialized
+    assert b"Hidden rejected action" not in serialized
+    assert b"requires_new_evidence" not in serialized
+    assert b'"rejected"' not in serialized
+    assert b"Compatible action 240." in serialized
+    assert payload["representative_examples"][0]["structured_feedback"][
+        "policy_compatible_actionable_suggestions"
+    ] == ["Compatible action 1."]
+    assert bundle.model_projection.feedback_entries[12].labeled_suggestions[1].text == (
+        "Hidden evidence action 13."
+    )

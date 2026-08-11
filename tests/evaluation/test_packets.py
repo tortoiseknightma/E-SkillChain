@@ -636,6 +636,81 @@ def test_v5_feedback_prompt_locks_response_v1_and_preserves_v3_v4_builders(
     )
 
 
+def test_feedback_packet_v3_exposes_trusted_gcs_contract_and_prompt_v6(
+    verified_query_catalog,
+) -> None:
+    from skillchain.evaluation.packets import (
+        FeedbackGCSComponentBitsV1,
+        FeedbackGCSContractV1,
+        FeedbackGCSDiagnosticsV1,
+        VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+        build_feedback_evaluator_prompt_v6,
+        build_feedback_packet_v3,
+        visual_feedback_prompt_policy_v6,
+    )
+    from skillchain.evaluation.portfolio_gcs import GCS_V2_POLICY_SHA256
+
+    default_query, catalog = verified_query_catalog
+    query = default_query.model_copy(
+        update={
+            "canonical_capability": "knowledge.visual_encyclopedia",
+            "acceptable_capabilities": ("knowledge.visual_encyclopedia",),
+            "requires_card": False,
+        }
+    )
+    packet = build_feedback_packet_v3(
+        query,
+        _result(),
+        asset_catalog=catalog,
+        rubric=_rubric(),
+        gcs_diagnostics=FeedbackGCSDiagnosticsV1(
+            answer_mode="fallback",
+            gcs=0,
+            components=FeedbackGCSComponentBitsV1(
+                route_acceptable=1,
+                no_hard_error=1,
+                tool_contract_pass=1,
+                evidence_grounded=1,
+                output_contract_pass=0,
+            ),
+            reason_codes=("fallback_contract_failed",),
+        ),
+        gcs_contract=FeedbackGCSContractV1(
+            policy_sha256=GCS_V2_POLICY_SHA256,
+            required_sections=("answer", "evidence", "uncertainty"),
+            fallback_markers=("not enough evidence", "unable to verify"),
+            preferred_fallback_marker="not enough evidence",
+            card_requirement="forbidden",
+            legal_tool_sequences=(
+                ("encyclopedia_lookup",),
+                ("object_detect", "encyclopedia_lookup"),
+            ),
+        ),
+    )
+    prompt = build_feedback_evaluator_prompt_v6(packet)
+    visible = json.loads(prompt.messages[1].content)
+
+    assert packet.schema_version == 3
+    assert packet.cache_namespace == "feedback-evaluator-v10"
+    assert visible["gcs_diagnostics"]["answer_mode"] == "fallback"
+    assert visible["gcs_contract"]["preferred_fallback_marker"] == (
+        "not enough evidence"
+    )
+    assert visible["output_contract"]["skill_suggestions_item_schema"][
+        "required_prefix_exactly_one_of"
+    ] == [
+        "[policy_compatible] ",
+        "[requires_new_evidence] ",
+        "[rejected] ",
+    ]
+    assert VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6 == sha256_bytes(
+        canonical_json_bytes(visual_feedback_prompt_policy_v6())
+    )
+    assert VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6 == (
+        "c4c6a0afcc472de09a1c8c27c1eaa276590b60ecfceb348b3b634a56f24a2f3f"
+    )
+
+
 def test_rubric_rejects_hidden_treatment_fields() -> None:
     content = "Score the answer and inspect bank_sha256."
     with pytest.raises(ValidationError, match="forbidden"):

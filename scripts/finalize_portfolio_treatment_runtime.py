@@ -43,6 +43,10 @@ from scripts.run_portfolio_evolution_model import (  # noqa: E402
     IMPLEMENTATION_ID,
     IMPLEMENTATION_VERSION,
     INVOCATION_POLICY_VERSION,
+    S1_IMPLEMENTATION_VERSION,
+    S1_SPARSE_COMPILER_SNAPSHOT_FILE,
+    S1_SPARSE_IMPLEMENTATION_VERSION,
+    S1_SPARSE_INVOCATION_POLICY_VERSION,
     S3_IMPLEMENTATION_VERSION,
     S3_INVOCATION_POLICY_VERSION,
     S3_TEXTOPT_COMPILER_SNAPSHOT_FILE,
@@ -52,6 +56,24 @@ from scripts.run_portfolio_evolution_model import (  # noqa: E402
     _parse_mutation_changes,
 )
 from skillchain.codex_authoring import normalize_codex_authoring_output  # noqa: E402
+from skillchain.evaluation.portfolio_s1_feedback import (  # noqa: E402
+    PortfolioS1FeedbackBundleV1,
+    PortfolioS1FeedbackBundleV2,
+    PortfolioS1FeedbackBundleV3,
+    PortfolioS1FeedbackBundleV4,
+    PortfolioS1FeedbackBundleV5,
+    PortfolioS1FeedbackBundleV6,
+    PortfolioS1FeedbackBundleV7,
+)
+from skillchain.evaluation.portfolio_s1_feedback_retry_v3 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV8,
+)
+from skillchain.evaluation.portfolio_s1_feedback_recovery_v1 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV9,
+)
+from skillchain.evaluation.portfolio_s1_feedback_round3_v1 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV10,
+)
 from skillchain.evaluation.evaluator_outputs import (  # noqa: E402
     FINAL_JUDGE_PARSER_POLICY_SHA256_V4,
     FINAL_JUDGE_PARSER_POLICY_VERSION_V4,
@@ -135,6 +157,12 @@ from skillchain.static_authoring import (  # noqa: E402
     StaticBankArtifact,
     build_authoring_draft_bundle,
 )
+from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
+    SparseCompilationReceiptV1,
+    SparsePatchDraftV1,
+    bind_sparse_patch_draft,
+    compile_sparse_s1_candidate,
+)
 from skillchain.synthesis.store import (  # noqa: E402
     atomic_publish_new_directory,
     new_staging_directory,
@@ -177,6 +205,18 @@ _INPUT_KIND = {
     "s2": "route_examples",
     "s3": "body_attribution",
 }
+_TYPED_S1_FEEDBACK_BUNDLE_TYPES = (
+    PortfolioS1FeedbackBundleV1,
+    PortfolioS1FeedbackBundleV2,
+    PortfolioS1FeedbackBundleV3,
+    PortfolioS1FeedbackBundleV4,
+    PortfolioS1FeedbackBundleV5,
+    PortfolioS1FeedbackBundleV6,
+    PortfolioS1FeedbackBundleV7,
+    PortfolioS1FeedbackBundleV8,
+    PortfolioS1FeedbackBundleV9,
+    PortfolioS1FeedbackBundleV10,
+)
 _MAX_JSON_BYTES = 64 * 1024 * 1024
 _MAX_EVENT_BYTES = 16 * 1024 * 1024
 _FINALIZER_PATH = Path(__file__).resolve()
@@ -193,6 +233,11 @@ def _require_current_mutation_implementation(
     """Keep a SHA-bound real S1 compatible; require current S2/S3 algorithms."""
 
     expected = {
+        "s1": (
+            S1_SPARSE_IMPLEMENTATION_VERSION,
+            S1_SPARSE_INVOCATION_POLICY_VERSION,
+            "ephemeral",
+        ),
         "s2": (
             IMPLEMENTATION_VERSION,
             INVOCATION_POLICY_VERSION,
@@ -204,6 +249,13 @@ def _require_current_mutation_implementation(
             "ephemeral",
         ),
     }.get(source_key)
+    # Historical whole-Bank S1 evidence deliberately remains replayable.  The
+    # forward sparse format, however, is accepted only under its exact v1.7
+    # implementation identity and clean-turn policy.
+    if source_key == "s1" and (
+        detailed.implementation_version != S1_SPARSE_IMPLEMENTATION_VERSION
+    ):
+        return
     if expected is not None and (
         detailed.implementation_id != IMPLEMENTATION_ID
         or detailed.implementation_version != expected[0]
@@ -295,11 +347,56 @@ class _EvolutionSource:
     mutation: PortfolioStageMutation | None
     invocation: PortfolioModelInvocationReceipt
     detailed: EvolutionInvocationReceipt
-    stage_input: PortfolioEvolutionInputPacket | PortfolioParentAttributionPacket
+    stage_input: (
+        PortfolioEvolutionInputPacket
+        | PortfolioS1FeedbackBundleV1
+        | PortfolioS1FeedbackBundleV2
+        | PortfolioS1FeedbackBundleV3
+        | PortfolioS1FeedbackBundleV4
+        | PortfolioS1FeedbackBundleV5
+        | PortfolioS1FeedbackBundleV6
+        | PortfolioS1FeedbackBundleV7
+        | PortfolioS1FeedbackBundleV8
+        | PortfolioS1FeedbackBundleV9
+        | PortfolioS1FeedbackBundleV10
+        | PortfolioParentAttributionPacket
+    )
     stage_input_bytes: bytes
     rejected_edit_buffer_bytes: bytes | None
     implementation_source_bytes: bytes
     source_files: Mapping[str, bytes]
+
+
+def _is_sparse_s1(source: _EvolutionSource | EvolutionInvocationReceipt) -> bool:
+    receipt = (
+        source if isinstance(source, EvolutionInvocationReceipt) else source.detailed
+    )
+    return receipt.implementation_version == S1_SPARSE_IMPLEMENTATION_VERSION
+
+
+def _is_typed_feedback_s1(
+    source: _EvolutionSource | EvolutionInvocationReceipt,
+) -> bool:
+    receipt = (
+        source if isinstance(source, EvolutionInvocationReceipt) else source.detailed
+    )
+    return receipt.implementation_version in {
+        S1_IMPLEMENTATION_VERSION,
+        S1_SPARSE_IMPLEMENTATION_VERSION,
+    }
+
+
+def _stage_input_artifact_kind(source: _EvolutionSource) -> str:
+    if source.key == "s1" and _is_typed_feedback_s1(source):
+        return "s1_feedback_bundle"
+    return _INPUT_KIND[source.key]
+
+
+def _stage_input_relative_file(source: _EvolutionSource) -> str:
+    config = _STAGE_CONFIG[source.key]
+    if source.key == "s1" and _is_typed_feedback_s1(source):
+        return f"inputs/{config}/feedback-bundle.json"
+    return f"inputs/{config}/packet.json"
 
 
 @dataclass(frozen=True)
@@ -761,6 +858,118 @@ def _load_model[T](
     return value
 
 
+def _load_typed_feedback_bundle(
+    content: bytes,
+    *,
+    sparse: bool,
+) -> (
+    PortfolioS1FeedbackBundleV1
+    | PortfolioS1FeedbackBundleV2
+    | PortfolioS1FeedbackBundleV3
+    | PortfolioS1FeedbackBundleV4
+    | PortfolioS1FeedbackBundleV5
+    | PortfolioS1FeedbackBundleV6
+    | PortfolioS1FeedbackBundleV7
+    | PortfolioS1FeedbackBundleV8
+    | PortfolioS1FeedbackBundleV9
+    | PortfolioS1FeedbackBundleV10
+):
+    raw = _canonical_object(content, label="S1 typed Feedback bundle")
+    identity = (
+        raw.get("schema_version"),
+        raw.get("kind"),
+        raw.get("policy_version"),
+    )
+    model_by_identity = {
+        (1, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v1"): (
+            PortfolioS1FeedbackBundleV1
+        ),
+        (2, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v2"): (
+            PortfolioS1FeedbackBundleV2
+        ),
+        (3, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v3"): (
+            PortfolioS1FeedbackBundleV3
+        ),
+        (4, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v4"): (
+            PortfolioS1FeedbackBundleV4
+        ),
+        (5, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v5"): (
+            PortfolioS1FeedbackBundleV5
+        ),
+        (6, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v6"): (
+            PortfolioS1FeedbackBundleV6
+        ),
+        (7, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v7"): (
+            PortfolioS1FeedbackBundleV7
+        ),
+        (8, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v8"): (
+            PortfolioS1FeedbackBundleV8
+        ),
+        (9, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v9"): (
+            PortfolioS1FeedbackBundleV9
+        ),
+        (10, "portfolio-s1-feedback-bundle", "portfolio-s1-feedback-bundle-v10"): (
+            PortfolioS1FeedbackBundleV10
+        ),
+    }
+    model_type = model_by_identity.get(identity)
+    if model_type is None or (identity[0] in {5, 6, 7, 8, 9, 10}) != sparse:
+        raise PortfolioTreatmentFinalizationError(
+            "S1 implementation and typed Feedback bundle version differ"
+        )
+    bundle = _load_model(content, model_type, label="S1 typed Feedback bundle")
+    if isinstance(bundle, PortfolioS1FeedbackBundleV10):
+        retry_count = bundle.provider_call_count - bundle.selected_count
+        if (
+            bundle.provider_call_count not in {240, 241, 242, 243}
+            or retry_count != bundle.retry_claim_count
+            or bundle.retry_claim_count != len(bundle.retry_claim_sha256s)
+            or bundle.fresh_output_count != 240
+            or bundle.historical_feedback_outputs_imported != 0
+            or bundle.run_sha256 != bundle.round3_run_sha256
+            or bundle.run_file_sha256 != bundle.round3_run_file_sha256
+            or bundle.authorization_sha256 != bundle.round3_authorization_sha256
+            or bundle.control_sha256 != bundle.round3_control_sha256
+            or not bundle.round3_artifact_set_sha256
+            or len(bundle.entry_provenance) != 240
+            or len(
+                {
+                    item.bound_artifact_sha256
+                    for item in bundle.entry_provenance
+                }
+            )
+            != 240
+            or len(
+                {
+                    item.feedback_result_sha256
+                    for item in bundle.entry_provenance
+                }
+            )
+            != 240
+            or len(
+                {
+                    item.final_global_call_ordinal
+                    for item in bundle.entry_provenance
+                }
+            )
+            != 240
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "BundleV10 fresh Round3 provenance drifted"
+            )
+        projection = bundle.model_projection_payload()
+        if (
+            projection.get("schema_version") != 5
+            or projection.get("selected_count") != 240
+            or projection.get("parsed_count") != 240
+            or projection.get("status") != "complete_policy_filtered_feedback"
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "BundleV10 Creator projection is not the V5-shaped aggregate"
+            )
+    return bundle
+
+
 def _safe_stage_filename(value: str) -> str:
     if (
         not value
@@ -807,6 +1016,14 @@ def _load_evolution_source(
             f"{source.key} is not a completed invocation of the live evolution runner"
         )
     _require_current_mutation_implementation(source.key, detailed)
+    sparse_s1 = (
+        source.key == "s1"
+        and detailed.implementation_version == S1_SPARSE_IMPLEMENTATION_VERSION
+    )
+    typed_feedback_s1 = source.key == "s1" and detailed.implementation_version in {
+        S1_IMPLEMENTATION_VERSION,
+        S1_SPARSE_IMPLEMENTATION_VERSION,
+    }
     implementation_path = (
         source.implementation_source_path
         if source.implementation_source_path is not None
@@ -875,6 +1092,15 @@ def _load_evolution_source(
             raise PortfolioTreatmentFinalizationError(
                 "S3 TextOpt compiler snapshot differs from its receipt"
             )
+    if sparse_s1:
+        compiler_source = source_files.get(S1_SPARSE_COMPILER_SNAPSHOT_FILE)
+        if (
+            compiler_source is None
+            or detailed.s1_sparse_compiler_file_sha256 != sha256_bytes(compiler_source)
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "S1 sparse compiler snapshot differs from its receipt"
+            )
     core_bytes = _read_file(
         root / "model-invocation-receipt.json",
         label=f"{source.key} core invocation receipt",
@@ -902,7 +1128,14 @@ def _load_evolution_source(
         )
 
     input_by_role = {item.role: item for item in detailed.input_files}
-    if source.key == "s1":
+    if typed_feedback_s1:
+        expected_roles = {
+            "feedback_bundle",
+            "parent_static_bank",
+            "semantic_authoring_input",
+            "codex_authoring_input",
+        }
+    elif source.key == "s1":
         expected_roles = {
             "stage_input",
             "semantic_authoring_input",
@@ -956,10 +1189,16 @@ def _load_evolution_source(
         if (
             input_contents["semantic_authoring_input"] != semantic_bytes
             or input_contents["codex_authoring_input"] != codex_bytes
-            or parent_bank is not None
         ):
             raise PortfolioTreatmentFinalizationError(
                 "S1 invocation used another common authoring contract"
+            )
+        if typed_feedback_s1 and (
+            parent_bank is None
+            or input_contents["parent_static_bank"] != parent_bank.canonical_bytes()
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "typed S1 invocation did not consume its exact parent Static Bank"
             )
     elif (
         parent_bank is None
@@ -1067,7 +1306,20 @@ def _load_evolution_source(
             "S3 must use the v1.5 gate-bound ephemeral clean turn"
         )
 
-    if source.key == "s1":
+    if typed_feedback_s1:
+        packet = _load_typed_feedback_bundle(
+            input_contents["feedback_bundle"],
+            sparse=sparse_s1,
+        )
+        if (
+            parent_bank is None
+            or packet.parent_static_bank_sha256 != parent_bank.bank_sha256
+            or packet.bundle_sha256 != detailed.s1_feedback_bundle_sha256
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "typed S1 Feedback bundle differs from its parent or receipt"
+            )
+    elif source.key == "s1":
         packet = _load_model(
             input_contents["stage_input"],
             PortfolioEvolutionInputPacket,
@@ -1106,7 +1358,56 @@ def _load_evolution_source(
 
     mutation: PortfolioStageMutation | None = None
     raw_bytes = source_files["raw-model-output.json"]
-    if source.key == "s1":
+    if sparse_s1:
+        if parent_bank is None:  # pragma: no cover - guarded above
+            raise PortfolioTreatmentFinalizationError(
+                "sparse S1 parent Static Bank is absent"
+            )
+        normalized = _load_model(
+            source_files["normalized-draft.json"],
+            SparsePatchDraftV1,
+            label="S1 sparse normalized draft",
+        )
+        sparse_receipt = _load_model(
+            source_files["s1-sparse-compilation-receipt.json"],
+            SparseCompilationReceiptV1,
+            label="S1 sparse compilation receipt",
+        )
+        semantic_raw = _canonical_object(
+            semantic_bytes,
+            label="S1 semantic authoring input",
+        )
+        from skillchain.static_authoring import AuthoringInput
+
+        semantic = AuthoringInput.model_validate(semantic_raw, strict=True)
+        try:
+            replayed_draft = bind_sparse_patch_draft(
+                raw_bytes,
+                parent_bank=parent_bank,
+                authoring_input=semantic,
+                feedback_bundle_sha256=packet.bundle_sha256,
+            )
+            replayed = compile_sparse_s1_candidate(
+                parent_bank=parent_bank,
+                authoring_input=semantic,
+                sparse_draft=replayed_draft,
+                tool_registry_runtime_sha256=tool_registry_runtime_sha256,
+            )
+        except Exception as error:
+            raise PortfolioTreatmentFinalizationError(
+                "S1 sparse output cannot replay through the trusted compiler"
+            ) from error
+        if (
+            replayed_draft != normalized
+            or replayed.bank != candidate
+            or replayed.receipt != sparse_receipt
+            or sparse_receipt.sparse_compiler_file_sha256
+            != detailed.s1_sparse_compiler_file_sha256
+        ):
+            raise PortfolioTreatmentFinalizationError(
+                "S1 sparse draft, candidate, or compilation receipt differs from replay"
+            )
+    elif source.key == "s1":
         normalized = _load_model(
             source_files["normalized-draft.json"],
             AuthoringDraftBundle,
@@ -1241,7 +1542,9 @@ def _load_evolution_source(
         invocation=core,
         detailed=detailed,
         stage_input=packet,
-        stage_input_bytes=input_contents["stage_input"],
+        stage_input_bytes=input_contents[
+            "feedback_bundle" if typed_feedback_s1 else "stage_input"
+        ],
         rejected_edit_buffer_bytes=rejected_edit_buffer_bytes,
         implementation_source_bytes=implementation_source_bytes,
         source_files=source_files,
@@ -1528,7 +1831,7 @@ def _copy_evolution_files(
         f"{stage_dir}/implementation-source.py",
         source.implementation_source_bytes,
     )
-    stage_input_file = f"inputs/{config}/packet.json"
+    stage_input_file = _stage_input_relative_file(source)
     _write_unique(staging, stage_input_file, source.stage_input_bytes)
     if source.rejected_edit_buffer_bytes is not None:
         _write_unique(
@@ -1795,7 +2098,10 @@ def finalize_portfolio_treatment_runtime(
     for key in ("s1", "s2", "s3"):
         stage = _load_evolution_source(
             stage_by_key[key],
-            parent_bank=None if key == "s1" else parent,
+            # Sparse S1 v1.7 is itself a parent-protected mutation surface and
+            # must replay against the exact Static Bank.  Historical whole-Bank
+            # S1 ignores this argument and keeps its previous replay path.
+            parent_bank=parent,
             prior_stage=evolution.get("s2") if key == "s3" else None,
             prior_gate=gates["s2"].report if key == "s3" else None,
             semantic_bytes=static.semantic_bytes,
@@ -1854,6 +2160,27 @@ def finalize_portfolio_treatment_runtime(
     optimization_ids = split[0]
     for key, stage in evolution.items():
         if key == "s1":
+            if _is_typed_feedback_s1(stage):
+                if (
+                    not isinstance(
+                        stage.stage_input,
+                        _TYPED_S1_FEEDBACK_BUNDLE_TYPES,
+                    )
+                    or stage.stage_input.parent_static_bank_sha256
+                    != static.bank.bank_sha256
+                ):
+                    raise PortfolioTreatmentFinalizationError(
+                        "S1 typed Feedback input is not parent-bound"
+                    )
+                if _is_sparse_s1(stage) and (
+                    stage.stage_input.selected_count != 240
+                    or stage.stage_input.attempted_count != 240
+                    or stage.stage_input.parsed_count != 240
+                ):
+                    raise PortfolioTreatmentFinalizationError(
+                        "S1 sparse input lacks complete parent-bound Feedback240"
+                    )
+                continue
             if not isinstance(stage.stage_input, PortfolioEvolutionInputPacket):
                 raise PortfolioTreatmentFinalizationError(
                     "S1 lacks its complete optimization input packet"
@@ -1959,9 +2286,9 @@ def finalize_portfolio_treatment_runtime(
             candidate_file, invocation_file, raw_file, mutation_file = evolution_files[
                 key
             ]
-            stage_input_file = f"inputs/{config}/packet.json"
+            stage_input_file = _stage_input_relative_file(stage)
             stage_input_binding = _artifact_binding(
-                _INPUT_KIND[key],
+                _stage_input_artifact_kind(stage),
                 stage_input_file,
                 stage.stage_input_bytes,
             )
@@ -1975,6 +2302,17 @@ def finalize_portfolio_treatment_runtime(
                 ),
             ]
             if key == "s1":
+                if _is_typed_feedback_s1(stage):
+                    # Keep the historical receipt aliases for the v1 chain
+                    # schema while adding the typed sparse-bundle role used by
+                    # the v1.7 replay above.
+                    input_artifact_list.append(
+                        _artifact_binding(
+                            "trajectory_bundle",
+                            stage_input_file,
+                            stage.stage_input_bytes,
+                        )
+                    )
                 input_artifact_list.extend(
                     (
                         _artifact_binding(

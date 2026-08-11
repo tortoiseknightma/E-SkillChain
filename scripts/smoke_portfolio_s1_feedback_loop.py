@@ -1,7 +1,7 @@
 """Run the zero-provider Static-opt -> Feedback -> S1 contract smoke.
 
 This is deliberately not an experiment result.  It deeply loads the immutable
-Static opt800 execution and frozen Creator240 fold, runs all 48 Feedback rows
+Static opt800 execution and frozen Discovery600 fold, runs all 240 Feedback rows
 through a deterministic local substitute, prepares the current Style-2.3
 Creator package, invokes the real S1 runner exactly once with a deterministic
 local Codex process substitute, and verifies the derived two-Bank runtime.
@@ -54,12 +54,12 @@ from skillchain.evaluation.evaluator_outputs import (  # noqa: E402
 from skillchain.evaluation.feedback_runtime import (  # noqa: E402
     FeedbackEvaluationResult,
     VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
-    VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5,
-    VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6,
+    VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6,
 )
 from skillchain.evaluation.packets import (  # noqa: E402
-    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
-    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
+    VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+    VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
 )
 from skillchain.evaluation.portfolio_s1_experiment_runtime import (  # noqa: E402
     create_portfolio_s1_experiment_runtime,
@@ -73,7 +73,7 @@ from skillchain.synthesis.store import (  # noqa: E402
 from skillchain.tools.serialization import read_stable_regular_file  # noqa: E402
 
 
-SMOKE_POLICY_VERSION = "portfolio-s1-feedback-loop-zero-provider-smoke-v1"
+SMOKE_POLICY_VERSION = "portfolio-s1-feedback-loop-zero-provider-smoke-v2"
 REPLAY_NOT_RUN = "not_run_requires_paid_candidate_execution"
 
 
@@ -159,21 +159,22 @@ class _FakeFeedbackRunner:
             ),
             ideal_response_gaps=(),
             skill_suggestions=(
-                "Keep claims, cards, citations, and tool evidence mutually closed.",
+                "[policy_compatible] Keep claims, cards, citations, and tool "
+                "evidence mutually closed.",
             ),
         )
         raw_text = canonical_json_bytes(feedback.model_dump(mode="json")).decode(
             "utf-8"
         )
         payload = {
-            "schema_version": 3,
-            "cache_namespace": "feedback-evaluator-v9",
+            "schema_version": 5,
+            "cache_namespace": "feedback-evaluator-v11",
             "parser_policy_version": VISUAL_FEEDBACK_PARSER_POLICY_VERSION_V3,
             "parser_policy_sha256": VISUAL_FEEDBACK_PARSER_POLICY_SHA256_V3,
-            "prompt_policy_version": VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V5,
-            "prompt_policy_sha256": VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V5,
-            "transport_policy_version": (VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V5),
-            "transport_policy_sha256": (VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V5),
+            "prompt_policy_version": VISUAL_FEEDBACK_PROMPT_POLICY_VERSION_V6,
+            "prompt_policy_sha256": VISUAL_FEEDBACK_PROMPT_POLICY_SHA256_V6,
+            "transport_policy_version": VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6,
+            "transport_policy_sha256": VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V6,
             "requested_response_format": "json_schema",
             "requested_json_schema_sha256": VISUAL_FEEDBACK_JSON_SCHEMA_SHA256_V1,
             "requested_thinking": True,
@@ -200,7 +201,7 @@ class _FakeFeedbackRunner:
             "remote_receipt_file_sha256": remote_runtime.receipt_file_sha256,
             "remote_receipt_sha256": remote_runtime.receipt.receipt_sha256,
             "provider": "qwen",
-            "model": "qwen3.7-plus-2026-05-26",
+            "model": "qwen3.8-max",
             "endpoint": config.PROVIDER_ENDPOINTS["qwen"],
             "max_tokens": max_tokens,
             "max_completion_tokens": max_completion_tokens,
@@ -311,8 +312,13 @@ def _feedback_arguments(
         execution_root=args.execution_root,
         expected_execution_control_sha256=args.expected_execution_control_sha256,
         artifact_repository_root=args.artifact_repository_root,
-        creator_selection_index=args.creator_selection_index,
-        expected_creator_selection_sha256=args.expected_creator_selection_sha256,
+        selection_profile="discovery240",
+        creator_selection_index=None,
+        expected_creator_selection_sha256=None,
+        fold_manifest=args.fold_manifest,
+        expected_fold_manifest_sha256=args.expected_fold_manifest_sha256,
+        fold_mapping=args.fold_mapping,
+        expected_fold_mapping_sha256=args.expected_fold_mapping_sha256,
         rubric_file=args.rubric_file,
         expected_rubric_sha256=args.expected_rubric_sha256,
         rubric_id=args.rubric_id,
@@ -322,15 +328,14 @@ def _feedback_arguments(
         reviewer_id=args.reviewer_id,
         reviewed_at=args.reviewed_at,
         owner_statement=args.owner_statement,
+        approved_phase_hard_cap_cny="94.000000000000",
         run_id=args.run_id,
         model_source_lock=args.model_source_lock,
         expected_model_source_lock_sha256=args.expected_model_source_lock_sha256,
         pricing_lock=args.pricing_lock,
         expected_pricing_lock_sha256=args.expected_pricing_lock_sha256,
         role_selection_file=args.role_selection_file,
-        expected_role_selection_file_sha256=(
-            args.expected_role_selection_file_sha256
-        ),
+        expected_role_selection_file_sha256=(args.expected_role_selection_file_sha256),
         expected_role_selection_sha256=args.expected_role_selection_sha256,
     )
 
@@ -354,9 +359,9 @@ def run_smoke_once(args: argparse.Namespace, root: Path) -> dict[str, object]:
         _feedback_arguments(args, feedback_root)
     )
     bundle = execute_run(prepared, feedback_runner=feedback_runner)
-    if bundle is None or feedback_runner.calls != 48:
+    if bundle is None or feedback_runner.calls != 240:
         raise PortfolioS1ZeroProviderSmokeError(
-            "deterministic Feedback substitute did not complete exact48"
+            "deterministic Feedback substitute did not complete exact240"
         )
     bundle_path = feedback_root / "portfolio-s1-feedback-bundle.json"
 
@@ -423,7 +428,7 @@ def run_smoke_once(args: argparse.Namespace, root: Path) -> dict[str, object]:
         "two_bank_runtime_lock_file_sha256": runtime.runtime_lock_file_sha256,
         "parent_static_bank_sha256": package.parent_bank.bank_sha256,
         "style_tool_version": "2.3.0",
-        "selected_rows": 48,
+        "selected_rows": 240,
         "local_feedback_evaluations": feedback_runner.calls,
         "local_fake_codex_invocations": fake_codex.calls,
         "external_feedback_provider_calls": 0,
@@ -509,8 +514,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--execution-root", type=Path, required=True)
     parser.add_argument("--expected-execution-control-sha256", required=True)
     parser.add_argument("--artifact-repository-root", type=Path, required=True)
-    parser.add_argument("--creator-selection-index", type=Path, required=True)
-    parser.add_argument("--expected-creator-selection-sha256", required=True)
+    parser.add_argument("--fold-manifest", type=Path, required=True)
+    parser.add_argument("--expected-fold-manifest-sha256", required=True)
+    parser.add_argument("--fold-mapping", type=Path, required=True)
+    parser.add_argument("--expected-fold-mapping-sha256", required=True)
     parser.add_argument("--rubric-file", type=Path, required=True)
     parser.add_argument("--expected-rubric-sha256", required=True)
     parser.add_argument("--rubric-id", default="portfolio-s1-feedback-v1")

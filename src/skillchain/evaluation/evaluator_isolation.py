@@ -47,9 +47,11 @@ from skillchain.evaluation.packets import (
     EvaluationImage,
     EvaluatorPromptSnapshot,
     FeedbackPacket,
+    FeedbackPacketV3,
     FinalEvaluationPacket,
     PromptMessage,
     build_feedback_evaluator_prompt,
+    build_feedback_evaluator_prompt_v6,
     build_final_evaluator_prompt,
     build_final_evaluation_packet,
     derive_blinded_evaluation_id,
@@ -92,6 +94,26 @@ _FEEDBACK_PACKET_FIELDS = frozenset(
         "cache_namespace",
         "cards",
         "canonical_capability",
+        "image",
+        "packet_kind",
+        "packet_sha256",
+        "query_id",
+        "response_text",
+        "rubric",
+        "schema_version",
+        "tool_evidence",
+        "tool_trace",
+        "turns",
+    }
+)
+_FEEDBACK_PACKET_V3_FIELDS = frozenset(
+    {
+        "acceptable_capabilities",
+        "cache_namespace",
+        "cards",
+        "canonical_capability",
+        "gcs_contract",
+        "gcs_diagnostics",
         "image",
         "packet_kind",
         "packet_sha256",
@@ -448,6 +470,17 @@ def serialize_feedback_packet(packet: FeedbackPacket) -> bytes:
     return content
 
 
+def serialize_feedback_packet_v3(packet: FeedbackPacketV3) -> bytes:
+    """Serialize only the forward GCS-diagnostic Feedback packet type."""
+
+    packet = _validated_feedback_packet_v3(packet)
+    content = canonical_json_bytes(packet.model_dump(mode="json"))
+    parsed = _parse_object(content, "feedback packet v3")
+    if set(parsed) != _FEEDBACK_PACKET_V3_FIELDS:
+        raise EvaluatorIsolationError("feedback packet v3 top-level allowlist mismatch")
+    return content
+
+
 def build_bound_feedback_prompt(
     packet: FeedbackPacket,
     evaluator_isolation: EvaluatorIsolationLock,
@@ -456,6 +489,23 @@ def build_bound_feedback_prompt(
     packet = _validated_feedback_packet(packet)
     serialize_feedback_packet(packet)
     base = build_feedback_evaluator_prompt(packet)
+    return _feedback_snapshot(
+        base,
+        evaluator_isolation.feedback,
+        evaluator_isolation.lock_sha256,
+    )
+
+
+def build_bound_feedback_prompt_v6(
+    packet: FeedbackPacketV3,
+    evaluator_isolation: EvaluatorIsolationLock,
+) -> FeedbackEvaluatorPromptSnapshot:
+    """Bind the forward GCS-aware Feedback prompt to evaluator isolation."""
+
+    evaluator_isolation = _validated_isolation_lock(evaluator_isolation)
+    packet = _validated_feedback_packet_v3(packet)
+    serialize_feedback_packet_v3(packet)
+    base = build_feedback_evaluator_prompt_v6(packet)
     return _feedback_snapshot(
         base,
         evaluator_isolation.feedback,
@@ -977,6 +1027,13 @@ def _validated_feedback_packet(packet: object) -> FeedbackPacket:
     return FeedbackPacket.model_validate_json(content, strict=True)
 
 
+def _validated_feedback_packet_v3(packet: object) -> FeedbackPacketV3:
+    if type(packet) is not FeedbackPacketV3:
+        raise TypeError("feedback v3 serializer accepts only FeedbackPacketV3")
+    content = canonical_json_bytes(packet.model_dump(mode="json"))
+    return FeedbackPacketV3.model_validate_json(content, strict=True)
+
+
 def _validated_isolation_lock(value: object) -> EvaluatorIsolationLock:
     if type(value) is not EvaluatorIsolationLock:
         raise TypeError("evaluator isolation requires EvaluatorIsolationLock")
@@ -1033,6 +1090,7 @@ __all__ = [
     "OpenedJudgeAudit",
     "SealedJudgeAuditEnvelope",
     "build_bound_feedback_prompt",
+    "build_bound_feedback_prompt_v6",
     "build_bound_final_prompt",
     "build_judge_audit_dataset",
     "build_verified_final_evaluation_packet",
@@ -1043,5 +1101,6 @@ __all__ = [
     "make_final_evaluator_identity",
     "open_sealed_judge_audit",
     "serialize_feedback_packet",
+    "serialize_feedback_packet_v3",
     "serialize_final_evaluation_packet",
 ]

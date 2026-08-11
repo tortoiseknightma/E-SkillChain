@@ -48,10 +48,28 @@ from skillchain.evaluation.portfolio_s1_feedback import (  # noqa: E402
     PortfolioS1FeedbackBundleV2,
     PortfolioS1FeedbackBundleV3,
     PortfolioS1FeedbackBundleV4,
+    PortfolioS1FeedbackBundleV5,
+    PortfolioS1FeedbackBundleV6,
+    PortfolioS1FeedbackBundleV7,
     load_portfolio_s1_feedback_bundle,
     load_portfolio_s1_feedback_bundle_v2,
     load_portfolio_s1_feedback_bundle_v3,
     load_portfolio_s1_feedback_bundle_v4,
+    load_portfolio_s1_feedback_bundle_v5,
+    load_portfolio_s1_feedback_bundle_v6,
+    load_portfolio_s1_feedback_bundle_v7,
+)
+from skillchain.evaluation.portfolio_s1_feedback_retry_v3 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV8,
+    load_portfolio_s1_feedback_bundle_v8,
+)
+from skillchain.evaluation.portfolio_s1_feedback_recovery_v1 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV9,
+    load_portfolio_s1_feedback_bundle_v9,
+)
+from skillchain.evaluation.portfolio_s1_feedback_round3_v1 import (  # noqa: E402
+    PortfolioS1FeedbackBundleV10,
+    load_portfolio_s1_feedback_bundle_v10,
 )
 from skillchain.evaluation.portfolio_static_opt_runtime import (  # noqa: E402
     VerifiedPortfolioStaticOptRuntime,
@@ -77,7 +95,11 @@ from skillchain.tools.serialization import (  # noqa: E402
 
 
 PREPARATION_POLICY_VERSION = "portfolio-s1-creator-input-package-v1"
+SPARSE_PREPARATION_POLICY_VERSION = "portfolio-s1-creator-input-package-v2"
 RUNNER_POLICY_VERSION = "portfolio-evolution-typed-feedback-whole-bank-clean-turn-v6"
+SPARSE_RUNNER_POLICY_VERSION = (
+    "portfolio-evolution-policy-filtered-sparse-patch-clean-turn-v7"
+)
 RUNNER_PATH = REPOSITORY_ROOT / "scripts" / "run_portfolio_evolution_model.py"
 
 PARENT_BANK_FILE = "parent-static-bank.json"
@@ -112,6 +134,12 @@ PortfolioS1FeedbackBundle = (
     | PortfolioS1FeedbackBundleV2
     | PortfolioS1FeedbackBundleV3
     | PortfolioS1FeedbackBundleV4
+    | PortfolioS1FeedbackBundleV5
+    | PortfolioS1FeedbackBundleV6
+    | PortfolioS1FeedbackBundleV7
+    | PortfolioS1FeedbackBundleV8
+    | PortfolioS1FeedbackBundleV9
+    | PortfolioS1FeedbackBundleV10
 )
 
 
@@ -141,7 +169,8 @@ class PortfolioS1CreatorRunnerArgv(_StrictFrozenModel):
         "portfolio-s1-creator-runner-argv"
     )
     policy_version: Literal[
-        "portfolio-evolution-typed-feedback-whole-bank-clean-turn-v6"
+        "portfolio-evolution-typed-feedback-whole-bank-clean-turn-v6",
+        "portfolio-evolution-policy-filtered-sparse-patch-clean-turn-v7",
     ] = RUNNER_POLICY_VERSION
     command: tuple[str, ...] = Field(min_length=24)
     requested_model: Literal["gpt-5.6-sol"] = "gpt-5.6-sol"
@@ -179,9 +208,10 @@ class PortfolioS1CreatorInputManifest(_StrictFrozenModel):
     kind: Literal["portfolio-s1-creator-input-manifest"] = (
         "portfolio-s1-creator-input-manifest"
     )
-    policy_version: Literal["portfolio-s1-creator-input-package-v1"] = (
-        PREPARATION_POLICY_VERSION
-    )
+    policy_version: Literal[
+        "portfolio-s1-creator-input-package-v1",
+        "portfolio-s1-creator-input-package-v2",
+    ] = PREPARATION_POLICY_VERSION
     status: Literal["prepared_not_invoked"] = "prepared_not_invoked"
     provider_calls: Literal[0] = 0
     source_runtime_root: str
@@ -253,7 +283,7 @@ def _load_typed_s1_feedback_bundle(
     *,
     expected_file_sha256: str,
 ) -> PortfolioS1FeedbackBundle:
-    """Route only exact V1/V2/V3/V4 identities to strict canonical loaders."""
+    """Route only exact V1-V10 identities to strict canonical loaders."""
 
     content = read_stable_regular_file(
         path,
@@ -267,10 +297,14 @@ def _load_typed_s1_feedback_bundle(
     except ValueError as error:
         raise PortfolioS1CreatorInputError("S1 Feedback bundle is invalid") from error
     identity = (
-        raw.get("schema_version"),
-        raw.get("kind"),
-        raw.get("policy_version"),
-    ) if isinstance(raw, dict) else None
+        (
+            raw.get("schema_version"),
+            raw.get("kind"),
+            raw.get("policy_version"),
+        )
+        if isinstance(raw, dict)
+        else None
+    )
     if identity == (
         1,
         "portfolio-s1-feedback-bundle",
@@ -307,14 +341,102 @@ def _load_typed_s1_feedback_bundle(
             path,
             expected_file_sha256=expected_file_sha256,
         )
+    elif identity == (
+        5,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v5",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v5(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
+    elif identity == (
+        6,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v6",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v6(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
+    elif identity == (
+        7,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v7",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v7(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
+    elif identity == (
+        8,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v8",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v8(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
+    elif identity == (
+        9,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v9",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v9(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
+    elif identity == (
+        10,
+        "portfolio-s1-feedback-bundle",
+        "portfolio-s1-feedback-bundle-v10",
+    ):
+        bundle = load_portfolio_s1_feedback_bundle_v10(
+            path,
+            expected_file_sha256=expected_file_sha256,
+        )
     else:
         raise PortfolioS1CreatorInputError(
             "S1 requires an exact PortfolioS1FeedbackBundleV1, "
             "PortfolioS1FeedbackBundleV2, PortfolioS1FeedbackBundleV3, or "
-            "PortfolioS1FeedbackBundleV4 identity"
+            "PortfolioS1FeedbackBundleV4/V5/V6/V7/V8/V9/V10 identity"
         )
     if bundle.canonical_bytes() != content:
         raise PortfolioS1CreatorInputError("S1 Feedback bundle is not canonical")
+    if isinstance(bundle, PortfolioS1FeedbackBundleV10):
+        retry_count = bundle.provider_call_count - bundle.selected_count
+        projection = bundle.model_projection_payload()
+        if (
+            bundle.provider_call_count not in {240, 241, 242, 243}
+            or retry_count != bundle.retry_claim_count
+            or bundle.retry_claim_count != len(bundle.retry_claim_sha256s)
+            or bundle.fresh_output_count != 240
+            or bundle.historical_feedback_outputs_imported != 0
+            or bundle.run_sha256 != bundle.round3_run_sha256
+            or bundle.run_file_sha256 != bundle.round3_run_file_sha256
+            or bundle.authorization_sha256 != bundle.round3_authorization_sha256
+            or bundle.control_sha256 != bundle.round3_control_sha256
+            or not bundle.round3_artifact_set_sha256
+            or len(bundle.entry_provenance) != 240
+            or len(
+                {item.bound_artifact_sha256 for item in bundle.entry_provenance}
+            )
+            != 240
+            or len(
+                {item.feedback_result_sha256 for item in bundle.entry_provenance}
+            )
+            != 240
+            or len(
+                {item.final_global_call_ordinal for item in bundle.entry_provenance}
+            )
+            != 240
+            or projection.get("schema_version") != 5
+            or projection.get("selected_count") != 240
+            or projection.get("parsed_count") != 240
+        ):
+            raise PortfolioS1CreatorInputError(
+                "BundleV10 fresh Round3 lineage or V5 projection drifted"
+            )
     return bundle
 
 
@@ -371,7 +493,9 @@ def _verify_codex_executable(
     try:
         before = executable.lstat()
     except OSError as error:
-        raise PortfolioS1CreatorInputError("Codex executable cannot be inspected") from error
+        raise PortfolioS1CreatorInputError(
+            "Codex executable cannot be inspected"
+        ) from error
     reparse = int(getattr(before, "st_file_attributes", 0)) & int(
         getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
     )
@@ -384,7 +508,9 @@ def _verify_codex_executable(
             after_read = os.fstat(handle.fileno())
         after = executable.lstat()
     except OSError as error:
-        raise PortfolioS1CreatorInputError("Codex executable cannot be hashed") from error
+        raise PortfolioS1CreatorInputError(
+            "Codex executable cannot be hashed"
+        ) from error
     expected = evidence.value.binary
     if (
         opened.st_dev != before.st_dev
@@ -410,6 +536,7 @@ def _build_runner_argv(
     feedback_file_sha256: str,
     codex_file_sha256: str,
     codex_executable: Path,
+    sparse_feedback: bool,
 ) -> PortfolioS1CreatorRunnerArgv:
     command = (
         sys.executable,
@@ -446,7 +573,9 @@ def _build_runner_argv(
     payload = {
         "schema_version": 1,
         "kind": "portfolio-s1-creator-runner-argv",
-        "policy_version": RUNNER_POLICY_VERSION,
+        "policy_version": (
+            SPARSE_RUNNER_POLICY_VERSION if sparse_feedback else RUNNER_POLICY_VERSION
+        ),
         "command": list(command),
         "requested_model": "gpt-5.6-sol",
         "reasoning_effort": "high",
@@ -548,11 +677,9 @@ def prepare_portfolio_s1_creator_inputs(
     )
     if (
         sha256_bytes(parent_bytes) != runtime.bank_file_sha256
-        or sha256_bytes(semantic_bytes)
-        != runtime.semantic_authoring_input_file_sha256
+        or sha256_bytes(semantic_bytes) != runtime.semantic_authoring_input_file_sha256
         or sha256_bytes(feedback_bytes) != expected_feedback_bundle_file_sha256
-        or sha256_bytes(evidence_bytes)
-        != expected_model_access_evidence_file_sha256
+        or sha256_bytes(evidence_bytes) != expected_model_access_evidence_file_sha256
     ):
         raise PortfolioS1CreatorInputError("prepared source bytes drifted")
 
@@ -564,6 +691,7 @@ def prepare_portfolio_s1_creator_inputs(
         feedback_file_sha256=expected_feedback_bundle_file_sha256,
         codex_file_sha256=sha256_bytes(codex_bytes),
         codex_executable=executable,
+        sparse_feedback=feedback.schema_version in {5, 6, 7, 8, 9, 10},
     )
     argv_bytes = runner_argv.canonical_bytes()
     preparer_source_sha256 = sha256_bytes(
@@ -606,7 +734,11 @@ def prepare_portfolio_s1_creator_inputs(
     manifest_payload = {
         "schema_version": 1,
         "kind": "portfolio-s1-creator-input-manifest",
-        "policy_version": PREPARATION_POLICY_VERSION,
+        "policy_version": (
+            SPARSE_PREPARATION_POLICY_VERSION
+            if feedback.schema_version in {5, 6, 7, 8, 9, 10}
+            else PREPARATION_POLICY_VERSION
+        ),
         "status": "prepared_not_invoked",
         "provider_calls": 0,
         "source_runtime_root": str(runtime.root),
@@ -632,9 +764,7 @@ def prepare_portfolio_s1_creator_inputs(
     manifest = PortfolioS1CreatorInputManifest.model_validate(
         {
             **manifest_payload,
-            "manifest_sha256": sha256_bytes(
-                canonical_json_bytes(manifest_payload)
-            ),
+            "manifest_sha256": sha256_bytes(canonical_json_bytes(manifest_payload)),
         },
         strict=True,
     )
@@ -704,9 +834,7 @@ def load_verified_portfolio_s1_creator_inputs(
     )
     semantic = load_authoring_packet(
         package_root / binding_by_role["semantic_authoring_input"].file,
-        expected_file_sha256=binding_by_role[
-            "semantic_authoring_input"
-        ].file_sha256,
+        expected_file_sha256=binding_by_role["semantic_authoring_input"].file_sha256,
     )
     codex = load_codex_authoring_input(
         package_root / binding_by_role["codex_authoring_input"].file,
@@ -731,19 +859,15 @@ def load_verified_portfolio_s1_creator_inputs(
         or feedback.parent_static_bank_sha256 != parent.bank_sha256
         or executable_sha256 != manifest.codex_executable_sha256
         or executable_bytes != manifest.codex_executable_bytes
-        or manifest.runtime_lock_sha256
-        != runtime.runtime_lock["runtime_lock_sha256"]
+        or manifest.runtime_lock_sha256 != runtime.runtime_lock["runtime_lock_sha256"]
         or manifest.tool_registry_sha256 != parent.tool_registry_sha256
-        or manifest.tool_registry_runtime_sha256
-        != parent.tool_registry_runtime_sha256
-        or binding_by_role["parent_static_bank"].artifact_sha256
-        != parent.bank_sha256
+        or manifest.tool_registry_runtime_sha256 != parent.tool_registry_runtime_sha256
+        or binding_by_role["parent_static_bank"].artifact_sha256 != parent.bank_sha256
         or binding_by_role["semantic_authoring_input"].artifact_sha256
         != semantic.input_sha256
         or binding_by_role["codex_authoring_input"].artifact_sha256
         != codex.input_sha256
-        or binding_by_role["feedback_bundle"].artifact_sha256
-        != feedback.bundle_sha256
+        or binding_by_role["feedback_bundle"].artifact_sha256 != feedback.bundle_sha256
         or codex.model_access_evidence_file_sha256 != access.file_sha256
     ):
         raise PortfolioS1CreatorInputError("prepared S1 identities drifted")
@@ -758,16 +882,25 @@ def load_verified_portfolio_s1_creator_inputs(
         argv_bytes,
         label="prepared S1 runner argv",
     )
+    sparse_feedback = feedback.schema_version in {5, 6, 7, 8, 9, 10}
+    expected_preparation_policy = (
+        SPARSE_PREPARATION_POLICY_VERSION
+        if sparse_feedback
+        else PREPARATION_POLICY_VERSION
+    )
+    expected_runner_policy = (
+        SPARSE_RUNNER_POLICY_VERSION if sparse_feedback else RUNNER_POLICY_VERSION
+    )
     if (
         runner_argv.invocation_sha256 != manifest.runner_invocation_sha256
+        or manifest.policy_version != expected_preparation_policy
+        or runner_argv.policy_version != expected_runner_policy
         or manifest.preparer_source_file_sha256
         != sha256_bytes(
             read_stable_regular_file(Path(__file__), label="S1 preparer source")
         )
         or manifest.runner_source_file_sha256
-        != sha256_bytes(
-            read_stable_regular_file(RUNNER_PATH, label="S1 runner source")
-        )
+        != sha256_bytes(read_stable_regular_file(RUNNER_PATH, label="S1 runner source"))
         or os.path.lexists(manifest.future_creator_output_dir)
         or str(executable) not in runner_argv.command
     ):
@@ -806,9 +939,7 @@ def main(argv: list[str] | None = None) -> int:
             static_runtime_root=args.static_runtime_root,
             expected_runtime_lock_file_sha256=args.runtime_lock_file_sha256,
             feedback_bundle_path=args.feedback_bundle,
-            expected_feedback_bundle_file_sha256=(
-                args.feedback_bundle_file_sha256
-            ),
+            expected_feedback_bundle_file_sha256=(args.feedback_bundle_file_sha256),
             model_access_evidence_path=args.model_access_evidence,
             expected_model_access_evidence_file_sha256=(
                 args.model_access_evidence_file_sha256
@@ -817,7 +948,12 @@ def main(argv: list[str] | None = None) -> int:
             future_creator_output_dir=args.future_creator_output_dir,
             output_dir=args.output_dir,
         )
-    except (FileExistsError, OSError, PortfolioS1CreatorInputError, ValueError) as error:
+    except (
+        FileExistsError,
+        OSError,
+        PortfolioS1CreatorInputError,
+        ValueError,
+    ) as error:
         print(f"prepare-s1-creator-inputs: {error}", file=sys.stderr)
         return 2
     print(prepared.root / INPUT_MANIFEST_FILE)
