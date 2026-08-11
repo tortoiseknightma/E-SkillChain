@@ -646,7 +646,7 @@ def load_verified_round3_schema_phase60_governance_v1(
 def require_round3_schema_phase60_live_governance_v1(
     governance: VerifiedPortfolioS1FeedbackRound3SchemaPhase60GovernanceV1,
 ) -> None:
-    """Reject the tracked pending triad until separate owner approval is frozen."""
+    """Require the exact owner-approved V5/V8/V15 phase60 live envelope."""
 
     if (
         type(governance)
@@ -660,21 +660,46 @@ def require_round3_schema_phase60_live_governance_v1(
     if (
         source.live_call_authority is not True
         or source.live_provider_calls_authorized is not True
+        or source.live_call_authority_scope
+        != "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
         or source.owner_phase60_budget_authorization_status != "granted"
         or source.owner_phase60_retry_authorization_status != "granted"
+        or source.fresh_maximum_reservation_cny != "27.692640000000"
+        or source.fresh_technical_hard_cap_cny != "28.000000000000"
+        or source.cumulative_technical_hard_cap_cny != "54.264100000000"
+        or source.phase60_requires_new_owner_approval is not False
+        or source.phase120_requires_new_owner_approval is not True
         or pricing.fresh_run_and_retry_scope_owner_approved is not True
         or pricing.live_provider_calls_authorized is not True
+        or pricing.live_authorized_selected_query_count != 60
+        or pricing.live_authorized_phase_counts != (60,)
         or pricing.owner_budget_authorization_status
         != "granted_phase60_budget_and_retry_approval"
+        or pricing.owner_budget_authorized_cap_cny != "28.000000000000"
+        or pricing.maximum_reservation_cny != "27.692640000000"
+        or pricing.technical_phase_hard_cap_cny != "28.000000000000"
+        or pricing.live_cumulative_hard_cap_cny != "54.264100000000"
         or pricing.owner_phase60_retry_authorization_status != "granted"
+        or pricing.phase60_requires_new_owner_approval is not False
+        or pricing.phase120_requires_new_owner_approval is not True
         or feedback.get("live_call_authority") is not True
         or feedback.get("live_provider_calls_authorized") is not True
+        or feedback.get("fresh_run_and_retry_scope_owner_approved") is not True
+        or feedback.get("live_authorized_selected_query_count") != 60
+        or feedback.get("live_authorized_phase_counts") != [60]
+        or feedback.get("live_call_authority_scope")
+        != "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
         or feedback.get("owner_phase60_budget_authorization_status") != "granted"
         or feedback.get("owner_phase60_retry_authorization_status") != "granted"
+        or feedback.get("owner_authorized_budget_ceiling_cny") != "28.000000000000"
+        or feedback.get("fresh_maximum_reservation_cny") != "27.692640000000"
+        or feedback.get("fresh_stage_hard_cap_cny") != "28.000000000000"
+        or feedback.get("live_cumulative_hard_cap_cny") != "54.264100000000"
+        or feedback.get("phase60_requires_new_owner_approval") is not False
+        or feedback.get("phase120_requires_new_owner_approval") is not True
     ):
         raise PortfolioS1FeedbackError(
-            "phase60 live calls remain blocked pending separate owner budget and "
-            "retry approval"
+            "phase60 governance does not match the exact owner-approved live envelope"
         )
 
 

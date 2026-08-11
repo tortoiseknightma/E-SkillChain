@@ -6,7 +6,6 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -165,49 +164,10 @@ def phase60_authority(tmp_path_factory: pytest.TempPathFactory):
         governance=prepared.governance,
         sources=prepared.sources,
     )
-    pending_governance = phase60.load_verified_round3_schema_phase60_governance_v1(
+    live_governance = phase60.load_verified_round3_schema_phase60_governance_v1(
         _REPOSITORY_ROOT
     )
-
-    # The tracked V5/V8/V15 triad is intentionally pending and cannot be made
-    # live by a production parser.  These unvalidated copies exist only inside
-    # this test module so the already-gated state machine can be exercised.
-    source_lock = pending_governance.source_lock.model_copy(
-        update={
-            "live_call_authority": True,
-            "live_provider_calls_authorized": True,
-            "owner_phase60_budget_authorization_status": "granted",
-            "owner_phase60_retry_authorization_status": "granted",
-        }
-    )
-    pricing_lock = pending_governance.pricing_lock.model_copy(
-        update={
-            "fresh_run_and_retry_scope_owner_approved": True,
-            "live_provider_calls_authorized": True,
-            "owner_budget_authorization_status": (
-                "granted_phase60_budget_and_retry_approval"
-            ),
-            "owner_phase60_retry_authorization_status": "granted",
-        }
-    )
-    feedback_evaluator = dict(pending_governance.role_selection.feedback_evaluator)
-    feedback_evaluator.update(
-        {
-            "live_call_authority": True,
-            "live_provider_calls_authorized": True,
-            "owner_phase60_budget_authorization_status": "granted",
-            "owner_phase60_retry_authorization_status": "granted",
-        }
-    )
-    role_selection = pending_governance.role_selection.model_copy(
-        update={"feedback_evaluator": feedback_evaluator}
-    )
-    live_governance = replace(
-        pending_governance,
-        source_lock=source_lock,
-        pricing_lock=pricing_lock,
-        role_selection=role_selection,
-    )
+    phase60.require_round3_schema_phase60_live_governance_v1(live_governance)
     approval = phase60.build_round3_schema_phase60_owner_approval_v1(
         prefix,
         live_governance,
@@ -243,7 +203,6 @@ def phase60_authority(tmp_path_factory: pytest.TempPathFactory):
         canary_root=required[3],
         prepared=prepared,
         prefix=prefix,
-        pending_governance=pending_governance,
         governance=live_governance,
         approval=approval,
         authorization=authorization,
@@ -563,29 +522,21 @@ def test_manifest_and_canary_byte_drift_fail_closed(phase60_authority, tmp_path:
         )
 
 
-def test_pending_governance_blocks_phase60_before_any_reservation(
+def test_canonical_live_governance_unlocks_only_exact_phase60_envelope(
     phase60_authority,
 ):
-    pending = phase60_authority.pending_governance
-    assert pending.source_lock.live_call_authority is False
-    assert pending.pricing_lock.owner_budget_authorized_cap_cny == "0.000000000000"
-    assert pending.role_selection.feedback_evaluator["creator_authorized"] is False
-    with pytest.raises(
-        phase60.PortfolioS1FeedbackError,
-        match="pending separate owner budget and retry approval",
-    ):
-        phase60.require_round3_schema_phase60_live_governance_v1(pending)
-    with pytest.raises(
-        phase60.PortfolioS1FeedbackError,
-        match="pending separate owner budget and retry approval",
-    ):
-        phase60.build_round3_schema_phase60_owner_approval_v1(
-            phase60_authority.prefix,
-            pending,
-            approval_id="must-not-exist",
-            reviewer_id="codex-test",
-            reviewed_at="2026-08-11T00:00:00+00:00",
-        )
+    live = phase60_authority.governance
+    phase60.require_round3_schema_phase60_live_governance_v1(live)
+    assert live.source_lock.live_call_authority is True
+    assert live.source_lock.phase60_requires_new_owner_approval is False
+    assert live.pricing_lock.owner_budget_authorized_cap_cny == "28.000000000000"
+    assert live.pricing_lock.maximum_reservation_cny == "27.692640000000"
+    assert live.pricing_lock.live_cumulative_hard_cap_cny == "54.264100000000"
+    feedback = live.role_selection.feedback_evaluator
+    assert feedback["live_provider_calls_authorized"] is True
+    assert feedback["phase120_requires_new_owner_approval"] is True
+    assert feedback["creator_authorized"] is False
+    assert feedback["bundle_v11_publishable"] is False
     assert _ledger().reservations == ()
 
 

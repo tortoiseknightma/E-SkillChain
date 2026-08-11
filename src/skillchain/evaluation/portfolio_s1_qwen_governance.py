@@ -358,10 +358,10 @@ QWEN38_FEEDBACK_SOURCE_LOCK_RELATIVE_PATH_V5 = (
     "specs/authoring/qwen3.8-max-feedback-source-lock-v5.json"
 )
 QWEN38_FEEDBACK_SOURCE_LOCK_FILE_SHA256_V5 = (
-    "fd0941a28b393ac4fa208bbd48e9fe53b7f699f7393e95e7e61f9f0ed558cda1"
+    "7bca1ac1d1326c7150f033408497d00214e3de2223e476bdf3887f2f3853a304"
 )
 QWEN38_FEEDBACK_SOURCE_LOCK_SHA256_V5 = (
-    "47ae9607c7ac2ee3833996ec8c7eaee8d1aa17931e0f55c465023cbcea383747"
+    "9ae82da8d6096ee108ad8339044d7d29ccd22644f10b123c1697b71106c5e046"
 )
 QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V3 = (
     "bd04d13702052f553ec643818ea7b0cf752d90dce700b2cfcd7996f17e4dfdf8"
@@ -403,10 +403,10 @@ QWEN38_FEEDBACK_PRICING_LOCK_RELATIVE_PATH_V8 = (
     "specs/authoring/price-qwen3.8-max-feedback-v8.json"
 )
 QWEN38_FEEDBACK_PRICING_LOCK_FILE_SHA256_V8 = (
-    "c01cee0b2e2526113ab891ae9dfef35b0c766a8330848145be4e29989c0b769c"
+    "8c7dafe5be2ed046b2452e8392fefb31eedce215d28a70e24dd75f817a46736f"
 )
 QWEN38_FEEDBACK_PRICING_LOCK_SHA256_V8 = (
-    "7d2fff3bbe33a3af250de3dd5362297cadf9c51f4ad025450922f972af636fdb"
+    "7bb49d2533385db1d4edbfd1396ffdef8503599199c4da67048882f6d815dd12"
 )
 QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256 = (
     "39e8d099f0b303725ee0be59f758560627ecbc3ce156524da4f2a2d3d20f3501"
@@ -448,10 +448,10 @@ QWEN38_FEEDBACK_ROLE_SELECTION_RELATIVE_PATH_V15 = (
     "specs/authoring/model-role-selection-v15.json"
 )
 QWEN38_FEEDBACK_ROLE_SELECTION_FILE_SHA256_V15 = (
-    "66e1ac0e4168b6a910056cb8a4dec91ecd58e067ade9dd471814f5c03a4986ff"
+    "6c4425883faede04589ad9ce0da06ebe46d69c5a329bb957429571be634f8e24"
 )
 QWEN38_FEEDBACK_ROLE_SELECTION_SHA256_V15 = (
-    "8738bdeb963c1d63678b30a714c5df4b0466ae4db6c159a403605d06208e40a8"
+    "cda5798fa167e2c89cc3af95a78ebee33437ce87e2fa83ed63d7e8b446de7f68"
 )
 
 _AUTHORIZATION_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
@@ -478,7 +478,7 @@ def _canonical_text(value: str, label: str) -> str:
 
 
 def round3_phase60_retry_policy_v1() -> dict[str, object]:
-    """Return the frozen pending retry policy for the phase60 overlay."""
+    """Return the owner-approved live retry policy for the phase60 overlay."""
 
     return {
         "policy_version": ROUND3_PHASE60_RETRY_POLICY_VERSION_V1,
@@ -514,8 +514,19 @@ def round3_phase60_retry_policy_v1() -> dict[str, object]:
             "orphan",
             "thirteenth-new-eligible-failure",
         ],
-        "live_provider_calls_authorized": False,
-        "owner_phase60_budget_and_retry_approval_status": "pending",
+        "live_provider_calls_authorized": True,
+        "owner_phase60_budget_and_retry_approval_status": "granted",
+        "owner_approval_decision_source": "current_user_instruction",
+        "owner_approved_on": "2026-08-11",
+        "owner_approved_fresh_maximum_reservation_cny": (
+            QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+        ),
+        "owner_approved_fresh_technical_hard_cap_cny": (
+            QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+        ),
+        "owner_approved_cumulative_technical_hard_cap_cny": (
+            QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+        ),
         "phase120_requires_new_owner_approval": True,
     }
 
@@ -985,7 +996,7 @@ class Qwen38FeedbackModelSourceLockV4(Qwen38FeedbackModelSourceLockV1):
 
 
 class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
-    """Pending phase60 source/runtime identity over the completed canary prefix."""
+    """Owner-approved live phase60 identity over the completed canary prefix."""
 
     schema_version: Literal[5] = 5
     policy_version: Literal["portfolio-s1-qwen38-feedback-model-source-lock-v5"] = (
@@ -1030,14 +1041,27 @@ class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
     canary_prefix_selection_sha256: Literal[
         QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
     ] = QWEN38_FEEDBACK_ROUND3_SCHEMA_CANARY_SELECTION_SHA256
-    live_call_authority: Literal[False] = False
-    live_provider_calls_authorized: Literal[False] = False
+    live_call_authority: Literal[True] = True
+    live_provider_calls_authorized: Literal[True] = True
     live_call_authority_scope: Literal[
-        "phase60_prefix12_plus_48_first_plus_12_retries_pending_owner_approval"
-    ] = "phase60_prefix12_plus_48_first_plus_12_retries_pending_owner_approval"
-    owner_phase60_budget_authorization_status: Literal["pending"] = "pending"
-    owner_phase60_retry_authorization_status: Literal["pending"] = "pending"
-    phase60_requires_new_owner_approval: Literal[True] = True
+        "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
+    ] = "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
+    owner_phase60_budget_authorization_status: Literal["granted"] = "granted"
+    owner_phase60_retry_authorization_status: Literal["granted"] = "granted"
+    owner_approval_decision_source: Literal["current_user_instruction"] = (
+        "current_user_instruction"
+    )
+    owner_approved_on: Literal["2026-08-11"] = "2026-08-11"
+    fresh_maximum_reservation_cny: Literal["27.692640000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+    )
+    fresh_technical_hard_cap_cny: Literal["28.000000000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+    )
+    cumulative_technical_hard_cap_cny: Literal["54.264100000000"] = (
+        QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+    )
+    phase60_requires_new_owner_approval: Literal[False] = False
     phase120_requires_new_owner_approval: Literal[True] = True
     full_run_live_authorized: Literal[False] = False
     future_full_owner_budget_authorization_status: Literal["not_granted"] = (
@@ -1046,7 +1070,7 @@ class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
     historical_feedback_outputs_imported: Literal[12] = 12
     terminated_json_object_canary_outputs_imported: Literal[0] = 0
     round3_live_authority_requires_exact_v4_v7_v14_triad: Literal[False] = False
-    phase60_pending_identity_requires_exact_v5_v8_v15_triad: Literal[True] = True
+    phase60_live_identity_requires_exact_v5_v8_v15_triad: Literal[True] = True
 
     @model_validator(mode="after")
     def _validate_v4_lock(self) -> Self:
@@ -1068,11 +1092,19 @@ class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
             != self.cumulative_provider_call_ceiling
             or self.canary_prefix_retry_count != 3
             or self.canary_prefix_retry_tokens_reusable
-            or self.live_call_authority
-            or self.live_provider_calls_authorized
-            or self.owner_phase60_budget_authorization_status != "pending"
-            or self.owner_phase60_retry_authorization_status != "pending"
-            or not self.phase60_requires_new_owner_approval
+            or not self.live_call_authority
+            or not self.live_provider_calls_authorized
+            or self.owner_phase60_budget_authorization_status != "granted"
+            or self.owner_phase60_retry_authorization_status != "granted"
+            or self.owner_approval_decision_source != "current_user_instruction"
+            or self.owner_approved_on != "2026-08-11"
+            or self.fresh_maximum_reservation_cny
+            != QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+            or self.fresh_technical_hard_cap_cny
+            != QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+            or self.cumulative_technical_hard_cap_cny
+            != QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
+            or self.phase60_requires_new_owner_approval
             or not self.phase120_requires_new_owner_approval
             or self.full_run_live_authorized
             or self.historical_feedback_outputs_imported != 12
@@ -1080,7 +1112,7 @@ class Qwen38FeedbackModelSourceLockV5(Qwen38FeedbackModelSourceLockV4):
             or not self.old_remote_auth_does_not_authorize_round3_transport
             or self.round3_live_authority_requires_exact_v4_v7_v14_triad
         ):
-            raise ValueError("Qwen3.8 Feedback phase60 pending source lock drifted")
+            raise ValueError("Qwen3.8 Feedback phase60 live source lock drifted")
         if self.source_lock_sha256 != _self_hash(self, "source_lock_sha256"):
             raise ValueError("Qwen3.8 Feedback model source lock v5 self hash mismatch")
         return self
@@ -1754,7 +1786,7 @@ class Qwen38FeedbackPricingLockV7(Qwen38FeedbackPricingLockV3):
 
 
 class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
-    """Pending, zero-call phase60 reservation plan over the completed prefix."""
+    """Owner-approved live phase60 reservation over the completed prefix."""
 
     schema_version: Literal[8] = 8
     policy_version: Literal["portfolio-s1-qwen38-feedback-pricing-lock-v8"] = (
@@ -1766,9 +1798,9 @@ class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
     cumulative_provider_call_ceiling: Literal[75] = (
         QWEN38_FEEDBACK_PHASE60_CUMULATIVE_PROVIDER_CALL_CEILING
     )
-    live_authorized_selected_query_count: Literal[0] = 0
+    live_authorized_selected_query_count: Literal[60] = 60
     planned_phase_selected_query_count: Literal[60] = 60
-    live_authorized_phase_counts: tuple[int, ...] = ()
+    live_authorized_phase_counts: tuple[int, ...] = (60,)
     phase60_prefix_selected_count: Literal[12] = (
         QWEN38_FEEDBACK_PHASE60_PREFIX_SELECTED_COUNT
     )
@@ -1815,30 +1847,35 @@ class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
     future_full_technical_cumulative_hard_cap_cny: Literal["139.000000000000"] = (
         "139.000000000000"
     )
-    fresh_run_and_retry_scope_owner_approved: Literal[False] = False
-    live_provider_calls_authorized: Literal[False] = False
-    live_use_requires_separate_owner_budget_authorization: Literal[True] = True
-    owner_budget_authorization_decision_source: Literal[
-        "owner_instruction_not_yet_received"
-    ] = "owner_instruction_not_yet_received"
+    fresh_run_and_retry_scope_owner_approved: Literal[True] = True
+    live_provider_calls_authorized: Literal[True] = True
+    live_use_requires_separate_owner_budget_authorization: Literal[False] = False
+    live_call_authority_scope: Literal[
+        "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
+    ] = "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
+    owner_budget_authorization_decision_source: Literal["current_user_instruction"] = (
+        "current_user_instruction"
+    )
     owner_budget_authorization_scope: Literal[
         "phase60-prefix12-plus-48-new-firsts-plus-up-to-12-new-global-retries"
     ] = "phase60-prefix12-plus-48-new-firsts-plus-up-to-12-new-global-retries"
     owner_budget_authorization_status: Literal[
-        "pending_phase60_budget_and_retry_approval"
-    ] = "pending_phase60_budget_and_retry_approval"
-    owner_budget_authorized_cap_cny: Literal["0.000000000000"] = "0.000000000000"
-    owner_budget_authorized_on: None = None
+        "granted_phase60_budget_and_retry_approval"
+    ] = "granted_phase60_budget_and_retry_approval"
+    owner_budget_authorized_cap_cny: Literal["28.000000000000"] = (
+        QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+    )
+    owner_budget_authorized_on: Literal["2026-08-11"] = "2026-08-11"
     planned_owner_budget_cap_cny: Literal["28.000000000000"] = (
         QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
     )
-    owner_phase60_retry_authorization_status: Literal["pending"] = "pending"
+    owner_phase60_retry_authorization_status: Literal["granted"] = "granted"
     future_full_envelope_live_authorized: Literal[False] = False
     future_full_owner_budget_authorization_status: Literal["not_granted"] = (
         "not_granted"
     )
     full_run_and_retry_scope_owner_approved: Literal[False] = False
-    phase60_requires_new_owner_approval: Literal[True] = True
+    phase60_requires_new_owner_approval: Literal[False] = False
     phase120_requires_new_owner_approval: Literal[True] = True
     historical_feedback_outputs_imported: Literal[12] = 12
     terminated_json_object_canary_outputs_imported: Literal[0] = 0
@@ -1861,8 +1898,8 @@ class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
     def _validate_v7_lock(self) -> Self:
         if (
             self.phase_counts != (12, 60, 120, 240)
-            or self.live_authorized_phase_counts
-            or self.live_authorized_selected_query_count != 0
+            or self.live_authorized_phase_counts != (60,)
+            or self.live_authorized_selected_query_count != 60
             or self.concurrency != 2
             or self.retry_eligible_error_codes != ("invalid_feedback_json",)
             or self.retry_eligible_finish_reasons != ("stop", "length")
@@ -1894,23 +1931,24 @@ class Qwen38FeedbackPricingLockV8(Qwen38FeedbackPricingLockV7):
             != Decimal(self.future_full_cumulative_maximum_reservation_cny)
             or Decimal(self.future_full_cumulative_maximum_reservation_cny)
             >= Decimal(self.future_full_technical_cumulative_hard_cap_cny)
-            or self.fresh_run_and_retry_scope_owner_approved
-            or self.live_provider_calls_authorized
-            or not self.live_use_requires_separate_owner_budget_authorization
+            or not self.fresh_run_and_retry_scope_owner_approved
+            or not self.live_provider_calls_authorized
+            or self.live_use_requires_separate_owner_budget_authorization
             or self.owner_budget_authorization_status
-            != "pending_phase60_budget_and_retry_approval"
-            or self.owner_budget_authorized_cap_cny != "0.000000000000"
-            or self.owner_budget_authorized_on is not None
-            or self.owner_phase60_retry_authorization_status != "pending"
+            != "granted_phase60_budget_and_retry_approval"
+            or self.owner_budget_authorized_cap_cny
+            != QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+            or self.owner_budget_authorized_on != "2026-08-11"
+            or self.owner_phase60_retry_authorization_status != "granted"
             or self.future_full_envelope_live_authorized
             or self.full_run_and_retry_scope_owner_approved
-            or not self.phase60_requires_new_owner_approval
+            or self.phase60_requires_new_owner_approval
             or not self.phase120_requires_new_owner_approval
             or self.historical_feedback_outputs_imported != 12
             or self.terminated_json_object_canary_outputs_imported != 0
             or not self.prior_actual_includes_completed_schema_canary
         ):
-            raise ValueError("Qwen3.8 Feedback pricing v8 pending envelope drifted")
+            raise ValueError("Qwen3.8 Feedback pricing v8 live envelope drifted")
         if self.pricing_lock_sha256 != _self_hash(self, "pricing_lock_sha256"):
             raise ValueError("Qwen3.8 Feedback pricing lock v8 self hash mismatch")
         return self
@@ -2385,12 +2423,12 @@ class Qwen38FeedbackRoleSelectionV14(_StrictFrozenModel):
 
 
 class Qwen38FeedbackRoleSelectionV15(Qwen38FeedbackRoleSelectionV14):
-    """Active planning role for phase60; deliberately grants zero live calls."""
+    """Owner-selected live role for the approved phase60 envelope."""
 
     schema_version: Literal[15] = 15
     status: Literal[
-        "portfolio_qwen38_feedback_phase60_pending_owner_budget_and_retry_approval"
-    ] = "portfolio_qwen38_feedback_phase60_pending_owner_budget_and_retry_approval"
+        "owner_selected_portfolio_qwen38_feedback_phase60_live_authorized"
+    ] = "owner_selected_portfolio_qwen38_feedback_phase60_live_authorized"
     supersedes_for_active_portfolio: Literal[
         "specs/authoring/model-role-selection-v14.json"
     ] = "specs/authoring/model-role-selection-v14.json"
@@ -2462,12 +2500,29 @@ class Qwen38FeedbackRoleSelectionV15(Qwen38FeedbackRoleSelectionV14):
             ),
             "historical_feedback_outputs_imported": 12,
             "terminated_json_object_canary_outputs_imported": 0,
-            "live_call_authority": False,
-            "live_provider_calls_authorized": False,
-            "live_use_requires_separate_owner_budget_authorization": True,
-            "owner_phase60_budget_authorization_status": "pending",
-            "owner_phase60_retry_authorization_status": "pending",
-            "phase60_requires_new_owner_approval": True,
+            "live_call_authority": True,
+            "live_provider_calls_authorized": True,
+            "fresh_run_and_retry_scope_owner_approved": True,
+            "live_authorized_selected_query_count": 60,
+            "live_authorized_phase_counts": [60],
+            "live_use_requires_separate_owner_budget_authorization": False,
+            "live_call_authority_scope": (
+                "phase60_prefix12_plus_48_first_plus_up_to_12_retries_only"
+            ),
+            "authorization_scope": (
+                "phase60-prefix12-plus-48-new-firsts-plus-up-to-12-new-global-retries"
+            ),
+            "budget_authorization_decision_source": "current_user_instruction",
+            "budget_authorization_status": (
+                "granted_phase60_budget_and_retry_approval"
+            ),
+            "budget_authorized_on": "2026-08-11",
+            "owner_authorized_budget_ceiling_cny": (
+                QWEN38_FEEDBACK_PHASE60_FRESH_TECHNICAL_HARD_CAP_CNY
+            ),
+            "owner_phase60_budget_authorization_status": "granted",
+            "owner_phase60_retry_authorization_status": "granted",
+            "phase60_requires_new_owner_approval": False,
             "phase120_requires_new_owner_approval": True,
             "creator_authorized": False,
             "bundle_v11_publishable": False,
@@ -2476,7 +2531,7 @@ class Qwen38FeedbackRoleSelectionV15(Qwen38FeedbackRoleSelectionV14):
             self.feedback_evaluator.get(key) != value
             for key, value in expected_feedback.items()
         ):
-            raise ValueError("Qwen3.8 Feedback role v15 pending identity drifted")
+            raise ValueError("Qwen3.8 Feedback role v15 live identity drifted")
         if (
             self.authorization_status.get(
                 "historical_authorizations_reusable_for_new_roles"
@@ -2484,8 +2539,11 @@ class Qwen38FeedbackRoleSelectionV15(Qwen38FeedbackRoleSelectionV14):
             is not False
             or self.authorization_status.get("dashscope_qwen38_feedback")
             != (
-                "phase60 is a zero-call pending plan: CNY28 fresh budget and "
-                "twelve new global retry tokens require separate owner approval"
+                "live phase60 authority is limited to the frozen canary12 prefix "
+                "plus 48 new first attempts and up to twelve new global retries "
+                "under a CNY27.692640 maximum reservation, CNY28 fresh technical "
+                "cap, and CNY54.264100 cumulative technical cap; phase120, "
+                "BundleV11, and Creator require new authority"
             )
             or self.evaluator_isolation.get("cache_namespaces")
             != [QWEN38_FEEDBACK_CACHE_NAMESPACE_V4, "final-evaluator-v11"]
@@ -3375,7 +3433,7 @@ def require_qwen38_feedback_pre_call_budget_v5(
     provider_calls_already_reserved: int,
     committed_cumulative_cost_cny: str,
 ) -> str:
-    """Fail closed for the pending phase60 envelope before any provider call."""
+    """Reserve one call only while the approved phase60 envelope remains live."""
 
     if (
         type(estimated_input_tokens_including_images) is not int
@@ -3393,7 +3451,7 @@ def require_qwen38_feedback_pre_call_budget_v5(
         >= QWEN38_FEEDBACK_PHASE60_NEW_PROVIDER_CALL_CEILING
     ):
         raise PortfolioS1QwenFeedbackGovernanceError(
-            "Qwen3.8 Feedback pending phase60 60-call provider ceiling is exhausted"
+            "Qwen3.8 Feedback phase60 60-call provider ceiling is exhausted"
         )
     try:
         committed = Decimal(committed_cumulative_cost_cny)
@@ -3408,15 +3466,21 @@ def require_qwen38_feedback_pre_call_budget_v5(
             "Qwen3.8 Feedback phase60 cumulative committed cost is invalid"
         )
     reservation = Decimal(QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2)
+    fresh_reserved_after_call = reservation * (provider_calls_already_reserved + 1)
+    if fresh_reserved_after_call > Decimal(
+        QWEN38_FEEDBACK_PHASE60_FRESH_MAXIMUM_RESERVATION_CNY
+    ):
+        raise PortfolioS1QwenFeedbackGovernanceError(
+            "Qwen3.8 Feedback phase60 CNY27.692640 maximum reservation would be "
+            "exceeded"
+        )
     if committed + reservation > Decimal(
         QWEN38_FEEDBACK_PHASE60_CUMULATIVE_TECHNICAL_HARD_CAP_CNY
     ):
         raise PortfolioS1QwenFeedbackGovernanceError(
             "Qwen3.8 Feedback phase60 CNY28 fresh technical cap would be exceeded"
         )
-    raise PortfolioS1QwenFeedbackGovernanceError(
-        "Qwen3.8 Feedback phase60 owner budget and retry approval is pending"
-    )
+    return QWEN38_FEEDBACK_PER_CALL_RESERVATION_CNY_V2
 
 
 def load_qwen37_feedback_launch_lock(
@@ -3634,7 +3698,7 @@ def load_qwen38_feedback_model_source_lock_v5(
 ) -> Qwen38FeedbackModelSourceLockV5:
     content = read_stable_regular_file(
         path,
-        label="Qwen3.8-Max Feedback phase60 pending model source lock v5",
+        label="Qwen3.8-Max Feedback phase60 live model source lock v5",
         max_bytes=1024 * 1024,
     )
     if sha256_bytes(content) != expected_file_sha256:
@@ -3794,7 +3858,7 @@ def load_qwen38_feedback_pricing_lock_v8(
 ) -> Qwen38FeedbackPricingLockV8:
     content = read_stable_regular_file(
         path,
-        label="Qwen3.8-Max Feedback phase60 pending pricing lock v8",
+        label="Qwen3.8-Max Feedback phase60 live pricing lock v8",
         max_bytes=1024 * 1024,
     )
     if sha256_bytes(content) != expected_file_sha256:
