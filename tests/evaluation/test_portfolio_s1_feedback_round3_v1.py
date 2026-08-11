@@ -34,12 +34,8 @@ from skillchain.synthesis.store import canonical_json_bytes, sha256_bytes
 
 
 _BASE_PARENT = Path("runs/portfolio/core-s1/s1-feedback-round2-qwen38-v3")
-_RECOVERY_PARENT = Path(
-    "runs/portfolio/core-s1/s1-feedback-round2-qwen38-recovery-v1"
-)
-_ARTIFACT_ROOT = Path(
-    r"C:\Users\torto\.codex\worktrees\b5cd\ECommerceSkillChain"
-)
+_RECOVERY_PARENT = Path("runs/portfolio/core-s1/s1-feedback-round2-qwen38-recovery-v1")
+_ARTIFACT_ROOT = Path(r"C:\Users\torto\.codex\worktrees\b5cd\ECommerceSkillChain")
 _EXECUTION_ROOT = _ARTIFACT_ROOT / Path(
     "runs/portfolio/core-static-opt/static-opt-execution-v6"
 )
@@ -50,8 +46,14 @@ _EXECUTION_CONTROL_FILE_SHA256 = (
 
 @pytest.fixture(scope="session")
 def prepared_session(tmp_path_factory: pytest.TempPathFactory):
-    if not _EXECUTION_ROOT.exists():
-        pytest.skip("frozen opt800 source root is not mounted")
+    required_roots = (
+        _BASE_PARENT,
+        _RECOVERY_PARENT,
+        _ARTIFACT_ROOT,
+        _EXECUTION_ROOT,
+    )
+    if any(not root.exists() for root in required_roots):
+        pytest.skip("frozen Round3 evidence roots are not mounted")
     output = tmp_path_factory.mktemp("round3-authority")
     arguments = argparse.Namespace(
         repository_root=Path.cwd(),
@@ -299,9 +301,7 @@ def test_primary_phase_uses_two_call_waves(prepared_session, tmp_path: Path):
             active -= 1
         return result
 
-    outcome = cli.execute_round3_run_v1(
-        prepared, runner=runner, stop_after_count=12
-    )
+    outcome = cli.execute_round3_run_v1(prepared, runner=runner, stop_after_count=12)
     assert outcome.run is None
     assert len(outcome.ledger.artifacts) == 12
     assert maximum == 2
@@ -323,9 +323,7 @@ def test_retry_claim_and_three_claim_ceiling(prepared_session, tmp_path: Path):
             return _result(prepared, source, status="parse_error")
         return _result(prepared, source)
 
-    outcome = cli.execute_round3_run_v1(
-        prepared, runner=runner, stop_after_count=12
-    )
+    outcome = cli.execute_round3_run_v1(prepared, runner=runner, stop_after_count=12)
     assert outcome.run is not None and outcome.run.status == "stopped_nonparsed"
     assert outcome.run.retry_count == 3
     assert len(outcome.ledger.claims) == 3
@@ -353,12 +351,12 @@ def test_same_wave_first_settlement_failure_keeps_second_and_stops_orphan(
         calls += 1
         return _result(prepared, source)
 
-    outcome = cli.execute_round3_run_v1(
-        prepared, runner=runner, stop_after_count=12
-    )
+    outcome = cli.execute_round3_run_v1(prepared, runner=runner, stop_after_count=12)
     assert calls == 2
     assert outcome.run is not None and outcome.run.status == "stopped_orphan"
-    assert tuple(item.global_call_ordinal for item in outcome.ledger.orphaned_reservations) == (1,)
+    assert tuple(
+        item.global_call_ordinal for item in outcome.ledger.orphaned_reservations
+    ) == (1,)
     assert tuple(item.global_call_ordinal for item in outcome.ledger.artifacts) == (2,)
 
 
@@ -372,9 +370,7 @@ def test_usage_breach_is_published_as_budget_terminal(prepared_session, tmp_path
             input_tokens=20_001 if source is prepared.sources[0] else 100,
         )
 
-    outcome = cli.execute_round3_run_v1(
-        prepared, runner=runner, stop_after_count=12
-    )
+    outcome = cli.execute_round3_run_v1(prepared, runner=runner, stop_after_count=12)
     assert outcome.run is not None and outcome.run.status == "stopped_budget"
     assert outcome.run.terminal_reason == "usage_limit_exceeded"
     assert outcome.run.provider_calls_reserved == 2
@@ -388,9 +384,7 @@ def test_provider_error_beats_retry_in_same_wave(prepared_session, tmp_path: Pat
             return _result(prepared, source, status="parse_error")
         return _result(prepared, source, status="provider_error")
 
-    outcome = cli.execute_round3_run_v1(
-        prepared, runner=runner, stop_after_count=12
-    )
+    outcome = cli.execute_round3_run_v1(prepared, runner=runner, stop_after_count=12)
     assert outcome.run is not None and outcome.run.status == "stopped_nonparsed"
     assert outcome.run.provider_calls_reserved == 2
     assert outcome.run.retry_count == 0
@@ -403,9 +397,7 @@ def test_zero_provider_dry_run_root_has_no_attempts(prepared_session):
     assert ledger.reservations == ()
     assert ledger.artifacts == ()
     assert not (prepared.output_dir / cli.ROUND3_RUN_FILE).exists()
-    payload = json.loads(
-        canonical_json_bytes(cli._summary("dry-run", prepared, None))
-    )
+    payload = json.loads(canonical_json_bytes(cli._summary("dry-run", prepared, None)))
     assert payload["provider_calls_performed_by_preflight"] == 0
     assert payload["historical_feedback_outputs_imported"] == 0
 

@@ -58,8 +58,15 @@ _EXECUTION_CONTROL_FILE_SHA256 = (
 
 @pytest.fixture(scope="session")
 def prepared_session(tmp_path_factory: pytest.TempPathFactory):
-    if not _EXECUTION_ROOT.exists():
-        pytest.skip("frozen opt800 source root is not mounted")
+    required_roots = (
+        _BASE_PARENT,
+        _RECOVERY_PARENT,
+        _STOPPED_OBJECT,
+        _ARTIFACT_ROOT,
+        _EXECUTION_ROOT,
+    )
+    if any(not root.exists() for root in required_roots):
+        pytest.skip("frozen Round3 evidence roots are not mounted")
     output = tmp_path_factory.mktemp("round3-schema-authority")
     arguments = argparse.Namespace(
         repository_root=_REPOSITORY_ROOT,
