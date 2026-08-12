@@ -83,6 +83,7 @@ from .models import (
     JudgeObservation,
     ToolTraceItem,
 )
+from .feedback_selection import project_feedback_observation, project_feedback_query
 from .pacing import StartPacer
 
 
@@ -140,6 +141,8 @@ class LiveCoreFastAdapter:
         self._runner_by_bank: dict[str, CoreFastAssistantRunner] = {}
         self._query_artifact_sha256: str | None = None
         self._rubric: RubricSnapshot | None = None
+        self._feedback_query_by_id: dict[str, Query] | None = None
+        self._feedback_baseline_by_id: dict[str, AssistantObservation] | None = None
         self._qwen_client: OpenAI | None = None
         self._judge_client: OpenAI | None = None
         self._assistant_start_pacer = StartPacer(
@@ -582,12 +585,44 @@ class LiveCoreFastAdapter:
         )
 
     def _invoke_feedback(self, intent: CallIntent) -> CallResult:
-        query = Query.model_validate_json(
-            canonical_json_bytes(intent.payload["query"]), strict=True
-        )
-        baseline = AssistantObservation.model_validate_json(
-            canonical_json_bytes(intent.payload["baseline"]), strict=True
-        )
+        raw_query = intent.payload["query"]
+        raw_baseline = intent.payload["baseline"]
+        if not isinstance(raw_query, dict) or not isinstance(
+            raw_query.get("query_id"), str
+        ):
+            raise RuntimeError("Feedback intent lacks its projected query identity")
+        query_id = raw_query["query_id"]
+        if self._feedback_query_by_id is None:
+            self._feedback_query_by_id = {}
+            for line in self._path("queries").read_text(encoding="utf-8").splitlines():
+                query_item = Query.model_validate_json(line, strict=True)
+                self._feedback_query_by_id[query_item.query_id] = query_item
+        if self._feedback_baseline_by_id is None:
+            self._feedback_baseline_by_id = {}
+            for line in (
+                self._path("opt_static_results")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ):
+                raw = json.loads(line)
+                payload = raw.get("observation", raw)
+                baseline_item = AssistantObservation.model_validate(
+                    payload, strict=True
+                )
+                self._feedback_baseline_by_id[baseline_item.query_id] = baseline_item
+        try:
+            query = self._feedback_query_by_id[query_id]
+            baseline = self._feedback_baseline_by_id[query_id]
+        except KeyError as error:
+            raise RuntimeError(
+                "Feedback identity is outside the frozen opt800"
+            ) from error
+        if canonical_json_bytes(project_feedback_query(query)) != canonical_json_bytes(
+            raw_query
+        ) or canonical_json_bytes(
+            project_feedback_observation(baseline)
+        ) != canonical_json_bytes(raw_baseline):
+            raise RuntimeError("Feedback projection differs from frozen local inputs")
         result = AssistantResult.model_validate_json(
             canonical_json_bytes(baseline.replay_context["assistant_result"]),
             strict=True,

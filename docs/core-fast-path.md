@@ -128,25 +128,6 @@ R8 是最接近保留的候选：没有 Static-success→candidate-failure，但
 个新 contract occurrence，因此零新增规则必须拒绝。第二批五次 Creator 额度已耗尽，不追加
 R11。证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。
 
-## 确定性 action/response contract
-
-新 Core Fast routed 配置绑定 `core-fast-deterministic-action-response-v1`。模型仍负责从冻结
-Description 中选择 capability，但 route 之后不再让模型决定是否调用工具或如何抄写公共 DTO：
-
-- runner 根据 capability 执行固定工具序列，绑定 authoritative asset/query 或 detector 的公开
-  predicted class；模型不能跳过、重复或换用另一个工具；
-- compiler 只读取模型已经可见的公共 tool DTO，不读取 query label、scorer sidecar、私有商品
-  identity 或路径；
-- Multi 逐 item 原样复制 `item_ref/status/candidate-N` 并按 candidate ordinal 去重 card；Style
-  逐项复制 style-evidence；product/OCR/knowledge/recipe 各自闭合 card/evidence handle；
-- supported 与 fallback 分支由 DTO 是否为空确定，fallback marker、`none` section 与零 handle
-  由 compiler 生成，不再交给模型判断；
-- contract policy 与 SHA 写入新 run manifest。历史 runner、NoSkill 和既有 R1–R10 artifacts
-  不回写，也不据此追认任何已拒候选。
-
-这关闭的是十轮 S1 暴露的运行时 P1，不改变 GCS scorer 或接受门槛。它尚未授权新的付费 S1
-实验；下一步只应在新的 lineage 上做对称 Static/S1 比较。
-
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

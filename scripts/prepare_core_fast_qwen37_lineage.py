@@ -127,8 +127,12 @@ def prepare_static_bootstrap_spec(
     # freeze_r1_spec replaces it with the observed fresh artifact SHA.
     payload["s1_settings"] = {
         "round_id": "r1",
-        "feedback_mode": "fresh",
-        "feedback_reuse_manifest_sha256": None,
+        "feedback_mode": "fresh-per-round",
+        "feedback_total_count": 48,
+        "feedback_canary_count": 6,
+        "feedback_selection_policy": "discovery-stratified-v1",
+        "feedback_allocation": "target-focused",
+        "target_capabilities": ["product.multi_search"],
         "proposal_mode": "sparse-parent-patch-v1",
         "max_patched_capabilities": 1,
         "protected_capabilities": ["knowledge.visual_encyclopedia"],
@@ -213,8 +217,12 @@ def freeze_r1_spec(
     phrases = sorted(set(required_patch_phrases))
     payload["s1_settings"] = {
         "round_id": "r1",
-        "feedback_mode": "fresh",
-        "feedback_reuse_manifest_sha256": None,
+        "feedback_mode": "fresh-per-round",
+        "feedback_total_count": 48,
+        "feedback_canary_count": 6,
+        "feedback_selection_policy": "discovery-stratified-v1",
+        "feedback_allocation": "target-focused",
+        "target_capabilities": [target_capability],
         "proposal_mode": "sparse-parent-patch-v1",
         "max_patched_capabilities": 1,
         "protected_capabilities": protected,
@@ -226,7 +234,7 @@ def freeze_r1_spec(
         (
             f"Static opt800 was freshly generated with {QWEN37_ASSISTANT_MODEL}; "
             "this spec binds its SHA and deterministic fixed sample roles.",
-            "S1 R1 uses exactly 12 fresh Feedback calls on the frozen canary12.",
+            "S1 R1 uses a spec-frozen discovery600 selection and fresh-per-round Feedback.",
         )
     )
     payload["disclosures"] = list(dict.fromkeys(disclosures))
@@ -454,7 +462,37 @@ def freeze_reuse_round_spec(
     required_patch_phrases: Sequence[str] = (),
     expected_feedback_manifest_sha256: str | None = None,
 ) -> CoreFastSpec:
-    """Freeze an R2-R10 spec against the exported fresh-R1 Feedback manifest."""
+    """Reject the superseded cross-round Feedback reuse workflow."""
+
+    del (
+        r1_spec_path,
+        bundle_dir,
+        output_spec_path,
+        experiment_id,
+        round_id,
+        target_capability,
+        creator_directives,
+        required_patch_phrases,
+        expected_feedback_manifest_sha256,
+    )
+    raise LineagePreparationError(
+        "cross-round Feedback reuse is forbidden; freeze a fresh-per-round spec"
+    )
+
+
+def _legacy_freeze_reuse_round_spec_removed(
+    *,
+    r1_spec_path: Path,
+    bundle_dir: Path,
+    output_spec_path: Path,
+    experiment_id: str,
+    round_id: str,
+    target_capability: str,
+    creator_directives: Sequence[str],
+    required_patch_phrases: Sequence[str] = (),
+    expected_feedback_manifest_sha256: str | None = None,
+) -> CoreFastSpec:
+    """Historical implementation retained only as unread migration context."""
 
     if round_id not in {f"r{index}" for index in range(2, 11)}:
         raise LineagePreparationError("Feedback reuse round must be r2-r10")

@@ -119,6 +119,7 @@ def _observation(
     *,
     success: bool = False,
     assistant_model: str = "fake-model",
+    assistant_contract: str = "core-fast-deterministic-action-response-v1",
 ) -> dict[str, object]:
     components = {
         "route_acceptable": True,
@@ -156,7 +157,7 @@ def _observation(
         gcs_reason_codes=(),
         hard_error=False,
         evidence_violation=not success,
-        assistant_contract="core-fast-deterministic-action-response-v1",
+        assistant_contract=assistant_contract,
     ).model_dump(mode="json")
 
 
@@ -350,6 +351,19 @@ def fast_fixture(tmp_path: Path):
             "adapter": "python",
             "python_factory": "skillchain.evaluation.core_fast.fake_provider:create_adapter",
             "commands": {},
+        },
+        "s1_settings": {
+            "feedback_mode": "fresh-per-round",
+            "feedback_total_count": 12,
+            "feedback_canary_count": 6,
+            "feedback_selection_policy": "discovery-stratified-v1",
+            "feedback_allocation": "balanced-six-capability",
+        },
+        "limits": {
+            "max_feedback_calls": 12,
+            "max_creator_calls": 3,
+            "external_cost_cny": 250.0,
+            "final_judge_format_retries": 1,
         },
         "bootstrap_replicates": 10000,
         "bootstrap_seed": 2026080601,
@@ -859,7 +873,9 @@ def test_creator_projection_keeps_only_policy_compatible_feedback(
     }
     assert guard["required_detector_prediction_phrase"] == "predicted class name"
     assert "same path token" in guard["forbidden_path_reference_rule"]
-    for rows in intent["payload"]["feedback_by_capability"].values():
+    for rows in intent["payload"]["feedback_evidence_bundle"][
+        "feedback_by_capability"
+    ].values():
         for row in rows:
             assert row["feedback"]["skill_suggestions"] == [
                 "[policy_compatible] preserve the frozen contract"
@@ -916,18 +932,21 @@ def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
     }
 
 
-def test_partial_feedback_still_invokes_creator_exactly_once(
+def test_feedback_canary_failure_stops_remaining_batch_and_creator(
     fast_fixture, tmp_path: Path
 ) -> None:
-    failed_id = fast_fixture[0].fixed_samples.canary12[0].query_id
+    probe = _engine(fast_fixture, tmp_path / "probe", FakeCoreFastAdapter())
+    prepared = probe.prepare_feedback_selection()
+    failed_id = prepared["selection_manifest"]["selected_query_ids"][0]
     adapter = FakeCoreFastAdapter(feedback_fail_ids=frozenset({failed_id}))
-    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine = _engine(fast_fixture, tmp_path / "run", adapter)
     engine.initialize()
     decision = engine.run_s1()
-    assert decision.accepted
-    assert adapter.calls["feedback"] == 12
-    assert adapter.calls["creator"] == 1
-    assert decision.metrics["feedback_success_count"] == 11
+    assert not decision.accepted
+    assert adapter.calls["feedback"] == 6
+    assert adapter.calls["creator"] == 0
+    assert decision.metrics["feedback_success_count"] == 5
+    assert decision.metrics["feedback_remaining_batch_called"] is False
 
 
 def test_s1_smoke_hard_error_on_inherited_capability_does_not_block_replay(
@@ -1124,30 +1143,15 @@ def test_s1_screened_artifact_drift_fails_closed_on_resume(
         engine.run_s1()
 
 
-def test_feedback_reuse_mode_fails_closed_without_bound_cache(
-    fast_fixture, tmp_path: Path
-) -> None:
-    spec, spec_path, _ = fast_fixture
-    reused = spec.model_copy(
-        update={
-            "s1_settings": spec.s1_settings.model_copy(
-                update={
-                    "round_id": "r2",
-                    "feedback_mode": "reuse-exact-call-results",
-                    "feedback_reuse_manifest_sha256": "a" * 64,
-                }
-            )
-        }
-    )
-    engine = CoreFastEngine(
-        spec=reused,
-        spec_path=spec_path,
-        output_root=tmp_path / "missing-reuse",
-        adapter=FakeCoreFastAdapter(),
-    )
-    with pytest.raises(FastPathError, match="source manifest"):
-        engine.run_s1()
-    assert not (engine.output_root / "calls").exists()
+def test_feedback_reuse_mode_is_rejected_by_the_spec_schema() -> None:
+    with pytest.raises(ValueError, match="feedback_mode"):
+        S1Settings.model_validate(
+            {
+                "feedback_mode": "reuse-exact-call-results",
+                "feedback_reuse_manifest_sha256": "a" * 64,
+            },
+            strict=True,
+        )
 
 
 @pytest.mark.parametrize(

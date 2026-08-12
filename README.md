@@ -39,12 +39,6 @@ parent-bound 单能力 sparse patch，冻结全部 Description，并对未修改
 query。该配置只用于新 Fast execution overlay；历史 Formal profile、配置和 receipt
 保持原样，不回写。
 
-Core Fast 现在还启用版本化的 `core-fast-deterministic-action-response-v1`：模型只按冻结
-Description 选择 capability；路由后由 runner 执行固定工具序列和参数绑定，再由纯函数从
-公开 tool DTO 编译 `item_mapping / product_cards / evidence / uncertainty` 或精确 fallback。
-tool-first、DTO/card/evidence closure 与 supported/fallback 互斥不再依赖 Skill prose。该
-contract 只作用于新的 Core Fast routed 配置；NoSkill 与历史 Portfolio/Formal runner 不变。
-
 完整入口固定执行 `dev200 → opt800 → val200 → test300`，生成五配置 `val=1,000`、
 `test=1,500` 条逻辑结果；回滚配置复用 parent 的精确结果。历史 Formal Core 治理入口仍
 保留兼容，但不再是 Core Portfolio Quickstart 的默认依赖。详见

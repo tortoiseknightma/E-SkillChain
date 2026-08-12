@@ -13,6 +13,7 @@ from typing import Literal, Mapping, Sequence
 
 from pydantic import ValidationError
 
+from skillchain import config as project_config
 from skillchain.evolution.s1_gcs_gate import (
     S1GCSGateError,
     screen_s1_development_patches,
@@ -26,9 +27,6 @@ from skillchain.evolution.s1_sparse_patch import (
     load_sparse_compilation_receipt,
     sparse_author_content_lexical_guard,
     sparse_patch_output_json_schema,
-)
-from skillchain.runners.assistant_deterministic_contract import (
-    DETERMINISTIC_ASSISTANT_CONTRACT_SHA256,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
 from skillchain.evaluation.portfolio_gcs import (
@@ -46,8 +44,19 @@ from skillchain.static_authoring import (
     render_skill_markdown,
 )
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
+from skillchain.runners.assistant_deterministic_contract import (
+    DETERMINISTIC_ASSISTANT_CONTRACT_SHA256,
+)
 
 from .adapters import CoreFastAdapter
+from .feedback_selection import (
+    build_discovery_failure_summary,
+    build_discovery_feedback_population,
+    build_feedback_selection_manifest,
+    project_feedback_observation,
+    project_feedback_query,
+    select_feedback_samples,
+)
 from .models import (
     AssistantObservation,
     CAPABILITIES,
@@ -93,6 +102,9 @@ class ValidationSummary:
     observed_cost_cny: float
     projected_worst_case_cost_cny: float
     runtime_ready: bool
+    discovery_count: int = 600
+    replay_count: int = 200
+    feedback_count: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -103,6 +115,9 @@ class ValidationSummary:
             "observed_cost_cny": self.observed_cost_cny,
             "projected_worst_case_cost_cny": self.projected_worst_case_cost_cny,
             "runtime_ready": self.runtime_ready,
+            "discovery_count": self.discovery_count,
+            "replay_count": self.replay_count,
+            "feedback_count": self.feedback_count,
         }
 
 
@@ -656,7 +671,7 @@ class CoreFastEngine:
         # proof.  It includes every physical candidate, all 1,500 post-freeze
         # route-only gaps, and one format retry for every Judge call.
         max_calls = {
-            "feedback": 12,
+            "feedback": self.spec.s1_settings.feedback_total_count,
             "creator": 3,
             "assistant": 624 + 224 + 296 + 200 + 1500,
             "judge": 2 * (48 + 1500),
@@ -711,6 +726,7 @@ class CoreFastEngine:
             observed_cost_cny=self.calls.observed_cost(),
             projected_worst_case_cost_cny=projected_cost,
             runtime_ready=runtime_ready,
+            feedback_count=self.spec.s1_settings.feedback_total_count,
         )
 
     def initialize(self) -> None:
@@ -833,6 +849,7 @@ class CoreFastEngine:
             "kind": "core-fast-static-opt800-run",
             "experiment_id": self.spec.experiment_id,
             "assistant_model": self.spec.models["assistant"].model_dump(mode="json"),
+            "assistant_contract": self.spec.runtime.assistant_contract,
             "concurrency": self.spec.concurrency.model_dump(mode="json"),
             "queries_sha256": _file_sha(self._path("queries")),
             "static_bank_file_sha256": _file_sha(self._path("static_bank")),
@@ -874,44 +891,6 @@ class CoreFastEngine:
             return self.calls.invoke(intent, self.adapter.invoke)
         except FastStoreError as error:
             raise FastPathError(str(error)) from error
-
-    def _reused_feedback_call(
-        self,
-        *,
-        call_id: str,
-        purpose: str,
-        payload: dict[str, object],
-    ) -> CallResult:
-        intent_path = self.output_root / "calls" / "feedback" / f"{call_id}.intent.json"
-        try:
-            stored = CallIntent.model_validate(load_json(intent_path), strict=True)
-            result = self.calls.get("feedback", call_id)
-        except (OSError, ValueError, ValidationError, FastStoreError) as error:
-            raise FastPathError("invalid reused Feedback call artifact") from error
-        expected = CallIntent(
-            call_id=call_id,
-            role="feedback",
-            purpose=purpose,
-            requested_model=self.spec.models["feedback"].requested_model,
-            payload=payload,
-        )
-        stored_payload = dict(stored.payload)
-        expected_payload = dict(expected.payload)
-        # Runtime paths are not provider-visible Feedback data. They may move
-        # forward when the exact Static/runtime identity is repaired, while
-        # query, baseline, role, schema, model, and result bytes stay frozen.
-        stored_payload.pop("runtime_paths", None)
-        expected_payload.pop("runtime_paths", None)
-        if (
-            stored.model_copy(update={"payload": stored_payload})
-            != expected.model_copy(update={"payload": expected_payload})
-            or result is None
-            or result.call_id != call_id
-            or result.role != "feedback"
-            or result.requested_model != expected.requested_model
-        ):
-            raise FastPathError("reused Feedback call differs from this S1 input")
-        return result
 
     def _assistant_call_id(self, split: str, config: str, query_id: str) -> str:
         return _safe_id(f"{split}-{config}-{query_id}")
@@ -1782,6 +1761,286 @@ class CoreFastEngine:
             atomic_write_json(bootstrap_path, bootstrap)
         return bootstrap
 
+    @staticmethod
+    def _write_or_verify_json(path: Path, payload: object, *, label: str) -> None:
+        if path.exists():
+            if load_json(path) != payload:
+                raise FastPathError(f"{label} changed on resume")
+            return
+        atomic_write_json(path, payload)
+
+    def prepare_feedback_selection(self) -> dict[str, object]:
+        """Freeze discovery600 summary and selection without provider calls."""
+
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        identity_path = self.output_root / "feedback-round-identity.json"
+        identity = {
+            "schema_version": 1,
+            "kind": "core-fast-feedback-round-identity",
+            "experiment_id": self.spec.experiment_id,
+            "round_id": self.spec.s1_settings.round_id,
+            "spec_sha256": _file_sha(self.spec_path),
+            "feedback_mode": self.spec.s1_settings.feedback_mode,
+            "feedback_total_count": self.spec.s1_settings.feedback_total_count,
+            "feedback_canary_count": self.spec.s1_settings.feedback_canary_count,
+            "feedback_selection_policy": (
+                self.spec.s1_settings.feedback_selection_policy
+            ),
+            "feedback_allocation": self.spec.s1_settings.feedback_allocation,
+            "target_capabilities": list(self.spec.s1_settings.target_capabilities),
+        }
+        self._write_or_verify_json(
+            identity_path, identity, label="Feedback round identity"
+        )
+        opt = self.opt_static()
+        roles = self.opt_fold_roles()
+        try:
+            population = build_discovery_feedback_population(
+                queries=self.queries(), observations=opt, fold_roles=roles
+            )
+            summary = build_discovery_failure_summary(population)
+            selected = select_feedback_samples(population, self.spec.s1_settings)
+            manifest = build_feedback_selection_manifest(
+                population=population,
+                selected=selected,
+                settings=self.spec.s1_settings,
+                opt_static_sha256=self.spec.opt_static_results_sha256,
+                opt_fold_mapping_sha256=self.spec.opt_fold_mapping_sha256,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise FastPathError(
+                f"cannot prepare S1 Feedback selection: {error}"
+            ) from error
+        inputs = self.output_root / "inputs"
+        self._write_or_verify_json(
+            inputs / "discovery-failure-summary.json",
+            summary,
+            label="discovery failure summary",
+        )
+        self._write_or_verify_json(
+            inputs / "feedback-selection-manifest.json",
+            manifest,
+            label="Feedback selection manifest",
+        )
+        receipt_unsigned = {
+            "schema_version": 1,
+            "kind": "core-fast-feedback-selection-receipt",
+            "round_id": self.spec.s1_settings.round_id,
+            "discovery_summary_sha256": summary["summary_sha256"],
+            "selection_manifest_sha256": manifest["manifest_sha256"],
+            "provider_calls": 0,
+        }
+        receipt = {
+            **receipt_unsigned,
+            "receipt_sha256": sha256_bytes(canonical_json_bytes(receipt_unsigned)),
+        }
+        self._write_or_verify_json(
+            inputs / "feedback-selection-receipt.json",
+            receipt,
+            label="Feedback selection receipt",
+        )
+        return {
+            "discovery_summary": summary,
+            "selection_manifest": manifest,
+            "selection_receipt": receipt,
+        }
+
+    @staticmethod
+    def _feedback_payload(
+        *,
+        query: Query,
+        baseline: AssistantObservation,
+        sample: Mapping[str, object],
+        selection_manifest_sha256: str,
+        round_id: str,
+    ) -> dict[str, object]:
+        return {
+            "operation": "strict_visual_feedback",
+            "round_id": round_id,
+            "selection_manifest_sha256": selection_manifest_sha256,
+            "selection_ordinal": sample["selection_ordinal"],
+            "query": project_feedback_query(query),
+            "baseline": project_feedback_observation(baseline),
+            "sample_role": sample["role"],
+            "failure_cluster_sha256": sample["cluster_sha256"],
+            "response_schema": VisualFeedbackOutput.model_json_schema(),
+            "no_replacement": True,
+        }
+
+    @staticmethod
+    def _parse_feedback_result(result: CallResult) -> dict[str, object] | None:
+        if result.status != "success" or not result.schema_valid or not result.output:
+            return None
+        raw = result.output.get("feedback", result.output)
+        try:
+            model = VisualFeedbackOutput.model_validate_json(
+                canonical_json_bytes(raw), strict=True
+            )
+        except ValidationError:
+            return None
+        compatible = tuple(
+            suggestion
+            for suggestion in model.skill_suggestions
+            if suggestion.startswith("[policy_compatible] ")
+        )
+        parsed = model.model_dump(mode="json")
+        parsed["skill_suggestions"] = list(compatible)
+        return parsed
+
+    def _feedback_batch(
+        self,
+        *,
+        samples: Sequence[Mapping[str, object]],
+        query_by_id: Mapping[str, Query],
+        opt: Mapping[str, AssistantObservation],
+        selection_manifest_sha256: str,
+    ) -> tuple[dict[str, dict[str, object]], int, int]:
+        feedback: dict[str, dict[str, object]] = {}
+        resume_hits = 0
+        provider_calls = 0
+        workers = min(self.spec.concurrency.feedback, len(samples))
+        if workers == 0:
+            return feedback, resume_hits, provider_calls
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {}
+            for sample in samples:
+                query_id = str(sample["query_id"])
+                call_id = _safe_id(
+                    f"{self.spec.s1_settings.round_id}-feedback-{int(sample['selection_ordinal']):03d}-{query_id}"
+                )
+                if self.calls.get("feedback", call_id) is not None:
+                    resume_hits += 1
+                else:
+                    provider_calls += 1
+                query = query_by_id[query_id]
+                payload = self._feedback_payload(
+                    query=query,
+                    baseline=opt[query_id],
+                    sample=sample,
+                    selection_manifest_sha256=selection_manifest_sha256,
+                    round_id=self.spec.s1_settings.round_id,
+                )
+                futures[
+                    pool.submit(
+                        self._call,
+                        role="feedback",
+                        call_id=call_id,
+                        purpose=(
+                            f"S1 {self.spec.s1_settings.round_id} frozen discovery Feedback "
+                            f"{int(sample['selection_ordinal']):03d} {query_id}"
+                        ),
+                        payload=payload,
+                    )
+                ] = sample
+            for future in as_completed(futures):
+                sample = futures[future]
+                result = future.result()
+                query_id = str(sample["query_id"])
+                feedback[query_id] = {
+                    "query_id": query_id,
+                    "selection_ordinal": sample["selection_ordinal"],
+                    "capability": sample["capability"],
+                    "sample_role": sample["role"],
+                    "cluster_sha256": sample["cluster_sha256"],
+                    "status": result.status,
+                    "feedback": self._parse_feedback_result(result),
+                    "failure_reason": result.failure_reason,
+                }
+        return feedback, resume_hits, provider_calls
+
+    @staticmethod
+    def _canary_feedback_ok(feedback: Mapping[str, Mapping[str, object]]) -> bool:
+        if not feedback:
+            return False
+        failures = sum(row["feedback"] is None for row in feedback.values())
+        service_failures = sum(
+            row["status"] in {"provider_error", "interrupted_unknown"}
+            for row in feedback.values()
+        )
+        return (
+            failures / len(feedback)
+            <= project_config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE
+            and service_failures / len(feedback)
+            <= project_config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE
+        )
+
+    def _feedback_evidence_bundle(
+        self,
+        *,
+        parent: StaticBankArtifact,
+        prepared: Mapping[str, object],
+        feedback: Mapping[str, Mapping[str, object]],
+    ) -> dict[str, object]:
+        summary = prepared["discovery_summary"]
+        manifest = prepared["selection_manifest"]
+        assert isinstance(summary, dict) and isinstance(manifest, dict)
+        grouped = {
+            capability: [
+                feedback[query_id]
+                for query_id in manifest["selected_query_ids"]
+                if feedback[query_id]["capability"] == capability
+            ]
+            for capability in CAPABILITIES
+        }
+        suggestions: dict[tuple[str, str], dict[str, object]] = {}
+        rejected_counts: Counter[str] = Counter()
+        for query_id in manifest["selected_query_ids"]:
+            row = feedback[query_id]
+            parsed = row["feedback"]
+            if not isinstance(parsed, dict):
+                rejected_counts["missing_or_invalid_feedback"] += 1
+                continue
+            for suggestion in parsed.get("skill_suggestions", []):
+                if not isinstance(suggestion, str) or not suggestion.startswith(
+                    "[policy_compatible] "
+                ):
+                    rejected_counts["non_policy_compatible"] += 1
+                    continue
+                normalized = " ".join(suggestion.split())
+                key = (str(row["capability"]), normalized.casefold())
+                existing = suggestions.setdefault(
+                    key,
+                    {
+                        "capability": row["capability"],
+                        "suggestion": normalized,
+                        "support_query_ids": [],
+                    },
+                )
+                existing["support_query_ids"].append(query_id)  # type: ignore[union-attr]
+        actionable = []
+        for key in sorted(suggestions):
+            item = suggestions[key]
+            query_ids = sorted(set(item["support_query_ids"]))  # type: ignore[arg-type]
+            actionable.append(
+                {
+                    **item,
+                    "support_query_ids": query_ids,
+                    "support_count": len(query_ids),
+                }
+            )
+        unsigned = {
+            "schema_version": 2,
+            "round_id": self.spec.s1_settings.round_id,
+            "parent_bank_sha256": parent.bank_sha256,
+            "opt_static_sha256": self.spec.opt_static_results_sha256,
+            "discovery_population_sha256": manifest["discovery_population_sha256"],
+            "selection_manifest_sha256": manifest["manifest_sha256"],
+            "selection_policy": self.spec.s1_settings.feedback_selection_policy,
+            "feedback_total_count": self.spec.s1_settings.feedback_total_count,
+            "feedback_success_count": sum(
+                row["feedback"] is not None for row in feedback.values()
+            ),
+            "target_capabilities": list(self.spec.s1_settings.target_capabilities),
+            "discovery_summary": summary,
+            "feedback_by_capability": grouped,
+            "policy_compatible_suggestions": actionable,
+            "rejected_suggestion_counts": dict(sorted(rejected_counts.items())),
+        }
+        return {
+            **unsigned,
+            "bundle_sha256": sha256_bytes(canonical_json_bytes(unsigned)),
+        }
+
     def run_s1(self) -> StageDecision:
         existing = self._existing_decision("s1")
         if existing is not None:
@@ -1790,115 +2049,77 @@ class CoreFastEngine:
         opt = self.opt_static()
         query_by_id = self.query_by_id()
 
-        if self.spec.s1_settings.feedback_mode == "reuse-exact-call-results":
-            source_manifest = (
-                self.output_root / "inputs" / "feedback-source-manifest.json"
+        prepared = self.prepare_feedback_selection()
+        manifest = prepared["selection_manifest"]
+        assert isinstance(manifest, dict)
+        samples = manifest["selected_samples"]
+        assert isinstance(samples, list)
+        canary_count = self.spec.s1_settings.feedback_canary_count
+        canary_feedback, canary_resume_hits, canary_provider_calls = (
+            self._feedback_batch(
+                samples=samples[:canary_count],
+                query_by_id=query_by_id,
+                opt=opt,
+                selection_manifest_sha256=str(manifest["manifest_sha256"]),
             )
-            expected_manifest_sha256 = (
-                self.spec.s1_settings.feedback_reuse_manifest_sha256
-            )
-            if (
-                expected_manifest_sha256 is None
-                or not source_manifest.is_file()
-                or _file_sha(source_manifest) != expected_manifest_sha256
-            ):
-                raise FastPathError(
-                    "S1 reused Feedback source manifest is missing or changed"
-                )
-            missing_feedback = [
-                sample.query_id
-                for sample in self.spec.fixed_samples.canary12
-                if self.calls.get("feedback", _safe_id(f"canary-{sample.query_id}"))
-                is None
-            ]
-            if missing_feedback:
-                raise FastPathError(
-                    "S1 reused Feedback cache is incomplete; fresh replacement "
-                    "calls are forbidden"
-                )
-
-        feedback: dict[str, object] = {}
-        feedback_workers = min(
-            self.spec.concurrency.feedback,
-            len(self.spec.fixed_samples.canary12),
         )
-        with ThreadPoolExecutor(max_workers=feedback_workers) as pool:
-            futures = {}
-            for sample in self.spec.fixed_samples.canary12:
-                query = query_by_id[sample.query_id]
-                call_id = _safe_id(f"canary-{sample.query_id}")
-                payload = {
-                    "operation": "strict_visual_feedback",
-                    "query": query.model_dump(mode="json"),
-                    "baseline": opt[sample.query_id].model_dump(mode="json"),
-                    "sample_role": sample.role,
-                    "response_schema": VisualFeedbackOutput.model_json_schema(),
-                    "runtime_paths": self.spec.paths.model_dump(mode="json"),
-                    "no_replacement": True,
-                }
-                purpose = f"S1 fixed canary Feedback {sample.query_id}"
-                futures[
-                    pool.submit(
-                        (
-                            self._reused_feedback_call
-                            if self.spec.s1_settings.feedback_mode
-                            == "reuse-exact-call-results"
-                            else self._call
-                        ),
-                        call_id=call_id,
-                        **(
-                            {}
-                            if self.spec.s1_settings.feedback_mode
-                            == "reuse-exact-call-results"
-                            else {"role": "feedback"}
-                        ),
-                        purpose=purpose,
-                        payload=payload,
-                    )
-                ] = sample
-            for future in as_completed(futures):
-                sample = futures[future]
-                result = future.result()
-                parsed: object | None = None
-                if result.status == "success" and result.schema_valid and result.output:
-                    raw = result.output.get("feedback", result.output)
-                    try:
-                        feedback_model = VisualFeedbackOutput.model_validate_json(
-                            canonical_json_bytes(raw), strict=True
-                        )
-                        compatible = tuple(
-                            suggestion
-                            for suggestion in feedback_model.skill_suggestions
-                            if suggestion.startswith("[policy_compatible] ")
-                        )
-                        parsed = feedback_model.model_dump(mode="json")
-                        parsed["skill_suggestions"] = list(compatible)
-                    except ValidationError:
-                        parsed = None
-                feedback[sample.query_id] = {
-                    "capability": sample.capability,
-                    "sample_role": sample.role,
-                    "status": result.status,
-                    "feedback": parsed,
-                    "failure_reason": result.failure_reason,
-                }
-
-        grouped = {
-            capability: [
-                feedback[sample.query_id]
-                for sample in self.spec.fixed_samples.canary12
-                if sample.capability == capability
-            ]
-            for capability in CAPABILITIES
-        }
-        feedback_bundle = {
-            "parent_bank_sha256": parent.bank_sha256,
-            "canary_query_ids": [
-                sample.query_id for sample in self.spec.fixed_samples.canary12
-            ],
-            "feedback_by_capability": grouped,
-        }
-        feedback_bundle_sha256 = sha256_bytes(canonical_json_bytes(feedback_bundle))
+        feedback: dict[str, dict[str, object]] = dict(canary_feedback)
+        resume_hits = canary_resume_hits
+        provider_calls = canary_provider_calls
+        if self._canary_feedback_ok(canary_feedback):
+            remaining_feedback, remaining_hits, remaining_calls = self._feedback_batch(
+                samples=samples[canary_count:],
+                query_by_id=query_by_id,
+                opt=opt,
+                selection_manifest_sha256=str(manifest["manifest_sha256"]),
+            )
+            feedback.update(remaining_feedback)
+            resume_hits += remaining_hits
+            provider_calls += remaining_calls
+        else:
+            reasons = ("Feedback canary failed the frozen operational error limits",)
+            metrics = {
+                "round_id": self.spec.s1_settings.round_id,
+                "feedback_mode": self.spec.s1_settings.feedback_mode,
+                "feedback_requested_count": self.spec.s1_settings.feedback_total_count,
+                "feedback_canary_count": canary_count,
+                "feedback_success_count": sum(
+                    row["feedback"] is not None for row in feedback.values()
+                ),
+                "feedback_failure_count": sum(
+                    row["feedback"] is None for row in feedback.values()
+                ),
+                "feedback_provider_calls_this_round": provider_calls,
+                "feedback_resume_cache_hits": resume_hits,
+                "feedback_remaining_batch_called": False,
+                "selection_manifest_sha256": manifest["manifest_sha256"],
+                "replay_accessed": False,
+                "body_accessed": False,
+            }
+            self._write_selected_bank("s1", parent)
+            return self._save_decision(
+                StageDecision(
+                    stage="s1",
+                    accepted=False,
+                    alias_of="llm_static",
+                    parent_bank=parent.bank_sha256,
+                    candidate_bank=None,
+                    selected_bank=parent.bank_sha256,
+                    reasons=reasons,
+                    metrics=metrics,
+                )
+            )
+        feedback_bundle = self._feedback_evidence_bundle(
+            parent=parent, prepared=prepared, feedback=feedback
+        )
+        feedback_bundle_sha256 = str(feedback_bundle["bundle_sha256"])
+        self._write_or_verify_json(
+            self.output_root / "inputs" / "feedback-evidence-bundle.json",
+            feedback_bundle,
+            label="Feedback evidence bundle",
+        )
+        grouped = feedback_bundle["feedback_by_capability"]
+        assert isinstance(grouped, dict)
         patchable_capabilities = frozenset(
             capability
             for capability, rows in grouped.items()
@@ -1919,16 +2140,15 @@ class CoreFastEngine:
                 "parent_authoring_content": [
                     item.model_dump(mode="json") for item in templates
                 ],
-                "feedback_by_capability": grouped,
-                "feedback_bundle_sha256": feedback_bundle_sha256,
-                "feedback_success_count": sum(
-                    item["feedback"] is not None for item in feedback.values()
-                ),
-                "feedback_missing_capabilities": [
-                    capability
-                    for capability, rows in grouped.items()
-                    if not any(row["feedback"] is not None for row in rows)
+                "feedback_evidence_bundle": feedback_bundle,
+                "discovery_summary": feedback_bundle["discovery_summary"],
+                "selection_manifest_sha256": feedback_bundle[
+                    "selection_manifest_sha256"
                 ],
+                "policy_compatible_suggestions": feedback_bundle[
+                    "policy_compatible_suggestions"
+                ],
+                "feedback_bundle_sha256": feedback_bundle_sha256,
                 "requirements": {
                     "round_id": self.spec.s1_settings.round_id,
                     "complete_six_capability_actions": True,
@@ -1977,14 +2197,28 @@ class CoreFastEngine:
             ),
             "round_id": self.spec.s1_settings.round_id,
             "feedback_mode": self.spec.s1_settings.feedback_mode,
-            "feedback_reuse_manifest_sha256": (
-                self.spec.s1_settings.feedback_reuse_manifest_sha256
+            "feedback_requested_count": self.spec.s1_settings.feedback_total_count,
+            "feedback_canary_count": canary_count,
+            "feedback_failure_count": sum(
+                item["feedback"] is None for item in feedback.values()
             ),
-            "feedback_provider_calls_this_round": (
-                0
-                if self.spec.s1_settings.feedback_mode == "reuse-exact-call-results"
-                else len(self.spec.fixed_samples.canary12)
+            "feedback_provider_calls_this_round": provider_calls,
+            "feedback_resume_cache_hits": resume_hits,
+            "feedback_remaining_batch_called": True,
+            "feedback_selection_policy": (
+                self.spec.s1_settings.feedback_selection_policy
             ),
+            "feedback_allocation": self.spec.s1_settings.feedback_allocation,
+            "selection_manifest_sha256": manifest["manifest_sha256"],
+            "discovery_summary_sha256": prepared["discovery_summary"]["summary_sha256"],
+            "feedback_bundle_sha256": feedback_bundle_sha256,
+            "feedback_bundle_byte_size": len(canonical_json_bytes(feedback_bundle)),
+            "feedback_cluster_coverage": manifest["cluster_coverage"],
+            "feedback_capability_coverage": manifest["capability_quotas"],
+            "feedback_truncated_field_count": 0,
+            "creator_input_tokens": creator.input_tokens,
+            "replay_accessed": False,
+            "body_accessed": False,
         }
         accepted = False
         if candidate is None:
@@ -2015,6 +2249,7 @@ class CoreFastEngine:
                 )
             else:
                 fold_roles = self.opt_fold_roles()
+                metrics["replay_accessed"] = True
                 replay_queries = [
                     query
                     for query in self.queries()
@@ -2169,6 +2404,7 @@ class CoreFastEngine:
                         reasons.extend(f"replay200: {item}" for item in replay_reasons)
                     else:
                         gate_queries = self._queries_for_val_gate("body_gate")
+                        metrics["body_accessed"] = True
                         static_rows = self._assistant_many(
                             split="body-gate75",
                             config="llm_static",

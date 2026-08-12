@@ -154,9 +154,17 @@ class GateRules(FrozenStrictModel):
 
 
 class S1Settings(FrozenStrictModel):
-    round_id: str = Field(default="r1", pattern=r"^r(?:[1-9]|10)$")
-    feedback_mode: Literal["fresh", "reuse-exact-call-results"] = "fresh"
-    feedback_reuse_manifest_sha256: Sha256 | None = None
+    round_id: str = Field(default="r1", pattern=r"^r[1-9][0-9]*$")
+    feedback_mode: Literal["fresh-per-round"] = "fresh-per-round"
+    feedback_total_count: int = Field(default=48, ge=1, le=60)
+    feedback_canary_count: int = Field(default=6, ge=1, le=60)
+    feedback_selection_policy: Literal["discovery-stratified-v1"] = (
+        "discovery-stratified-v1"
+    )
+    feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
+        "balanced-six-capability"
+    )
+    target_capabilities: tuple[str, ...] = ()
     proposal_mode: Literal["sparse-parent-patch-v1"] = "sparse-parent-patch-v1"
     max_patched_capabilities: int = Field(default=3, ge=1, le=3)
     protected_capabilities: tuple[str, ...] = ("knowledge.visual_encyclopedia",)
@@ -189,11 +197,27 @@ class S1Settings(FrozenStrictModel):
                 raise ValueError(
                     "required S1 patch phrases must be trimmed, sorted, and unique"
                 )
-        if (self.feedback_mode == "fresh") != (
-            self.feedback_reuse_manifest_sha256 is None
+        if self.feedback_canary_count > self.feedback_total_count:
+            raise ValueError("Feedback canary count cannot exceed total count")
+        targets = self.target_capabilities
+        if not targets:
+            targets = tuple(sorted(set(CAPABILITIES) - set(protected)))
+            object.__setattr__(self, "target_capabilities", targets)
+        if targets != tuple(sorted(set(targets))) or not targets:
+            raise ValueError(
+                "S1 target capabilities must be sorted, unique, and nonempty"
+            )
+        if not set(targets) <= set(CAPABILITIES) - set(protected):
+            raise ValueError("S1 target capabilities must be patchable capabilities")
+        if self.feedback_allocation == "target-focused" and (
+            len(targets) != 1 or self.max_patched_capabilities != 1
         ):
             raise ValueError(
-                "S1 Feedback reuse mode requires one frozen source manifest SHA"
+                "target-focused Feedback requires one target and one patched capability"
+            )
+        if self.max_patched_capabilities > len(targets):
+            raise ValueError(
+                "S1 cannot patch more capabilities than its frozen targets"
             )
         return self
 
@@ -240,7 +264,7 @@ class Concurrency(FrozenStrictModel):
 
 
 class Limits(FrozenStrictModel):
-    max_feedback_calls: Literal[12] = 12
+    max_feedback_calls: int = Field(default=48, ge=1, le=60)
     max_creator_calls: Literal[3] = 3
     external_cost_cny: Literal[250.0] = 250.0
     final_judge_format_retries: Literal[1] = 1
@@ -314,6 +338,10 @@ class CoreFastSpec(FrozenStrictModel):
             "route_only",
         }:
             raise ValueError("all five model/execution roles must be configured")
+        if self.limits.max_feedback_calls != self.s1_settings.feedback_total_count:
+            raise ValueError(
+                "Feedback call limit must equal the pre-frozen S1 Feedback count"
+            )
         feedback = self.models["feedback"]
         if (
             feedback.requested_model.casefold() != "qwen3.8-max"

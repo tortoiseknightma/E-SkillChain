@@ -532,14 +532,16 @@ def test_live_feedback_emits_exact_qwen38_capacity_probe_wire(
         hard_error=False,
         evidence_violation=True,
     )
+    adapter._feedback_query_by_id = {query.query_id: query}
+    adapter._feedback_baseline_by_id = {query.query_id: baseline}
     intent = CallIntent(
         call_id="feedback-wire",
         role="feedback",
         purpose="capture live Feedback wire",
         requested_model=config.FEEDBACK_JUDGE_MODEL,
         payload={
-            "query": query.model_dump(mode="json"),
-            "baseline": baseline.model_dump(mode="json"),
+            "query": live_module.project_feedback_query(query),
+            "baseline": live_module.project_feedback_observation(baseline),
             "sample_role": "failure",
         },
     )

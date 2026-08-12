@@ -41,8 +41,8 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
 
     assert bootstrap.paths.opt_static_results == str(opt_path.resolve())
     assert bootstrap.s1_settings.round_id == "r1"
-    assert bootstrap.s1_settings.feedback_mode == "fresh"
-    assert bootstrap.s1_settings.feedback_reuse_manifest_sha256 is None
+    assert bootstrap.s1_settings.feedback_mode == "fresh-per-round"
+    assert bootstrap.s1_settings.feedback_total_count == 48
     assert bootstrap.s1_settings.creator_directives == ()
     assert bootstrap.s1_settings.required_patch_phrases == {}
     assert bootstrap.s1_settings.protected_capabilities == (
@@ -83,7 +83,8 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
     assert load_core_fast_spec(r1_path) == r1
     assert r1.opt_static_results_sha256 == sha256_bytes(opt_path.read_bytes())
     assert r1.fixed_samples.model_dump(mode="json") == _fixed_samples()
-    assert r1.s1_settings.feedback_mode == "fresh"
+    assert r1.s1_settings.feedback_mode == "fresh-per-round"
+    assert r1.s1_settings.target_capabilities == ("product.exact_match",)
     assert r1.s1_settings.max_patched_capabilities == 1
     assert r1.s1_settings.protected_capabilities == tuple(
         sorted(set(lineage.CAPABILITIES) - {"product.exact_match"})
@@ -187,74 +188,18 @@ def test_feedback_bundle_is_byte_exact_create_only_and_tamper_evident(
 
 
 def test_freeze_reuse_round_binds_feedback_manifest(tmp_path: Path) -> None:
-    base = load_core_fast_spec(BASE_SPEC)
-    source_payload = base.model_dump(mode="json")
-    source_payload["experiment_id"] = "qwen37-s1-r1-test"
-    source_payload["s1_settings"] = {
-        "round_id": "r1",
-        "feedback_mode": "fresh",
-        "feedback_reuse_manifest_sha256": None,
-        "proposal_mode": "sparse-parent-patch-v1",
-        "max_patched_capabilities": 1,
-        "protected_capabilities": list(
-            sorted(set(lineage.CAPABILITIES) - {"product.exact_match"})
-        ),
-        "creator_directives": ["Patch exact-match evidence closure."],
-        "required_patch_phrases": {},
-    }
-    r1_spec = tmp_path / "specs" / "r1.json"
-    _write_json(r1_spec, source_payload)
-    source = tmp_path / "r1-root"
-    bundle = tmp_path / "bundle"
-    _fresh_r1_root(source, opt_sha256=base.opt_static_results_sha256)
-    digest = lineage.export_feedback_bundle(source_root=source, bundle_dir=bundle)
-
-    r2_path = tmp_path / "specs" / "r2.json"
-    r2 = lineage.freeze_reuse_round_spec(
-        r1_spec_path=r1_spec,
-        bundle_dir=bundle,
-        output_spec_path=r2_path,
-        experiment_id="qwen37-s1-r2-test",
-        round_id="r2",
-        target_capability="product.exact_match",
-        creator_directives=("Prioritize a supported hit over empty fallback.",),
-    )
-
-    assert r2.s1_settings.round_id == "r2"
-    assert r2.s1_settings.feedback_mode == "reuse-exact-call-results"
-    assert r2.s1_settings.feedback_reuse_manifest_sha256 == digest
-    assert r2.s1_settings.max_patched_capabilities == 1
-    assert load_core_fast_spec(r2_path) == r2
-
-    with pytest.raises(lineage.LineagePreparationError, match="requested SHA"):
+    with pytest.raises(
+        lineage.LineagePreparationError, match="cross-round Feedback reuse is forbidden"
+    ):
         lineage.freeze_reuse_round_spec(
-            r1_spec_path=r1_spec,
-            bundle_dir=bundle,
-            output_spec_path=tmp_path / "specs" / "r3.json",
-            experiment_id="qwen37-s1-r3-test",
-            round_id="r3",
+            r1_spec_path=tmp_path / "r1.json",
+            bundle_dir=tmp_path / "bundle",
+            output_spec_path=tmp_path / "r2.json",
+            experiment_id="fresh-r2",
+            round_id="r2",
             target_capability="product.exact_match",
-            creator_directives=("Use one stable evidence-backed template.",),
-            expected_feedback_manifest_sha256="0" * 64,
+            creator_directives=("Use fresh Feedback.",),
         )
-
-    r6_path = tmp_path / "specs" / "r6.json"
-    r6 = lineage.freeze_reuse_round_spec(
-        r1_spec_path=r1_spec,
-        bundle_dir=bundle,
-        output_spec_path=r6_path,
-        experiment_id="qwen37-s1-r6-test",
-        round_id="r6",
-        target_capability="product.multi_search",
-        creator_directives=("Copy one public mapping payload exactly.",),
-        expected_feedback_manifest_sha256=digest,
-    )
-    assert r6.s1_settings.round_id == "r6"
-    assert r6.s1_settings.feedback_mode == "reuse-exact-call-results"
-    assert r6.s1_settings.feedback_reuse_manifest_sha256 == digest
-    assert r6.s1_settings.protected_capabilities == tuple(
-        sorted(set(lineage.CAPABILITIES) - {"product.multi_search"})
-    )
 
 
 def test_feedback_export_rejects_incomplete_source(tmp_path: Path) -> None:
@@ -268,15 +213,17 @@ def test_feedback_export_rejects_incomplete_source(tmp_path: Path) -> None:
         )
 
 
-def test_s1_round_identity_supports_r10_but_not_r11() -> None:
+def test_s1_round_identity_supports_forward_rounds() -> None:
     base = load_core_fast_spec(BASE_SPEC)
     payload = base.s1_settings.model_dump()
     assert (
         S1Settings.model_validate({**payload, "round_id": "r10"}, strict=True).round_id
         == "r10"
     )
-    with pytest.raises(ValueError):
-        S1Settings.model_validate({**payload, "round_id": "r11"}, strict=True)
+    assert (
+        S1Settings.model_validate({**payload, "round_id": "r11"}, strict=True).round_id
+        == "r11"
+    )
 
     parser = lineage.build_parser()
     command = [

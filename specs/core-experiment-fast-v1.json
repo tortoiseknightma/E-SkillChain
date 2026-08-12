@@ -143,7 +143,7 @@
     "external_cost_cny": 250.0,
     "final_judge_format_retries": 1,
     "max_creator_calls": 3,
-    "max_feedback_calls": 12
+    "max_feedback_calls": 48
   },
   "opt_fold_mapping_sha256": "3b737f06539f409a69dbb71e90863cbddb7b6408aa753cd8d61074f4b0077b26",
   "opt_static_results_sha256": "ced36fb3050612be9a45a9fcb0d0d835b0f7a40ef422009066b6680df7368fc0",
@@ -205,8 +205,12 @@
       "Keep the parent objective, tool sequence, fallback trigger, fallback response, safety constraints, and citations unchanged. Change only the positive non-empty multi_product_search result mapping.",
       "For a non-empty multi_product_search result, render every requested item_ref exactly once in item_mapping, preserve its matched or unresolved status and returned candidate association, emit product cards only for returned eligible candidates, preserve each exact evidence_reference, product_id, and available title, and explicitly list unresolved requested items. Do not add or strengthen fallback wording."
     ],
-    "feedback_mode": "fresh",
-    "feedback_reuse_manifest_sha256": null,
+    "feedback_mode": "fresh-per-round",
+    "feedback_total_count": 48,
+    "feedback_canary_count": 6,
+    "feedback_selection_policy": "discovery-stratified-v1",
+    "feedback_allocation": "target-focused",
+    "target_capabilities": ["product.multi_search"],
     "max_patched_capabilities": 1,
     "proposal_mode": "sparse-parent-patch-v1",
     "protected_capabilities": [
