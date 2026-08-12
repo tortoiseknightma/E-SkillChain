@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -21,7 +22,11 @@ from skillchain.static_authoring import (
 from skillchain.task_spec import load_default_task_specification
 from skillchain.taxonomy import load_default_taxonomy_registry
 from skillchain.synthesis.store import atomic_create_file
-from skillchain.tools.registry import build_mvp_registry_spec
+from skillchain.tools.registry import (
+    RegistryManifest,
+    ToolSpec,
+    build_mvp_registry_spec,
+)
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
 
@@ -209,6 +214,27 @@ def _expected_files() -> dict[Path, bytes]:
     taxonomy = load_default_taxonomy_registry()
     tasks = load_default_task_specification()
     registry = build_mvp_registry_spec()
+    # v4 retains the same immutable seven-tool generation as v3.  Rehydrate
+    # its packet-embedded manifest instead of following active ToolSpec schema
+    # changes when checking historical reproducibility.
+    legacy_packet = json.loads(
+        (AUTHORING_ROOT / "authoring-packet-primary-v4.json").read_text("utf-8")
+    )
+    legacy_registry_raw = json.loads(
+        legacy_packet["tool_registry"]["canonical_json"]
+    )
+    legacy_registry_raw["tools"] = tuple(
+        ToolSpec.model_validate(item, strict=True)
+        for item in legacy_registry_raw["tools"]
+    )
+    legacy_manifest = RegistryManifest.model_validate(
+        legacy_registry_raw, strict=True
+    )
+    if legacy_manifest.registry_sha256 != (
+        "91752c8c766138dddfd79b382af9d6d298d93a9471d22133aac866b565752795"
+    ):
+        raise ValueError("legacy v4 registry identity drifted")
+    object.__setattr__(registry, "_manifest", legacy_manifest)
     decoding = FixedDecoding(
         seed=20260722,
         max_output_tokens=8_000,

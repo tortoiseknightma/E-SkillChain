@@ -1870,9 +1870,7 @@ class ProductionAssistantRunner:
             "body": selected.body,
             "operators": list(selected.operators),
             "final_response_contract": (
-                _gcs_v2_model_response_contract_for_capability(
-                    selected.capability_id
-                )
+                _gcs_v2_model_response_contract_for_capability(selected.capability_id)
             ),
         }
         presentation_protocol = (
@@ -2993,9 +2991,7 @@ class ProductionAssistantRunner:
             )
             repair_pending = False
             repair_initial_text = ""
-            repair_initial_validation: AssistantResponseContractValidation | None = (
-                None
-            )
+            repair_initial_validation: AssistantResponseContractValidation | None = None
             for action_call_index in range(1, action_turn_budget + 1):
                 used_output = reserved_route_usage.output_tokens + sum(
                     item.output_tokens for item in model_calls
@@ -3032,9 +3028,7 @@ class ProductionAssistantRunner:
                     )
                     repair_wire_reasons = {"response_repair_wire_invalid"}
                     if material_atoms_added:
-                        repair_wire_reasons.add(
-                            "response_repair_new_material_atom"
-                        )
+                        repair_wire_reasons.add("response_repair_new_material_atom")
                     response_contract_repair = (
                         make_assistant_response_contract_repair_receipt(
                             initial_response_text=repair_initial_text,
@@ -3110,10 +3104,8 @@ class ProductionAssistantRunner:
                     if response.finish_reason != "stop" or not response.text.strip():
                         if repair_pending:
                             assert repair_initial_validation is not None
-                            material_atoms_added = (
-                                not repair_preserves_material_atoms(
-                                    repair_initial_text, response.text
-                                )
+                            material_atoms_added = not repair_preserves_material_atoms(
+                                repair_initial_text, response.text
                             )
                             incomplete_reasons = {
                                 (

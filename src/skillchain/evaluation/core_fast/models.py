@@ -74,6 +74,9 @@ class CorePaths(FrozenStrictModel):
     static_bank: str
     opt_static_results: str
     opt_route_attribution: str
+    opt_fold_mapping: str
+    val_gate_assignments: str
+    s1_authoring_input: str
     asset_catalog_dir: str | None = None
     asset_root: str | None = None
     selection_manifest: str | None = None
@@ -117,25 +120,106 @@ class FixedSamples(FrozenStrictModel):
             canary = [row.role for row in self.canary12 if row.capability == capability]
             smoke = [row for row in self.dev_smoke24 if row.capability == capability]
             body = [row for row in self.body48 if row.capability == capability]
-            if sorted(canary) != ["anchor", "failure"]:
+            if (
+                len(canary) != 2
+                or "failure" not in canary
+                or any(role not in {"failure", "anchor"} for role in canary)
+            ):
                 raise ValueError(
-                    f"canary12 must contain failure+anchor for {capability}"
+                    f"canary12 role composition is invalid for {capability}"
                 )
             if len(smoke) != 4 or any(row.role != "smoke" for row in smoke):
                 raise ValueError(f"dev_smoke24 must contain four rows for {capability}")
             body_roles = sorted(row.role for row in body)
-            if body_roles != ["body_anchor"] * 2 + ["body_failure"] * 6:
-                raise ValueError(
-                    f"body48 must contain six failures and two anchors for {capability}"
+            if (
+                len(body_roles) != 8
+                or "body_failure" not in body_roles
+                or any(
+                    role not in {"body_failure", "body_anchor"} for role in body_roles
                 )
+            ):
+                raise ValueError(f"body48 role composition is invalid for {capability}")
         return self
 
 
 class GateRules(FrozenStrictModel):
+    s1_replay_macro_delta_pp_min: Literal[0.0] = 0.0
+    s1_system_macro_delta_pp_min: Literal[2.0] = 2.0
+    s1_bootstrap_ci95_lower_pp_min: Literal[0.0] = 0.0
+    s1_hard_error_delta_pp_max: Literal[1.0] = 1.0
     s1_max_capability_drop_pp: Literal[3.0] = 3.0
     s2_broken_penalty: Literal[2.5] = 2.5
     s3_judge_subset_per_affected_capability: Literal[4] = 4
     s3_judge_subset_max: Literal[24] = 24
+
+
+class S1Settings(FrozenStrictModel):
+    round_id: str = Field(default="r1", pattern=r"^r[1-9][0-9]*$")
+    feedback_mode: Literal["fresh-per-round"] = "fresh-per-round"
+    feedback_total_count: int = Field(default=48, ge=1, le=60)
+    feedback_canary_count: int = Field(default=6, ge=1, le=60)
+    feedback_selection_policy: Literal["discovery-stratified-v1"] = (
+        "discovery-stratified-v1"
+    )
+    feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
+        "balanced-six-capability"
+    )
+    target_capabilities: tuple[str, ...] = ()
+    proposal_mode: Literal["sparse-parent-patch-v1"] = "sparse-parent-patch-v1"
+    max_patched_capabilities: int = Field(default=3, ge=1, le=3)
+    protected_capabilities: tuple[str, ...] = ("knowledge.visual_encyclopedia",)
+    creator_directives: tuple[str, ...] = ()
+    required_patch_phrases: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_protected_capabilities(self) -> Self:
+        protected = self.protected_capabilities
+        if protected != tuple(sorted(set(protected))):
+            raise ValueError("S1 protected capabilities must be sorted and unique")
+        if not set(protected) <= set(CAPABILITIES):
+            raise ValueError("S1 protected capabilities contain an unknown capability")
+        if "knowledge.visual_encyclopedia" not in protected:
+            raise ValueError("Core Fast S1 must protect Encyclopedia after R0")
+        if len(protected) == len(CAPABILITIES):
+            raise ValueError("S1 must leave at least one capability patchable")
+        if self.creator_directives != tuple(
+            dict.fromkeys(self.creator_directives)
+        ) or any(not item or item != item.strip() for item in self.creator_directives):
+            raise ValueError("S1 Creator directives must be trimmed and unique")
+        for capability, phrases in self.required_patch_phrases.items():
+            if capability not in CAPABILITIES or capability in protected:
+                raise ValueError(
+                    "required S1 patch phrases must target an unprotected capability"
+                )
+            if phrases != tuple(sorted(set(phrases))) or any(
+                not phrase or phrase != phrase.strip() for phrase in phrases
+            ):
+                raise ValueError(
+                    "required S1 patch phrases must be trimmed, sorted, and unique"
+                )
+        if self.feedback_canary_count > self.feedback_total_count:
+            raise ValueError("Feedback canary count cannot exceed total count")
+        targets = self.target_capabilities
+        if not targets:
+            targets = tuple(sorted(set(CAPABILITIES) - set(protected)))
+            object.__setattr__(self, "target_capabilities", targets)
+        if targets != tuple(sorted(set(targets))) or not targets:
+            raise ValueError(
+                "S1 target capabilities must be sorted, unique, and nonempty"
+            )
+        if not set(targets) <= set(CAPABILITIES) - set(protected):
+            raise ValueError("S1 target capabilities must be patchable capabilities")
+        if self.feedback_allocation == "target-focused" and (
+            len(targets) != 1 or self.max_patched_capabilities != 1
+        ):
+            raise ValueError(
+                "target-focused Feedback requires one target and one patched capability"
+            )
+        if self.max_patched_capabilities > len(targets):
+            raise ValueError(
+                "S1 cannot patch more capabilities than its frozen targets"
+            )
+        return self
 
 
 class Concurrency(FrozenStrictModel):
@@ -144,25 +228,43 @@ class Concurrency(FrozenStrictModel):
         default=config.ASSISTANT_REQUESTS_PER_SECOND,
         gt=0,
     )
-    feedback: Literal[2] = 2
+    # This is a provider-capacity ceiling, not the number of calls that every
+    # stage must create.  S1 currently has a fixed 12-row Feedback batch, so
+    # its effective concurrency is min(feedback, 12).
+    feedback: int = Field(default=config.FEEDBACK_JUDGE_VALIDATED_CONCURRENCY, ge=1)
+    feedback_requests_per_second: float = Field(
+        default=config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND,
+        gt=0,
+    )
     final_judge: Literal[4] = 4
 
     @model_validator(mode="after")
-    def validate_measured_assistant_capacity(self) -> Self:
-        expected = (
+    def validate_measured_capacity_profiles(self) -> Self:
+        assistant_expected = (
             config.ASSISTANT_VALIDATED_CONCURRENCY,
             config.ASSISTANT_REQUESTS_PER_SECOND,
         )
-        if (self.assistant, self.assistant_requests_per_second) != expected:
+        if (self.assistant, self.assistant_requests_per_second) != assistant_expected:
             raise ValueError(
                 "Core Fast Assistant capacity must match the measured profile "
-                f"{expected[0]} inflight/{expected[1]:g} requests per second"
+                f"{assistant_expected[0]} inflight/"
+                f"{assistant_expected[1]:g} requests per second"
+            )
+        feedback_expected = (
+            config.FEEDBACK_JUDGE_VALIDATED_CONCURRENCY,
+            config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND,
+        )
+        if (self.feedback, self.feedback_requests_per_second) != feedback_expected:
+            raise ValueError(
+                "Core Fast Qwen3.8 Feedback capacity must match the measured "
+                f"profile {feedback_expected[0]} inflight/"
+                f"{feedback_expected[1]:g} requests per second"
             )
         return self
 
 
 class Limits(FrozenStrictModel):
-    max_feedback_calls: Literal[12] = 12
+    max_feedback_calls: int = Field(default=48, ge=1, le=60)
     max_creator_calls: Literal[3] = 3
     external_cost_cny: Literal[250.0] = 250.0
     final_judge_format_retries: Literal[1] = 1
@@ -197,17 +299,24 @@ class CoreFastSpec(FrozenStrictModel):
     kind: Literal["core-experiment-fast-v1"] = "core-experiment-fast-v1"
     experiment_id: str
     paths: CorePaths
+    asset_catalog_sha256: Sha256 | None = None
+    static_bank_file_sha256: Sha256 | None = None
+    opt_static_results_sha256: Sha256
+    opt_fold_mapping_sha256: Sha256
+    val_gate_assignments_sha256: Sha256
+    s1_authoring_input_file_sha256: Sha256
     split_counts: dict[str, int]
     capabilities: tuple[str, ...]
     configs: tuple[str, ...]
     fixed_samples: FixedSamples
     models: dict[CallRole, ModelRole]
     gates: GateRules = GateRules()
+    s1_settings: S1Settings = S1Settings()
     concurrency: Concurrency = Concurrency()
     limits: Limits = Limits()
     runtime: RuntimeSettings = RuntimeSettings()
-    bootstrap_replicates: int = Field(default=10_000, ge=100)
-    bootstrap_seed: int = 20260811
+    bootstrap_replicates: Literal[10_000] = 10_000
+    bootstrap_seed: Literal[2026080601] = 2026080601
     disclosures: tuple[str, ...]
 
     @model_validator(mode="after")
@@ -226,6 +335,10 @@ class CoreFastSpec(FrozenStrictModel):
             "route_only",
         }:
             raise ValueError("all five model/execution roles must be configured")
+        if self.limits.max_feedback_calls != self.s1_settings.feedback_total_count:
+            raise ValueError(
+                "Feedback call limit must equal the pre-frozen S1 Feedback count"
+            )
         feedback = self.models["feedback"]
         if (
             feedback.requested_model.casefold() != "qwen3.8-max"
@@ -304,7 +417,10 @@ class AssistantObservation(FrozenStrictModel):
     tool_trace_key: str
     tool_trace: tuple[ToolTraceItem, ...] = ()
     replay_context: dict[str, object] = Field(default_factory=dict)
+    answer_mode: Literal["supported", "fallback", "unresolved"]
+    oracle_available: bool = True
     gcs_components: dict[str, bool]
+    gcs_reason_codes: tuple[str, ...] = ()
     gcs_score: float = Field(ge=0.0, le=1.0)
     hard_error: bool
     card_violation: bool = False
@@ -314,7 +430,7 @@ class AssistantObservation(FrozenStrictModel):
     repair: str | None = None
     style_submode: str | None = None
 
-    @field_validator("tool_trace", mode="before")
+    @field_validator("tool_trace", "gcs_reason_codes", mode="before")
     @classmethod
     def coerce_tool_trace(cls, value: object) -> object:
         return tuple(value) if isinstance(value, list) else value
@@ -336,6 +452,8 @@ class AssistantObservation(FrozenStrictModel):
         calculated = float(all(self.gcs_components.values()))
         if abs(calculated - self.gcs_score) > 1e-9:
             raise ValueError("gcs_score must equal the five-component conjunction")
+        if self.gcs_reason_codes != tuple(sorted(set(self.gcs_reason_codes))):
+            raise ValueError("GCS reason codes must be sorted and unique")
         return self
 
 

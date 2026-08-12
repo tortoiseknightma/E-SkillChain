@@ -26,6 +26,7 @@ from pydantic import (
     model_validator,
 )
 
+from skillchain import static_authoring as static_authoring_module
 from skillchain.evaluation.portfolio_treatments import (
     compile_portfolio_s1_creator_bank,
 )
@@ -67,6 +68,21 @@ _MUTABLE_BODY_SECTIONS = frozenset(
         "## Authored fallback instruction",
     }
 )
+S1_AUTHOR_CONTENT_FORBIDDEN_WHOLE_WORDS = (
+    "bank",
+    "corpus",
+    "eval",
+    "evaluation",
+    "gold",
+    "judge",
+    "judges",
+    "label",
+    "labels",
+    "rubric",
+    "rubrics",
+    "trajectories",
+    "trajectory",
+)
 
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
@@ -77,6 +93,33 @@ class S1SparsePatchError(ValueError):
 
 class _StrictFrozenModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+
+def sparse_author_content_lexical_guard() -> dict[str, object]:
+    """Project the exact downstream authored-prose scanner for the Creator."""
+
+    trusted = static_authoring_module._FORBIDDEN_STRONG  # noqa: SLF001
+    if any(
+        trusted.search(f"safe {word} prose") is None
+        for word in S1_AUTHOR_CONTENT_FORBIDDEN_WHOLE_WORDS
+    ):
+        raise S1SparsePatchError("trusted authored-prose scanner drifted")
+    return {
+        "scope": [
+            "skills[].patch.objective",
+            "skills[].patch.steps[].instruction",
+            "skills[].patch.fallback_instruction",
+        ],
+        "matching": "python_re_ignorecase_exact_pattern",
+        "forbidden_whole_words": list(S1_AUTHOR_CONTENT_FORBIDDEN_WHOLE_WORDS),
+        "trusted_validator_regex": trusted.pattern,
+        "trusted_validator_regex_sha256": sha256_bytes(trusted.pattern.encode("utf-8")),
+        "forbidden_path_reference_rule": (
+            "response/gate/test/result whole word and path marker must occur "
+            "in the same path token or as adjacent path components"
+        ),
+        "required_detector_prediction_phrase": "predicted class name",
+    }
 
 
 class SparseSkillContentPatchV1(_StrictFrozenModel):
@@ -96,9 +139,7 @@ class SparseSkillContentPatchV1(_StrictFrozenModel):
     def _validate_content(self) -> Self:
         if not self.objective.strip() or not self.fallback_instruction.strip():
             raise ValueError("sparse patch prose must be non-blank")
-        if self.citation_source_ids != tuple(
-            sorted(set(self.citation_source_ids))
-        ):
+        if self.citation_source_ids != tuple(sorted(set(self.citation_source_ids))):
             raise ValueError("sparse patch citation ids must be sorted and unique")
         authored = canonical_json_bytes(self.model_dump(mode="json")).decode("utf-8")
         token = _CONTROL_TOKEN_RE.search(authored)
@@ -326,7 +367,9 @@ class ScreenedSparseS1Candidate:
 
 
 def sparse_patch_output_json_schema(
-    *, parent_skill_sha256_by_capability: Mapping[str, str]
+    *,
+    parent_skill_sha256_by_capability: Mapping[str, str],
+    frozen_objective_by_capability: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Return the strict structured-output envelope for one sparse proposal."""
 
@@ -338,6 +381,15 @@ def sparse_patch_output_json_schema(
         for item in capability_ids
     ):
         raise S1SparsePatchError("parent Skill SHA-256 mapping is invalid")
+    if frozen_objective_by_capability is not None and (
+        set(frozen_objective_by_capability) != set(capability_ids)
+        or any(
+            not isinstance(frozen_objective_by_capability[item], str)
+            or not frozen_objective_by_capability[item].strip()
+            for item in capability_ids
+        )
+    ):
+        raise S1SparsePatchError("frozen sparse objectives are invalid")
     tool_step = {
         "type": "object",
         "additionalProperties": False,
@@ -391,52 +443,73 @@ def sparse_patch_output_json_schema(
                         branch
                         for capability_id in capability_ids
                         for branch in (
-                        {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "required": [
-                                "capability_id",
-                                "action",
-                                "parent_skill_sha256",
-                            ],
-                            "properties": {
-                                "capability_id": {
-                                    "type": "string",
-                                    "enum": [capability_id],
-                                },
-                                "action": {"type": "string", "enum": ["inherit"]},
-                                "parent_skill_sha256": {
-                                    "type": "string",
-                                    "enum": [
-                                        parent_skill_sha256_by_capability[capability_id]
-                                    ],
+                            {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "capability_id",
+                                    "action",
+                                    "parent_skill_sha256",
+                                ],
+                                "properties": {
+                                    "capability_id": {
+                                        "type": "string",
+                                        "enum": [capability_id],
+                                    },
+                                    "action": {"type": "string", "enum": ["inherit"]},
+                                    "parent_skill_sha256": {
+                                        "type": "string",
+                                        "enum": [
+                                            parent_skill_sha256_by_capability[
+                                                capability_id
+                                            ]
+                                        ],
+                                    },
                                 },
                             },
-                        },
-                        {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "required": [
-                                "capability_id",
-                                "action",
-                                "parent_skill_sha256",
-                                "patch",
-                            ],
-                            "properties": {
-                                "capability_id": {
-                                    "type": "string",
-                                    "enum": [capability_id],
+                            {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "capability_id",
+                                    "action",
+                                    "parent_skill_sha256",
+                                    "patch",
+                                ],
+                                "properties": {
+                                    "capability_id": {
+                                        "type": "string",
+                                        "enum": [capability_id],
+                                    },
+                                    "action": {"type": "string", "enum": ["patch"]},
+                                    "parent_skill_sha256": {
+                                        "type": "string",
+                                        "enum": [
+                                            parent_skill_sha256_by_capability[
+                                                capability_id
+                                            ]
+                                        ],
+                                    },
+                                    "patch": (
+                                        patch
+                                        if frozen_objective_by_capability is None
+                                        else {
+                                            **patch,
+                                            "properties": {
+                                                **patch["properties"],
+                                                "objective": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        frozen_objective_by_capability[
+                                                            capability_id
+                                                        ]
+                                                    ],
+                                                },
+                                            },
+                                        }
+                                    ),
                                 },
-                                "action": {"type": "string", "enum": ["patch"]},
-                                "parent_skill_sha256": {
-                                    "type": "string",
-                                    "enum": [
-                                        parent_skill_sha256_by_capability[capability_id]
-                                    ],
-                                },
-                                "patch": patch,
                             },
-                        },
                         )
                     ]
                 },
@@ -444,6 +517,15 @@ def sparse_patch_output_json_schema(
         },
     }
     return schema
+
+
+def decode_sparse_parent_content(
+    parent_bank: StaticBankArtifact,
+    authoring_input: AuthoringInput,
+) -> tuple[CapabilityAuthoringContent, ...]:
+    """Expose the byte-proven parent authoring projection to sparse callers."""
+
+    return _decode_parent_authoring_content(parent_bank, authoring_input)
 
 
 def bind_sparse_patch_draft(
@@ -784,8 +866,7 @@ def compose_screened_sparse_bank(
         creator_bytes = canonical_json_bytes(creator.model_dump(mode="json"))
         if (
             creator_binding.parent_skill_sha256 != parent.skill_sha256
-            or creator_binding.parent_skill_bytes_sha256
-            != sha256_bytes(parent_bytes)
+            or creator_binding.parent_skill_bytes_sha256 != sha256_bytes(parent_bytes)
             or creator_binding.candidate_skill_sha256 != creator.skill_sha256
             or creator_binding.candidate_skill_bytes_sha256
             != sha256_bytes(creator_bytes)
@@ -923,8 +1004,7 @@ def _validate_parent_lineage(
         or parent_bank.compiler != authoring_input.compiler
         or parent_bank.tool_registry_sha256
         != authoring_input.tool_registry.identity_sha256
-        or parent_bank.tool_registry_runtime_sha256
-        != tool_registry_runtime_sha256
+        or parent_bank.tool_registry_runtime_sha256 != tool_registry_runtime_sha256
         or tuple(item.capability_id for item in sparse_draft.skills)
         != tuple(sorted(_skill_by_capability(parent_bank)))
     ):
@@ -1021,7 +1101,9 @@ def _decode_parent_authoring_content(
         ]
         fallback_lines = [
             line
-            for line in sections.get("## Authored fallback instruction", "").splitlines()
+            for line in sections.get(
+                "## Authored fallback instruction", ""
+            ).splitlines()
             if line
         ]
         if objective_lines != [skill.description] or len(fallback_lines) != 1:
@@ -1069,7 +1151,9 @@ def _decode_parent_authoring_content(
             tool_registry_runtime_sha256=parent_bank.tool_registry_runtime_sha256,
         )
     except Exception as error:
-        raise S1SparsePatchError("parent Skill decoder failed trusted compilation") from error
+        raise S1SparsePatchError(
+            "parent Skill decoder failed trusted compilation"
+        ) from error
     rebuilt_by_capability = _skill_by_capability(rebuilt)
     for capability_id, parent in _skill_by_capability(parent_bank).items():
         if canonical_json_bytes(parent.model_dump(mode="json")) != canonical_json_bytes(
@@ -1131,7 +1215,9 @@ __all__ = [
     "bind_sparse_patch_draft",
     "compile_sparse_s1_candidate",
     "compose_screened_sparse_bank",
+    "decode_sparse_parent_content",
     "load_sparse_compilation_receipt",
     "load_sparse_patch_draft",
+    "sparse_author_content_lexical_guard",
     "sparse_patch_output_json_schema",
 ]

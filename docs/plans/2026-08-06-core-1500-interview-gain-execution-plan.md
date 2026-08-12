@@ -4,6 +4,8 @@
 轨道：Portfolio Track
 状态：Gate 0 与 Static opt800 GCS v2（800/800）已完成；Qwen Feedback→整 Bank S1 的首轮真实闭环已于 2026-08-10 完成。Replay200 因 Encyclopedia `−5pp` 违反单能力 `≥−3pp` 门而失败，候选已 byte-exact 回滚至 Static；未进入 body_gate75、val 或 test。
 
+> 2026-08-12 起的前向执行口径见本文件“2026-08-12 forward-only disposition”。此前冻结的计划、配置、receipt 和 R0 结果均不回写。
+
 ## 0. 唯一执行口径
 
 本文件是 Core 1,500 后续开发、候选选择、validation gate、test 解封和结果交付的唯一执行计划。
@@ -284,6 +286,149 @@ Replay 通过后，在既有 assignment SHA `2f099f…3f11` 的 `body_gate=75` �
 - Replay200 完成 200/200 Assistant checkpoint、667 次已结算 DashScope 模型调用、0 forfeit，费用 CNY `0.282965400000`；本轮 Feedback+replay 的 DashScope 合计 CNY `1.199193400000`。Static→S1 的 GCS macro 为 `21.7729% → 25.2749%`（`+3.5021pp`），micro 为 `26% → 31%`（`+5pp`），hard-error delta `0pp`，coverage/integrity 完整；但 Encyclopedia 为 `7.5% → 2.5%`（`−5pp`），低于预冻结的 `−3pp` 下限，故 replay report 为 `failed`（文件/自哈希 `f3dca1509b4af8615687349d84b84ae87215fad3646c4a20188afb3642a8afa7 / d73029a19947576385a9721d4df134a21f0b59c83ff190706917e37f46f506e7`）。
 - 单一 disposition 为 `rolled_back`，basis=`replay200`（文件/自哈希 `c194b5413692678d490f04d0ed9033be67f8430f927dcaa2f168a2ac9843a419 / 8a39d58bf8ece75cb0f587e7637393e418b9a61293bfaaebb7cb6b749b04af9d`）。`output-bank.json` 与 parent Static Bank 逐字节相同，文件 SHA 均为 `64942d068519246eac9d9e6f49ac1d0734196d1aead6aba294aeb00d635cfa6d`；候选仅保留作诊断。因为 replay 未通过，body/val 目录未创建，Gemini Judge、Pairwise 与 Final 调用均为 0。
 - 本轮关闭了三个 P0：Creator v4 暴露了 authored-prose scanner 的词法契约缺口，v5 前向绑定精确 forbidden whole-word guard；two-Bank runtime 仅在派生边界前向绑定当前预算/价格合同，同时把 immutable parent 限制为 evidence-only；离线分析仅允许精确 runtime-v5/control 身份进入 immutable-evidence 分支，不能把历史 source lock 当成新的执行能力。历史失败 artifact 均未重写。
+
+#### 2026-08-12 forward-only disposition：Core Fast R1
+
+本节只约束 2026-08-12 之后的新 Portfolio 运行，不重命名、重算或覆盖 2026-08-10 的历史闭环。为便于叙述，已完成并回滚的 whole-bank 首轮记为 `R0`；下一次新身份的 sparse S1 候选记为 `R1`。仓内 Core r3 的默认实验入口前向切换为 `scripts/run_core_experiment.py` 与 `specs/core-experiment-fast-v1.json`，历史 Formal Core 入口继续只读兼容，不再作为 Portfolio Quickstart 前置。
+
+**R0 的样本级诊断。** Encyclopedia `3/40 → 1/40` 的两条 Static-success 回退已经定位：`r2-core-0695` 因候选 fallback 漏掉精确 `not enough evidence` marker 而得到 `fallback_contract_failed`，并伴随跳过 `object_detect` 和无来源事实陈述；`r2-core-0796` 的工具序列与 fallback marker 均保留，但输出前多出 `<|begin|>`，得到 `output_section_invalid`。前者与候选改写后的条件式 object-detect/fallback prose 相符，后者是独立的 Assistant 格式 lapse；现有证据不能把两者都归因于同一个 Skill 根因。旧 Feedback 中另有要求在无检索证据时补充栖息地、危险近似种或 studies 的建议，与 cited-evidence 合同冲突。这些事实支持 sparse 隔离与 policy filter，不支持降低 `−3pp` 门或事后拼接 R0 的赢家。
+
+**R1 的唯一允许变化。** R1 保持模型、GCS、样本标签、fold、Gate 和 Static parent 不变，只把 S1 Creator 从 whole-bank rewrite 改为 parent-bound `inherit|patch`：
+
+- 六个 capability 必须逐项绑定 parent Skill SHA；默认 `inherit`，继承项 byte-exact，不重新渲染；
+- 只允许 `[policy_compatible]` Feedback suggestion 触发 patch，`requires_new_evidence` 与 `rejected` 不进入 Creator 的可执行建议；
+- 全部 Description/objective 冻结，最多 patch 3 个 capability；未经有效 Feedback 支持的 capability 必须 inherit；
+- Encyclopedia 在 R1 中强制 inherit，既不改 Body 也不允许因其他能力的改进发生跨 Skill 文本漂移；
+- sparse draft、Feedback bundle、AuthoringInput、parent/candidate Bank 与编译 receipt 全部 SHA 绑定；字段越界、工具序列漂移、非法来源或 resume artifact 漂移均 fail closed。
+
+**Development 与接受必须分开。** 固定 `discovery600` 只用于 canary12 Feedback 和候选生成；已观察的 `replay200` 只作 development 筛查，条件仍为 macro delta `≥0pp`、hard-error delta `≤+1pp`、每 capability delta `≥−3pp`。只有通过 replay 的冻结候选才能访问一次 `body_gate75`；接受条件为 macro delta `≥+2pp`、leakage-component bootstrap 95% CI 下界 `≥0pp`、hard-error delta `≤+1pp`、每 capability delta `≥−3pp`。body gate 的结果不得反哺 Creator、样本或阈值；通过则接受，失败则 byte-exact 回滚并停止该候选线。
+
+用户批准在历史 R0 之后最多再做五轮 S1 优化，而不是把它们当作默认调用额度：最多允许 R1–R5 五个有记录的 development 候选。第一位通过 replay 的候选立即冻结并进入唯一一次 body gate，之后无论接受或回滚都停止 S1；没有通过 replay 才能在新 round identity 下继续下一轮。本段仅对前向 S1 development 取代本文件开头的历史“三轮”总述；它不扩张 S2/S3，也不授权换样、provider 重试挑优、重复访问接受门或访问 test。下方 R1–R3 是同日较早的旧 Assistant lineage；随后用户明确要求切换 Qwen3.7、重跑 Static，并完整使用 R1–R5。当前终态以再下一节为准。
+
+**新运行的容量绑定。** Assistant `qwen3.7-flash-2026-07-15` 使用 worker cap 60、`20 requests/s`，并在每次真实 route/action/body HTTP 调用前配速，而不是按 query 配速。60-task 极限探针曾以 `60 requests/s` 达到实际峰值并发 60、60/60 成功；生产速率降为 20 requests/s，为账号级 5M TPM 限额保留至少约 20% 的保守余量。Qwen3.8 Feedback 的验证配置为 worker cap 60、`8 requests/s`；R1 固定 batch 仅 12 条，所以有效 worker 数是 `min(60,12)=12`。两组数值只写入新 Core Fast execution overlay；后文 8.4 及历史 freeze profile、authorization、receipt 中的旧并发/速率仍按原语义保留，不回写。容量证据分别为 `docs/qwen37-flash-assistant-concurrency-benchmark-20260812.md` 与 `docs/qwen38-feedback-concurrency-benchmark-20260812.md`。
+
+#### 2026-08-12 R1–R3 execution ledger / final disposition
+
+本节是前向追加的实际执行记录，不改写 R0。`R1-v1/v2` 是同一 R1 的执行修订，
+`R2-v1/v2/v3` 是同一 R2 的执行修订；版本号不能计作新增算法 round。R2、R3 均逐字节
+复用 source manifest SHA
+`115ff659b732bf3cb2e12e68585650f5c5ac4af3e2f8bef8be6dbcda3c533768`
+绑定的 Feedback 结果，本轮新增 Feedback provider call 为 0。
+
+| Round | 唯一变化 | 新 Feedback | 最深 gate | Candidate / selected Bank | Disposition | 新增可计量费用 |
+|---|---|---:|---|---|---|---:|
+| R1 | policy label 投影 + parent-bound sparse schema | 12（11 success） | Creator boundary | 无合法 candidate / Static | 未进 smoke、replay、body | CNY `0.05534820` |
+| R2 | Exact / Multi / Document sparse patch；其他能力 inherit | 0 | replay200 capability screen | raw `ed595889dc1f…` / Static `da5cfe1f93f…` | 三项全部回滚；body 0-call | Assistant CNY `0.37477635` |
+| R3 | Exact-only；五项 inherit；强制 `no supported match` | 0 | replay200 capability screen | raw `c32223e29eec…` / Static `da5cfe1f93f…` | Exact 回滚；body 0-call；S1 停止 | Assistant CNY `0.38035905` |
+
+R2 的 Exact raw success 为 `24→27`，但出现 2 条 Static-success→candidate-failure 和新增
+fallback/tool reason，因此不能把净 `+3` 当作通过结论；Multi 为 `7→2`，Document 为
+`0→0` 且新增 tool reason，`retained_capability_ids=[]`。R2 的 screened Bank 为
+`968e05985f02…`，最终 selected 仍是 Static。
+
+R3 的 Exact 配对分解为 `27 个 0→0 / 1 个 0→1 / 20 个 1→0 / 4 个 1→1`，success
+`24→5`。20 条回退中，18 条仍正确路由 Exact、使用与对照相同的 image-search
+arguments/result 且各返回 1 个 eligible candidate，却输出 `no supported match` 与
+`product_cards:none`，统一触发 `card_contract_failed`；另 2 条是 Description 冻结下的
+Exact→Multi 路由采样噪声。已验证事实支持“R3 Body/response-contract 交互导致非空命中
+也过度 fallback”，不支持归因给工具、数据或容量。R3 smoke24 的 oracle coverage 完整；
+replay200 的 oracle coverage 也完整。224 个 Assistant query 产生 782 个 Qwen model call，
+request ID 全部唯一，无 429、timeout 或 provider/service error。
+
+Fast R1–R3 新增 DashScope 费用合计 CNY `0.81048360`。5 次 Codex Creator session 已全部
+用于 R1/R2 的执行修订与最终 R3；其 cost basis 不可得，不虚构人民币费用。R3 的
+`decisions/s1.json` 冻结 `accepted=false`、`alias_of=llm_static`、selected Bank
+`da5cfe1f93f2cb57b389c97738034cf10cab931dcc30e145acc6d8873ff1348a`。`body_gate75`、
+Final Judge、val 和 `test300` 从未访问；body 结果没有反哺 Creator。R4/R5 未执行，S1
+在 R3 后无条件停止。S2 必须以上述 Static/S1 alias 为 parent，仅修改 Description，不能
+带入任何被拒绝的 R2/R3 Body。
+
+#### 2026-08-12 Qwen3.7 fresh Static + R1–R5 最终终态
+
+本节取代上一节作为当前 Core Fast 的唯一前向执行结论，但不改写旧 Qwen-VL lineage。
+Assistant 与 route-only 均切换为 `qwen3.7-flash-2026-07-15`，主调用共享 provider-call
+级 `60 workers / 20 requests/s`；Qwen3.8 Feedback 保持 `60 / 8 requests/s`。Static
+opt800 以新 execution identity 真实重跑，成功产物为 800/800 outer success、2,489 次
+Assistant model call、GCS `167/800`、hard error `118/800`，文件 SHA-256 为
+`ced36fb3050612be9a45a9fcb0d0d835b0f7a40ef422009066b6680df7368fc0`。所有 inner
+requested/returned model 均为新 Qwen3.7，request ID 非空且全局唯一；Static 费用为
+CNY `1.2222646`。第一次 Static identity 因合法的重复 multi tool call 被 adapter 错误抛成
+provider_error 而废弃；修复后重复调用由 GCS fail closed 计分，不再伪装为 provider 故障。
+
+固定 canary/body 样本按新 Static observation 在 discovery600 中确定性重选。R1 新调用
+Qwen3.8 Feedback 12/12 success，source manifest SHA-256 为
+`4e5d7013665d5ba70ce7c92fbe71ba5c44a363477c1d19d2337552382fb88043`；R2–R5
+逐字节复用该 bundle，各轮新增 Feedback call 为 0。每轮只允许一个 capability patch，其他
+五项 byte-exact inherit；Description、Static parent、fold、GCS 和门槛均不变。
+
+| Round | 唯一目标 | Target replay success | Paired 回退 / 新 contract occurrence | 终态 | 新 Assistant 费用 |
+|---|---|---:|---:|---|---:|
+| R1 | Multi positive closure | `8→9` | `4 / 7` | patch 回滚 | CNY `0.3461880` |
+| R2 | Multi tool-first + DTO closure | `8→20` | `1 / 3` | patch 回滚 | CNY `0.3708244` |
+| R3 | Multi DTO template | 未运行 | Creator sparse proposal 被 authored-content guard 拒绝 | 无 candidate | CNY `0` Assistant |
+| R4 | Document literal line copy | `0→0` | `0 / 3` | patch 回滚 | CNY `0.3511126` |
+| R5 | Style evidence copy | `7→26` | `2 / 4` | patch 回滚 | CNY `0.3509304` |
+
+R2 是最强 Multi 信号：净增 12 条且 tool-contract failure 总数 `15→5`，但
+`r2-core-0783` 跳过 `multi_product_search` 并编造 item/card handle，构成 1 条明确
+Static-success→candidate-failure 和 3 个新 contract occurrence，所以零回归筛查必须拒绝。
+R5 是最强 Style 信号：净增 19 条，但一条空结果漏掉冻结 fallback marker，另一条跳过工具
+并编造候选，同时出现 4 个新 contract occurrence，也不能发布。R3 的 DTO 假设没有得到
+Assistant 实验：Creator 外层成功，但指令中的 `result` 与斜杠组合触发词法 guard；不得把它
+写成算法负结果或无授权重试。
+
+五个 `decisions/s1.json` 均为 `accepted=false`、`alias_of=llm_static`，selected Bank 均为
+Static `da5cfe1f93f2cb57b389c97738034cf10cab931dcc30e145acc6d8873ff1348a`。没有候选通过
+replay screen，所以 `body_gate75`、Final Judge、S2、val 和 test 均为 0-call/未访问。
+本授权的 5 次 Codex Creator session 已全部使用，S1 至此按负结果停止；不能启动 S2，不能
+追加第六轮，也不能放宽门槛或重跑挑样。
+
+本次可追踪的全部新 provider 记录（含废弃 Static v1、成功 Static v2、唯一 Feedback 和
+四轮 Assistant）合计 7,823 calls、`14,383,351 / 1,276,416` input/output tokens、CNY
+`3.9202578`。废弃 v1 的 provider_error 行发生在 adapter 后处理，可能已有不可恢复的实际
+provider 调用，因此该金额是可追踪下界；可用 v2 lineage 单独为 5,326 calls、CNY
+`2.6998944`。5 次 Creator 合计 `171,674 / 4,791` tokens，但人民币 cost basis 不可得，
+不得把 receipt 中的 0 解释为免费。证据根为
+`E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`。
+
+若未来另行授权新的诊断周期，首先应让 sparse validator 输出精确拒绝原因，并以词法安全
+表述真正测试 R3 的 DTO-copy 假设；不得读取 body/val/test 反向调参。若 prompt 仍偶发跳过
+工具，下一版应转向确定性 DTO 编译，而不是继续堆叠自然语言指令。
+
+#### 2026-08-12 授权后的 R6–R10 第二批终态
+
+用户在 R1–R5 停止后明确授权新的最多五轮。第二批继续绑定 Static v2 SHA
+`ced36fb3050612be9a45a9fcb0d0d835b0f7a40ef422009066b6680df7368fc0`、Static Bank
+`da5cfe1f93f2cb57b389c97738034cf10cab931dcc30e145acc6d8873ff1348a` 和同一份 Feedback
+manifest `4e5d7013665d5ba70ce7c92fbe71ba5c44a363477c1d19d2337552382fb88043`。R6–R10
+使用独立 root；任何被拒 candidate 都没有成为下一轮 parent。
+
+运行前只修复已验证的 guard P1：把旧的“整段文本任意路径 marker + 远处 result”组合判断
+收窄到局部 path token，并增加脱敏 stable rejection reason。真实实验路径泄露和强禁词仍拒绝。
+五轮假设在启动 R6 前冻结，未读取 body/val/test，也未根据中间结果改写后续题目。
+
+| Round | 唯一目标 | Target replay success | Paired 回退 / 新 occurrence | 终态 |
+|---|---|---:|---:|---|
+| R6 | Multi tool-first + exact public DTO copier | `8→18` | `2 / 4` | patch 回滚 |
+| R7 | Style tool-first + evidence/fallback serializer | `7→22` | `2 / 4` | patch 回滚 |
+| R8 | Recipe detect/lookup + source-only closure | `3→10` | `0 / 7` | patch 回滚 |
+| R9 | Exact image/text input latch | `17→17` | `2 / 2` | patch 回滚 |
+| R10 | Document literal OCR lines | `0→0` | `0 / 1` | patch 回滚 |
+
+五个 decision 均为 `accepted=false`、`alias_of=llm_static`、selected Static。R8 虽然没有任何
+Static-success 回退，但新增 7 个 contract occurrence，仍不满足预注册的 capability-local
+screen。所有轮次止于 replay200；`body_gate75`、S2、Final Judge、val/test 均 0-call。
+
+第二批 Assistant 为 1,120 outer / 3,588 inner Qwen3.7 calls，token 为
+`6,818,346 / 552,635`，新增可计费用 CNY `1.8057772`；0 provider/capacity error。五次
+Creator token 为 `167,532 / 5,584`，人民币 cost basis 不可得。Feedback 全部 byte-exact
+复用，新增 provider call 为 0。第二批额度至 R10 用尽，不追加 R11，不启动 S2。证据根为
+`E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。
+
+算法结论是：自然语言 sparse instruction 能稳定产生显著净增益信号，但仍无法把 tool-first、
+DTO/card/evidence closure 与 fallback 变成无偶发违约的确定性状态机。下一次若另行授权，应
+版本化确定性 compiler/runtime contract，并使用新的对称 parent/candidate lineage；不应继续
+追加 prompt 轮次或放宽 screen。
 
 ### Round 2：S2 Risk-aware Route Optimizer
 

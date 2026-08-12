@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -8,12 +9,23 @@ import pytest
 from skillchain.evaluation.core_fast.engine import CoreFastEngine, FastPathError
 from skillchain.evaluation.core_fast.fake_provider import FakeCoreFastAdapter
 from skillchain.evaluation.core_fast.models import (
-    AssistantObservation,
     CAPABILITIES,
     CONFIGS,
+    AssistantObservation,
     CallIntent,
     CoreFastSpec,
+    S1Settings,
 )
+from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
+from skillchain.evaluation.portfolio_gcs import (
+    GCSQueryScoreV2,
+    build_gcs_population_v2,
+)
+from skillchain.evaluation.portfolio_treatments import (
+    compile_verified_codex_llm_static_bank,
+    load_verified_codex_draft_rebind,
+)
+from skillchain.evolution import s1_gcs_gate as frozen_s1_gate
 from skillchain.schemas import Query
 from skillchain.static_authoring import StaticBankArtifact
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
@@ -29,55 +41,25 @@ _CAPABILITY_META = {
 }
 
 
-def _digest(payload: dict[str, object], field: str) -> str:
-    unsigned = dict(payload)
-    unsigned.pop(field, None)
-    return sha256_bytes(canonical_json_bytes(unsigned))
-
-
+@lru_cache(maxsize=1)
 def _bank() -> StaticBankArtifact:
-    skills = []
-    for capability in CAPABILITIES:
-        slug = capability.replace(".", "-").replace("_", "-")
-        raw: dict[str, object] = {
-            "slug": slug,
-            "version": 1,
-            "description": f"Route {capability}",
-            "body": f"# {capability}\n\nFollow the contract.\n",
-            "static_refs": [],
-            "operators": ["encyclopedia_lookup"],
-            "capability_id": capability,
-            "parent_skill_sha256": None,
-            "skill_sha256": "0" * 64,
-        }
-        raw["skill_sha256"] = _digest(raw, "skill_sha256")
-        skills.append(raw)
-    skills.sort(key=lambda item: str(item["slug"]))
-    payload: dict[str, object] = {
-        "schema_version": 2,
-        "baseline_kind": "llm_static",
-        "construction_identity_sha256": "c" * 64,
-        "construction_identity_policy": "reviewed-draft-v1",
-        "runtime_binding_policy": "registry-runtime-v1",
-        "compiler": {
-            "compiler_id": "skillchain.static-authoring",
-            "compiler_version": "3.0.0",
-        },
-        "tool_registry_sha256": "a" * 64,
-        "tool_registry_runtime_sha256": "b" * 64,
-        "skills": skills,
-        "capability_map": [
-            {
-                "capability_id": capability,
-                "skill_slug": capability.replace(".", "-").replace("_", "-"),
-            }
-            for capability in CAPABILITIES
-        ],
-        "bank_sha256": "0" * 64,
-    }
-    payload["bank_sha256"] = _digest(payload, "bank_sha256")
-    return StaticBankArtifact.model_validate_json(
-        canonical_json_bytes(payload), strict=True
+    codex_input = Path("specs/authoring/authoring-packet-codex-high-v5.json")
+    semantic_input = Path("specs/authoring/authoring-packet-primary-v5-candidate.json")
+    draft = Path(
+        "runs/formal-authoring/llm-static-codex-primary-20260724-high-v5/"
+        "pre-review-draft.json"
+    )
+    rebind = load_verified_codex_draft_rebind(
+        codex_input_path=codex_input,
+        expected_codex_input_file_sha256=sha256_bytes(codex_input.read_bytes()),
+        semantic_input_path=semantic_input,
+        expected_semantic_input_file_sha256=sha256_bytes(semantic_input.read_bytes()),
+        draft_path=draft,
+        expected_draft_file_sha256=sha256_bytes(draft.read_bytes()),
+    )
+    return compile_verified_codex_llm_static_bank(
+        rebind,
+        tool_registry_runtime_sha256="b" * 64,
     )
 
 
@@ -132,13 +114,18 @@ def _queries() -> list[Query]:
     return rows
 
 
-def _observation(query: Query) -> dict[str, object]:
+def _observation(
+    query: Query,
+    *,
+    success: bool = False,
+    assistant_model: str = "fake-model",
+) -> dict[str, object]:
     components = {
         "route_acceptable": True,
         "no_hard_error": True,
         "tool_contract_pass": True,
-        "evidence_grounded": False,
-        "output_contract_pass": False,
+        "evidence_grounded": success,
+        "output_contract_pass": success,
     }
     return AssistantObservation(
         query_id=query.query_id,
@@ -146,10 +133,29 @@ def _observation(query: Query) -> dict[str, object]:
         selected_capability=query.canonical_capability,
         route_trace_key=f"route:{query.canonical_capability}",
         tool_trace_key=f"tool:{query.query_id}",
+        replay_context={
+            "response": {"backbone_model": assistant_model},
+            "receipt": {
+                "model_calls": [
+                    {
+                        "requested_model": assistant_model,
+                        "response_model": assistant_model,
+                        "provider_request_id": f"fixture-{query.query_id}",
+                    }
+                ]
+            },
+            "assistant_result": {
+                "bank_sha256": _bank().bank_sha256,
+                "backbone_model": assistant_model,
+            },
+        },
+        answer_mode="supported" if success else "unresolved",
+        oracle_available=True,
         gcs_components=components,
-        gcs_score=0.0,
+        gcs_score=float(success),
+        gcs_reason_codes=(),
         hard_error=False,
-        evidence_violation=True,
+        evidence_violation=not success,
     ).model_dump(mode="json")
 
 
@@ -167,9 +173,15 @@ def fast_fixture(tmp_path: Path):
     bank_path.write_bytes(bank.canonical_bytes())
     opt = [query for query in queries if query.split == "opt_pool"]
     opt_path = tmp_path / "opt-static.jsonl"
-    opt_path.write_bytes(
-        b"".join(canonical_json_bytes(_observation(query)) for query in opt)
-    )
+    opt_position_by_capability: dict[str, int] = {}
+    opt_rows: list[bytes] = []
+    for query in opt:
+        capability = str(query.canonical_capability)
+        position = opt_position_by_capability.get(capability, 0)
+        opt_position_by_capability[capability] = position + 1
+        success = capability != "utility.document_reading" and position in {1, 6, 7}
+        opt_rows.append(canonical_json_bytes(_observation(query, success=success)))
+    opt_path.write_bytes(b"".join(opt_rows))
     route_path = tmp_path / "route.jsonl"
     route_path.write_bytes(
         b"".join(
@@ -183,6 +195,45 @@ def fast_fixture(tmp_path: Path):
             for query in opt
         )
     )
+    fold_path = tmp_path / "fold-mapping.jsonl"
+    fold_path.write_bytes(
+        b"".join(
+            canonical_json_bytes(
+                {
+                    "schema_version": 1,
+                    "query_id": query.query_id,
+                    "role": "replay" if index >= 600 else "discovery",
+                }
+            )
+            for index, query in enumerate(opt)
+        )
+    )
+    val_queries = [query for query in queries if query.split == "val"]
+    gate_path = tmp_path / "val-gates.json"
+    gate_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "audit": {
+                    "query_id_to_gate": {
+                        query.query_id: (
+                            "body_gate"
+                            if index < 75
+                            else "route_gate"
+                            if index < 150
+                            else "shadow_val"
+                        )
+                        for index, query in enumerate(val_queries)
+                    }
+                },
+            }
+        )
+    )
+    authoring_path = tmp_path / "authoring-input.json"
+    source_authoring = Path(
+        "specs/authoring/authoring-packet-primary-v5-candidate.json"
+    )
+    authoring_path.write_bytes(source_authoring.read_bytes())
     by_split_capability: dict[tuple[str, str], list[Query]] = {}
     for query in queries:
         by_split_capability.setdefault(
@@ -204,7 +255,11 @@ def fast_fixture(tmp_path: Path):
                 {
                     "query_id": opt_rows[1].query_id,
                     "capability": capability,
-                    "role": "anchor",
+                    "role": (
+                        "failure"
+                        if capability == "utility.document_reading"
+                        else "anchor"
+                    ),
                 },
             )
         )
@@ -216,13 +271,31 @@ def fast_fixture(tmp_path: Path):
             }
             for query in dev_rows[:4]
         )
+        body_rows = (
+            opt_rows[:8]
+            if capability == "utility.document_reading"
+            else [
+                opt_rows[0],
+                opt_rows[2],
+                opt_rows[3],
+                opt_rows[4],
+                opt_rows[5],
+                opt_rows[8],
+                opt_rows[6],
+                opt_rows[7],
+            ]
+        )
         body.extend(
             {
                 "query_id": query.query_id,
                 "capability": capability,
-                "role": "body_failure" if index < 6 else "body_anchor",
+                "role": (
+                    "body_failure"
+                    if index < 6 or capability == "utility.document_reading"
+                    else "body_anchor"
+                ),
             }
-            for index, query in enumerate(opt_rows[:8])
+            for index, query in enumerate(body_rows)
         )
     spec_payload = {
         "schema_version": 1,
@@ -233,7 +306,15 @@ def fast_fixture(tmp_path: Path):
             "static_bank": str(bank_path),
             "opt_static_results": str(opt_path),
             "opt_route_attribution": str(route_path),
+            "opt_fold_mapping": str(fold_path),
+            "val_gate_assignments": str(gate_path),
+            "s1_authoring_input": str(authoring_path),
         },
+        "opt_fold_mapping_sha256": sha256_bytes(fold_path.read_bytes()),
+        "static_bank_file_sha256": sha256_bytes(bank_path.read_bytes()),
+        "opt_static_results_sha256": sha256_bytes(opt_path.read_bytes()),
+        "val_gate_assignments_sha256": sha256_bytes(gate_path.read_bytes()),
+        "s1_authoring_input_file_sha256": sha256_bytes(authoring_path.read_bytes()),
         "split_counts": {
             "dev_mini": 200,
             "opt_pool": 800,
@@ -269,8 +350,21 @@ def fast_fixture(tmp_path: Path):
             "python_factory": "skillchain.evaluation.core_fast.fake_provider:create_adapter",
             "commands": {},
         },
-        "bootstrap_replicates": 100,
-        "bootstrap_seed": 7,
+        "s1_settings": {
+            "feedback_mode": "fresh-per-round",
+            "feedback_total_count": 12,
+            "feedback_canary_count": 6,
+            "feedback_selection_policy": "discovery-stratified-v1",
+            "feedback_allocation": "balanced-six-capability",
+        },
+        "limits": {
+            "max_feedback_calls": 12,
+            "max_creator_calls": 3,
+            "external_cost_cny": 250.0,
+            "final_judge_format_retries": 1,
+        },
+        "bootstrap_replicates": 10000,
+        "bootstrap_seed": 2026080601,
         "disclosures": ["test disclosure"],
     }
     spec = CoreFastSpec.model_validate_json(
@@ -287,12 +381,16 @@ def _engine(
     adapter: FakeCoreFastAdapter,
 ) -> CoreFastEngine:
     spec, spec_path, _queries = fast_fixture
-    return CoreFastEngine(
+    engine = CoreFastEngine(
         spec=spec,
         spec_path=spec_path,
         output_root=tmp_path / "output",
         adapter=adapter,
     )
+    # Focused engine tests verify orchestration, not wall-clock pacing. A
+    # dedicated fake-clock test covers the measured 8 req/s profile.
+    engine._feedback_start_pacer.wait = lambda: None
+    return engine
 
 
 def test_validate_fixes_core_geometry_and_samples(fast_fixture, tmp_path: Path) -> None:
@@ -307,18 +405,751 @@ def test_validate_fixes_core_geometry_and_samples(fast_fixture, tmp_path: Path) 
     }
 
 
-def test_partial_feedback_still_invokes_creator_exactly_once(
+def test_opt_static_rejects_rows_from_another_assistant_model(
     fast_fixture, tmp_path: Path
 ) -> None:
-    failed_id = fast_fixture[0].fixed_samples.canary12[0].query_id
+    spec, spec_path, _ = fast_fixture
+    opt_path = Path(spec.paths.opt_static_results)
+    rows = [
+        json.loads(line) for line in opt_path.read_text(encoding="utf-8").splitlines()
+    ]
+    replay_context = rows[0]["replay_context"]
+    replay_context["response"]["backbone_model"] = "qwen3-vl-flash-2026-01-22"
+    replay_context["assistant_result"]["backbone_model"] = "qwen3-vl-flash-2026-01-22"
+    opt_path.write_bytes(b"".join(canonical_json_bytes(row) for row in rows))
+    drifted = spec.model_copy(
+        update={"opt_static_results_sha256": sha256_bytes(opt_path.read_bytes())}
+    )
+    engine = CoreFastEngine(
+        spec=drifted,
+        spec_path=spec_path,
+        output_root=tmp_path / "wrong-assistant-model",
+        adapter=FakeCoreFastAdapter(),
+    )
+
+    with pytest.raises(
+        FastPathError, match="Static opt800 Assistant model differs from spec"
+    ):
+        engine.opt_static()
+
+
+def test_fresh_static_opt800_run_writes_model_bound_bootstrap(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, _ = fast_fixture
+    opt_path = tmp_path / "fresh-lineage" / "opt800-static-observations.jsonl"
+    bootstrap_spec = spec.model_copy(
+        update={
+            "experiment_id": "test-fast-static-bootstrap",
+            "paths": spec.paths.model_copy(
+                update={"opt_static_results": str(opt_path)}
+            ),
+            # The producer path deliberately does not trust this placeholder;
+            # its bootstrap receipt freezes the hash after the create-only run.
+            "opt_static_results_sha256": "0" * 64,
+        }
+    )
+    adapter = FakeCoreFastAdapter()
+    engine = CoreFastEngine(
+        spec=bootstrap_spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "fresh-static-output",
+        adapter=adapter,
+    )
+
+    engine.initialize_static_opt800()
+    bootstrap = engine.run_static_opt800()
+
+    assert adapter.calls["assistant"] == 800
+    assert bootstrap["row_count"] == 800
+    assert bootstrap["assistant_model"] == "fake-model"
+    assert bootstrap["opt_static_results_sha256"] == sha256_bytes(opt_path.read_bytes())
+    rows = [
+        json.loads(line) for line in opt_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 800
+    request_ids = []
+    for row in rows:
+        context = row["replay_context"]
+        assert context["response"]["backbone_model"] == "fake-model"
+        assert context["assistant_result"]["backbone_model"] == "fake-model"
+        call = context["receipt"]["model_calls"][0]
+        assert call["requested_model"] == "fake-model"
+        assert call["response_model"] == "fake-model"
+        request_ids.append(call["provider_request_id"])
+    assert len(request_ids) == len(set(request_ids)) == 800
+    assert len(bootstrap["fixed_samples"]["canary12"]) == 12
+    assert len(bootstrap["fixed_samples"]["dev_smoke24"]) == 24
+    assert len(bootstrap["fixed_samples"]["body48"]) == 48
+    assert (engine.output_root / "static-opt800-manifest.json").is_file()
+    assert (engine.output_root / "static-opt800-bootstrap.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("field", "loader", "message"),
+    (
+        (
+            "opt_static_results_sha256",
+            "opt_static",
+            "Static opt800 observations SHA-256",
+        ),
+        ("opt_fold_mapping_sha256", "opt_fold_roles", "opt fold mapping SHA-256"),
+        (
+            "val_gate_assignments_sha256",
+            "val_gate_roles",
+            "validation gate assignment SHA-256",
+        ),
+        (
+            "s1_authoring_input_file_sha256",
+            "s1_authoring_input",
+            "S1 AuthoringInput SHA-256",
+        ),
+    ),
+)
+def test_frozen_s1_input_hash_drift_fails_closed(
+    fast_fixture,
+    tmp_path: Path,
+    field: str,
+    loader: str,
+    message: str,
+) -> None:
+    spec, spec_path, _ = fast_fixture
+    drifted = spec.model_copy(update={field: "0" * 64})
+    engine = CoreFastEngine(
+        spec=drifted,
+        spec_path=spec_path,
+        output_root=tmp_path / field,
+        adapter=FakeCoreFastAdapter(),
+    )
+    with pytest.raises(FastPathError, match=message):
+        getattr(engine, loader)()
+
+
+@pytest.mark.parametrize(
+    ("phase", "candidate_macro", "ci_low", "accepted", "reason"),
+    (
+        ("replay200", 0.20, None, True, None),
+        ("body_gate75", 0.22, 0.0, True, None),
+        (
+            "body_gate75",
+            0.2199,
+            0.0,
+            False,
+            "capability-macro GCS delta is below 2pp",
+        ),
+        (
+            "body_gate75",
+            0.22,
+            -0.0001,
+            False,
+            "S1 component-bootstrap CI95 lower bound is below 0pp",
+        ),
+    ),
+)
+def test_s1_gate_keeps_frozen_macro_and_bootstrap_boundaries(
+    fast_fixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    candidate_macro: float,
+    ci_low: float | None,
+    accepted: bool,
+    reason: str | None,
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    queries = [query for query in fast_fixture[2] if query.split == "val"][:75]
+
+    def summary(macro: float) -> dict[str, object]:
+        return {
+            "query_count": 75,
+            "capability_macro_gcs": macro,
+            "query_micro_gcs": macro,
+            "capability_gcs": {capability: macro for capability in CAPABILITIES},
+            "hard_errors": 0,
+            "card_violations": 0,
+            "evidence_violations": 0,
+            "tool_violations": 0,
+        }
+
+    summaries = iter((summary(0.20), summary(candidate_macro)))
+    monkeypatch.setattr(engine, "_summary", lambda *_args: next(summaries))
+    if phase == "body_gate75":
+        monkeypatch.setattr(
+            engine,
+            "_paired_component_bootstrap",
+            lambda *_args, **_kwargs: {
+                "component_count": 1,
+                "replicates_requested": 10_000,
+                "replicates_available": 10_000,
+                "ci95_low_pp": ci_low,
+                "ci95_high_pp": 3.0,
+                "derived_seed": 1,
+                "draw_stream_sha256": "0" * 64,
+            },
+        )
+
+    passed, reasons, _metrics = engine._s1_gate({}, {}, queries, phase=phase)
+    assert passed is accepted
+    if reason is None:
+        assert reasons == ()
+    else:
+        assert reason in reasons
+
+
+def test_s1_replay_gate_rejects_incomplete_oracle_coverage(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    queries = tuple(query for query in fast_fixture[2] if query.split == "opt_pool")[
+        :200
+    ]
+    parent = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=True), strict=True
+        )
+        for query in queries
+    }
+    candidate = dict(parent)
+    failed_id = queries[0].query_id
+    candidate[failed_id] = candidate[failed_id].model_copy(
+        update={"oracle_available": False}
+    )
+
+    passed, reasons, metrics = engine._s1_gate(
+        parent, candidate, queries, phase="replay200"
+    )
+    assert not passed
+    assert "S1 oracle coverage is incomplete" in reasons
+    assert metrics["oracle_coverage_complete"] is False
+    assert metrics["oracle_coverage_failure_query_ids"] == [failed_id]
+
+
+def test_fast_bootstrap_matches_frozen_s1_gate_byte_for_byte(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    queries = tuple(engine._queries_for_val_gate("body_gate"))
+    population = build_gcs_population_v2(queries)
+    component_by_query = {
+        item.query_id: item.component_id for item in population.bindings
+    }
+    parent: dict[str, AssistantObservation] = {}
+    candidate: dict[str, AssistantObservation] = {}
+    parent_scores: list[GCSQueryScoreV2] = []
+    candidate_scores: list[GCSQueryScoreV2] = []
+
+    def score(
+        query: Query,
+        *,
+        config: str,
+        success: bool,
+    ) -> GCSQueryScoreV2:
+        return GCSQueryScoreV2(
+            query_id=query.query_id,
+            config=config,
+            canonical_capability=query.canonical_capability,
+            component_id=component_by_query[query.query_id],
+            route_disposition="pass",
+            answer_mode="supported",
+            oracle_available=True,
+            semantic_claim_support_resolved=True,
+            route_acceptable=1,
+            no_hard_error=1,
+            tool_contract_pass=1,
+            evidence_grounded=int(success),
+            output_contract_pass=1,
+            hard_error=0,
+            gcs=int(success),
+            reason_codes=() if success else ("material_claim_uncited",),
+            evaluated_capability=query.canonical_capability,
+            style_support_status=(
+                "candidates"
+                if query.canonical_capability == "product.style_recommendation"
+                else None
+            ),
+        )
+
+    for index, query in enumerate(queries):
+        parent_success = index % 5 == 0
+        candidate_success = parent_success or index % 7 == 0
+        parent[query.query_id] = AssistantObservation.model_validate(
+            _observation(query, success=parent_success), strict=True
+        )
+        candidate[query.query_id] = AssistantObservation.model_validate(
+            _observation(query, success=candidate_success), strict=True
+        )
+        parent_scores.append(score(query, config="llm_static", success=parent_success))
+        candidate_scores.append(score(query, config="s1", success=candidate_success))
+
+    fast = engine._paired_component_bootstrap(
+        parent,
+        candidate,
+        queries,
+        scope=frozen_s1_gate.S1_BODY_GATE_SCOPE,
+    )
+    frozen = frozen_s1_gate._paired_gcs_v2_contrast(
+        baseline=tuple(parent_scores),
+        candidate=tuple(candidate_scores),
+        queries=queries,
+        scope=frozen_s1_gate.S1_BODY_GATE_SCOPE,
+    )
+    assert fast == {
+        "component_count": frozen.component_count,
+        "replicates_requested": frozen.replicates,
+        "replicates_available": frozen.macro_available_replicates,
+        "ci95_low_pp": frozen.macro_ci95_low_pp,
+        "ci95_high_pp": frozen.macro_ci95_high_pp,
+        "derived_seed": frozen.derived_seed,
+        "draw_stream_sha256": frozen.draw_stream_sha256,
+    }
+
+
+class _MixedPolicyFeedbackAdapter(FakeCoreFastAdapter):
+    def invoke(self, intent: CallIntent):
+        result = super().invoke(intent)
+        if intent.role != "feedback" or result.status != "success":
+            return result
+        feedback = VisualFeedbackOutput(
+            schema_version=1,
+            summary="mixed policy dispositions",
+            rule_violations=(),
+            ideal_response_gaps=(),
+            skill_suggestions=(
+                "[policy_compatible] preserve the frozen contract",
+                "[requires_new_evidence] add an unsupported lookup",
+                "[rejected] weaken the fallback boundary",
+            ),
+        )
+        return result.model_copy(
+            update={"output": {"feedback": feedback.model_dump(mode="json")}}
+        )
+
+
+class _S1ScreenAdapter(FakeCoreFastAdapter):
+    def __init__(
+        self,
+        *,
+        patch_capabilities: frozenset[str] = frozenset({"product.exact_match"}),
+        smoke_hard_query_id: str | None = None,
+        raw_contract_failure_capabilities: frozenset[str] = frozenset(),
+        raw_force_success_capabilities: frozenset[str] = frozenset(),
+    ) -> None:
+        super().__init__()
+        self.patch_capabilities = patch_capabilities
+        self.smoke_hard_query_id = smoke_hard_query_id
+        self.raw_contract_failure_capabilities = raw_contract_failure_capabilities
+        self.raw_force_success_capabilities = raw_force_success_capabilities
+
+    def invoke(self, intent: CallIntent):
+        result = super().invoke(intent)
+        if (
+            intent.role == "creator"
+            and intent.payload.get("operation") == "s1_creator"
+            and result.status == "success"
+        ):
+            parent = intent.payload["parent_bank"]
+            templates = intent.payload["parent_authoring_content"]
+            assert isinstance(parent, dict) and isinstance(templates, list)
+            skills = parent["skills"]
+            assert isinstance(skills, list)
+            template_by_capability = {
+                str(item["capability_id"]): item
+                for item in templates
+                if isinstance(item, dict)
+            }
+            generated = []
+            for skill in sorted(skills, key=lambda item: str(item["capability_id"])):
+                capability = str(skill["capability_id"])
+                entry = {
+                    "capability_id": capability,
+                    "action": "inherit",
+                    "parent_skill_sha256": skill["skill_sha256"],
+                }
+                if capability in self.patch_capabilities:
+                    template = template_by_capability[capability]
+                    entry = {
+                        **entry,
+                        "action": "patch",
+                        "patch": {
+                            "objective": template["objective"],
+                            "steps": template["steps"],
+                            "fallback_instruction": (
+                                str(template["fallback_instruction"])
+                                + " Make the supported-evidence boundary explicit."
+                            ),
+                            "citation_source_ids": template["citation_source_ids"],
+                        },
+                    }
+                generated.append(entry)
+            return result.model_copy(
+                update={"output": {"schema_version": 1, "skills": generated}}
+            )
+        if (
+            intent.role != "assistant"
+            or result.status != "success"
+            or not isinstance(result.output, dict)
+            or not isinstance(result.output.get("observation"), dict)
+        ):
+            return result
+        query = intent.payload["query"]
+        assert isinstance(query, dict)
+        query_id = str(query["query_id"])
+        capability = str(query["canonical_capability"])
+        is_smoke_failure = (
+            intent.call_id.startswith("dev-smoke24-s1-candidate-")
+            and query_id == self.smoke_hard_query_id
+        )
+        is_raw_replay = intent.call_id.startswith("opt-replay200-s1-candidate-")
+        force_success = (
+            is_raw_replay and capability in self.raw_force_success_capabilities
+        )
+        contract_failure = is_smoke_failure or (
+            is_raw_replay and capability in self.raw_contract_failure_capabilities
+        )
+        if not force_success and not contract_failure:
+            return result
+        output = dict(result.output)
+        observation = dict(output["observation"])
+        components = dict(observation["gcs_components"])
+        if force_success:
+            components = {key: True for key in components}
+            observation.update(
+                {
+                    "selected_capability": capability,
+                    "route_trace_key": f"route:{capability}",
+                    "gcs_components": components,
+                    "gcs_score": 1.0,
+                    "gcs_reason_codes": [],
+                    "hard_error": False,
+                    "answer_mode": "supported",
+                    "repair": "none",
+                    "card_violation": False,
+                    "evidence_violation": False,
+                    "tool_violation": False,
+                }
+            )
+        if contract_failure:
+            components["no_hard_error"] = False
+            components["output_contract_pass"] = False
+            observation.update(
+                {
+                    "gcs_components": components,
+                    "gcs_score": 0.0,
+                    "gcs_reason_codes": [
+                        "assistant_hard_error",
+                        "output_section_invalid",
+                    ],
+                    "hard_error": True,
+                    "answer_mode": "unresolved",
+                    "repair": "response_contract_error",
+                }
+            )
+        output["observation"] = observation
+        return result.model_copy(update={"output": output})
+
+
+def test_creator_projection_keeps_only_policy_compatible_feedback(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(
+        fast_fixture,
+        tmp_path,
+        _MixedPolicyFeedbackAdapter(reject_stages=frozenset({"s1"})),
+    )
+    engine.run_s1()
+    intent = json.loads(
+        (
+            engine.output_root / "calls" / "creator" / "s1-creator-once.intent.json"
+        ).read_text(encoding="utf-8")
+    )
+    guard = intent["payload"]["requirements"]["author_content_lexical_guard"]
+    assert set(guard["forbidden_whole_words"]) >= {
+        "label",
+        "labels",
+        "evaluation",
+        "trajectory",
+    }
+    assert guard["required_detector_prediction_phrase"] == "predicted class name"
+    assert "same path token" in guard["forbidden_path_reference_rule"]
+    for rows in intent["payload"]["feedback_evidence_bundle"][
+        "feedback_by_capability"
+    ].values():
+        for row in rows:
+            assert row["feedback"]["skill_suggestions"] == [
+                "[policy_compatible] preserve the frozen contract"
+            ]
+
+
+def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, _ = fast_fixture
+    focused = S1Settings(
+        round_id="r3",
+        max_patched_capabilities=1,
+        protected_capabilities=(
+            "knowledge.visual_encyclopedia",
+            "product.multi_search",
+            "product.style_recommendation",
+            "utility.document_reading",
+            "utility.recipe_guidance",
+        ),
+        creator_directives=("Keep the literal fallback marker.",),
+        required_patch_phrases={
+            "product.exact_match": ("no supported match",),
+        },
+    )
+    engine = CoreFastEngine(
+        spec=spec.model_copy(update={"s1_settings": focused}),
+        spec_path=spec_path,
+        output_root=tmp_path / "focused",
+        adapter=FakeCoreFastAdapter(),
+    )
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    assert decision.reasons == (
+        "Creator failed or returned an invalid sparse S1 proposal",
+    )
+    assert (
+        decision.metrics["creator_candidate_rejection_reason"]
+        == "required_patch_phrase_missing"
+    )
+    assert not (engine.output_root / "banks" / "s1-candidate.json").exists()
+    intent = json.loads(
+        (
+            engine.output_root / "calls" / "creator" / "s1-creator-once.intent.json"
+        ).read_text(encoding="utf-8")
+    )
+    requirements = intent["payload"]["requirements"]
+    assert requirements["max_patched_capabilities"] == 1
+    assert requirements["creator_directives"] == ["Keep the literal fallback marker."]
+    assert requirements["required_patch_phrases"] == {
+        "product.exact_match": ["no supported match"]
+    }
+
+
+def test_feedback_canary_failure_stops_remaining_batch_and_creator(
+    fast_fixture, tmp_path: Path
+) -> None:
+    probe = _engine(fast_fixture, tmp_path / "probe", FakeCoreFastAdapter())
+    prepared = probe.prepare_feedback_selection()
+    failed_id = prepared["selection_manifest"]["selected_query_ids"][0]
     adapter = FakeCoreFastAdapter(feedback_fail_ids=frozenset({failed_id}))
-    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine = _engine(fast_fixture, tmp_path / "run", adapter)
     engine.initialize()
     decision = engine.run_s1()
-    assert decision.accepted
-    assert adapter.calls["feedback"] == 12
-    assert adapter.calls["creator"] == 1
-    assert decision.metrics["feedback_success_count"] == 11
+    assert not decision.accepted
+    assert adapter.calls["feedback"] == 6
+    assert adapter.calls["creator"] == 0
+    assert decision.metrics["feedback_success_count"] == 5
+    assert decision.metrics["feedback_remaining_batch_called"] is False
+
+
+def test_s1_smoke_hard_error_on_inherited_capability_does_not_block_replay(
+    fast_fixture, tmp_path: Path
+) -> None:
+    smoke_query_id = next(
+        item.query_id
+        for item in fast_fixture[0].fixed_samples.dev_smoke24
+        if item.capability == "utility.recipe_guidance"
+    )
+    adapter = _S1ScreenAdapter(smoke_hard_query_id=smoke_query_id)
+    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert decision.metrics["smoke_hard_errors"] == 1
+    assert decision.metrics["smoke_oracle_coverage_complete"] is True
+    assert not any("dev smoke24" in reason for reason in decision.reasons)
+    assert (engine.output_root / "banks" / "s1-development-screen.json").is_file()
+    assistant_calls = engine.output_root / "calls" / "assistant"
+    assert list(assistant_calls.glob("opt-replay200-s1-candidate-*.intent.json"))
+    smoke_rows = {}
+    for item in fast_fixture[0].fixed_samples.dev_smoke24:
+        result = engine.calls.get(
+            "assistant",
+            engine._assistant_call_id("dev-smoke24", "s1-candidate", item.query_id),
+        )
+        assert result is not None and isinstance(result.output, dict)
+        smoke_rows[item.query_id] = AssistantObservation.model_validate(
+            result.output["observation"], strict=True
+        )
+    assert engine._s1_smoke_ok(smoke_rows)
+    assert not engine._smoke_ok(smoke_rows)
+
+
+def test_s1_smoke_oracle_failure_still_stops_before_raw_replay(
+    fast_fixture, tmp_path: Path
+) -> None:
+    failed_id = fast_fixture[0].fixed_samples.dev_smoke24[0].query_id
+    adapter = FakeCoreFastAdapter(assistant_fail_ids=frozenset({failed_id}))
+    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    assert decision.metrics["smoke_oracle_coverage_complete"] is False
+    assert decision.metrics["smoke_oracle_coverage_failure_query_ids"] == [failed_id]
+    assert decision.reasons == (
+        "candidate failed fixed dev smoke24 operational/oracle coverage",
+    )
+    assistant_calls = engine.output_root / "calls" / "assistant"
+    assert not list(assistant_calls.glob("opt-replay200-*.intent.json"))
+    assert not (engine.output_root / "banks" / "s1-development-screen.json").exists()
+
+
+def test_s1_raw_replay_oracle_failure_stops_before_development_screen(
+    fast_fixture, tmp_path: Path
+) -> None:
+    adapter = FakeCoreFastAdapter()
+    engine = _engine(fast_fixture, tmp_path, adapter)
+    replay_roles = engine.opt_fold_roles()
+    failed_id = next(
+        query.query_id
+        for query in fast_fixture[2]
+        if query.split == "opt_pool" and replay_roles[query.query_id] == "replay"
+    )
+    adapter.assistant_fail_ids = frozenset({failed_id})
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    assert decision.metrics["raw_replay_oracle_coverage_complete"] is False
+    assert decision.metrics["raw_replay_oracle_coverage_failure_query_ids"] == [
+        failed_id
+    ]
+    assert "raw replay200 oracle coverage is incomplete" in decision.reasons
+    assert not (engine.output_root / "banks" / "s1-development-screen.json").exists()
+    assistant_calls = engine.output_root / "calls" / "assistant"
+    assert not list(assistant_calls.glob("opt-replay200-composite-*.intent.json"))
+
+
+def test_s1_replay_screen_reverts_only_document_and_reruns_composite(
+    fast_fixture, tmp_path: Path
+) -> None:
+    retained = frozenset({"product.exact_match", "product.multi_search"})
+    adapter = _S1ScreenAdapter(
+        patch_capabilities=retained | {"utility.document_reading"},
+        raw_contract_failure_capabilities=frozenset({"utility.document_reading"}),
+        raw_force_success_capabilities=retained,
+    )
+    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert decision.metrics["retained_patch_capabilities"] == sorted(retained)
+    assert decision.metrics["reverted_patch_capabilities"] == [
+        "utility.document_reading"
+    ]
+    assert decision.metrics["composite_replay_rerun"] is True
+    screen = json.loads(
+        (engine.output_root / "banks" / "s1-development-screen.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    screen_by_capability = {
+        item["capability_id"]: item["decision"] for item in screen["decisions"]
+    }
+    assert screen_by_capability["utility.document_reading"] == "inherit_parent"
+    assert all(screen_by_capability[item] == "retain_patch" for item in retained)
+
+    parent = StaticBankArtifact.model_validate_json(
+        (engine.output_root / "banks" / "llm_static.json").read_bytes(), strict=True
+    )
+    raw = StaticBankArtifact.model_validate_json(
+        (engine.output_root / "banks" / "s1-candidate.json").read_bytes(), strict=True
+    )
+    screened = StaticBankArtifact.model_validate_json(
+        (engine.output_root / "banks" / "s1-screened-candidate.json").read_bytes(),
+        strict=True,
+    )
+    parent_by_capability = {item.capability_id: item for item in parent.skills}
+    raw_by_capability = {item.capability_id: item for item in raw.skills}
+    screened_by_capability = {item.capability_id: item for item in screened.skills}
+    assert canonical_json_bytes(
+        screened_by_capability["utility.document_reading"].model_dump(mode="json")
+    ) == canonical_json_bytes(
+        parent_by_capability["utility.document_reading"].model_dump(mode="json")
+    )
+    for capability in retained:
+        assert canonical_json_bytes(
+            screened_by_capability[capability].model_dump(mode="json")
+        ) == canonical_json_bytes(raw_by_capability[capability].model_dump(mode="json"))
+    assistant_calls = engine.output_root / "calls" / "assistant"
+    assert list(
+        assistant_calls.glob("opt-replay200-composite-s1-candidate-*.intent.json")
+    )
+
+
+def test_s1_replay_screen_stops_when_all_patches_revert(
+    fast_fixture, tmp_path: Path
+) -> None:
+    adapter = _S1ScreenAdapter(
+        raw_contract_failure_capabilities=frozenset({"product.exact_match"})
+    )
+    engine = _engine(fast_fixture, tmp_path, adapter)
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    assert decision.metrics["retained_patch_capabilities"] == []
+    assert decision.metrics["reverted_patch_capabilities"] == ["product.exact_match"]
+    assert "replay200 screen reverted all sparse patches" in decision.reasons
+    assistant_calls = engine.output_root / "calls" / "assistant"
+    assert not list(assistant_calls.glob("opt-replay200-composite-*.intent.json"))
+    assert not list(assistant_calls.glob("body-gate75-*.intent.json"))
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    (
+        "s1-development-screen.json",
+        "s1-screened-candidate.json",
+        "s1-screened-bank-receipt.json",
+    ),
+)
+def test_s1_screened_artifact_drift_fails_closed_on_resume(
+    fast_fixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    engine.initialize()
+    assistant_many = engine._assistant_many
+
+    def interrupt_before_composite(*, split: str, **kwargs):
+        if split == "opt-replay200-composite":
+            raise FastPathError("injected interruption before composite replay")
+        return assistant_many(split=split, **kwargs)
+
+    monkeypatch.setattr(engine, "_assistant_many", interrupt_before_composite)
+    with pytest.raises(FastPathError, match="injected interruption"):
+        engine.run_s1()
+    monkeypatch.setattr(engine, "_assistant_many", assistant_many)
+    artifact = engine.output_root / "banks" / artifact_name
+    artifact.write_bytes(artifact.read_bytes() + b" ")
+
+    with pytest.raises(FastPathError, match="changed on resume"):
+        engine.run_s1()
+
+
+def test_feedback_reuse_mode_is_rejected_by_the_spec_schema() -> None:
+    with pytest.raises(ValueError, match="feedback_mode"):
+        S1Settings.model_validate(
+            {
+                "feedback_mode": "reuse-exact-call-results",
+                "feedback_reuse_manifest_sha256": "a" * 64,
+            },
+            strict=True,
+        )
 
 
 @pytest.mark.parametrize(

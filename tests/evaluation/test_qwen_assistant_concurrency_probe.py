@@ -1,6 +1,10 @@
 from decimal import Decimal
 
+import pytest
+
 from skillchain import config
+from skillchain.evaluation.core_fast.live_adapter import _assistant_cost
+from skillchain.evaluation.core_fast.pacing import StartPacer
 
 from scripts.probe_qwen_assistant_concurrency import (
     DEFAULT_REQUESTS_PER_SECOND,
@@ -26,7 +30,7 @@ def _result(*, ordinal: int, error: str | None = None) -> ProbeResult:
         finish_reason="stop" if ordinal % 2 == 0 else "tool_calls",
         response_sha256="a" * 64,
         request_id_sha256="b" * 64,
-        cost_cny="0.000255" if error != "rate_limit" else "0",
+        cost_cny="0.000304" if error != "rate_limit" else "0",
     )
 
 
@@ -49,6 +53,22 @@ def test_probe_alternates_production_action_variants() -> None:
 def test_cost_uses_qwen37_flash_under_32k_tier() -> None:
     assert DEFAULT_REQUESTS_PER_SECOND == 20.0
     assert _cost(1_400, 30) == Decimal("0.000304")
+    assert _assistant_cost(1_400, 30) == 0.000304
+
+
+def test_assistant_start_pacer_smooths_provider_calls() -> None:
+    now = [100.0]
+    sleeps: list[float] = []
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        now[0] += delay
+
+    pacer = StartPacer(20.0, clock=lambda: now[0], sleeper=sleep)
+    for _ in range(4):
+        pacer.wait()
+
+    assert sleeps == pytest.approx([0.05, 0.05, 0.05])
 
 
 def test_active_assistant_capacity_constants_bind_the_measured_profile() -> None:

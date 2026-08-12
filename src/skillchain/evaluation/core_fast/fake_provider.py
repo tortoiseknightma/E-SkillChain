@@ -5,7 +5,7 @@ from collections import Counter
 
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
 
-from .models import CallIntent, CallResult, CAPABILITIES
+from .models import CAPABILITIES, CallIntent, CallResult
 
 
 def _bucket(query_id: str) -> int:
@@ -74,7 +74,9 @@ class FakeCoreFastAdapter:
                 summary=f"fixed feedback for {query_id}",
                 rule_violations=(),
                 ideal_response_gaps=(),
-                skill_suggestions=("make the contract explicit",),
+                skill_suggestions=(
+                    "[policy_compatible] make the existing contract explicit",
+                ),
             )
             return self._result(
                 intent,
@@ -90,17 +92,47 @@ class FakeCoreFastAdapter:
             if operation == "s1_creator":
                 if "s1" in self.reject_stages:
                     return self._result(intent, {"invalid": True})
-                generated = [
-                    {
-                        "capability_id": skill["capability_id"],
-                        "description": skill["description"],
-                        "body": str(skill["body"]) + "\nS1 fixed rule.\n",
-                        "static_refs": skill["static_refs"],
-                        "operators": skill["operators"],
+                templates = intent.payload["parent_authoring_content"]
+                assert isinstance(templates, list)
+                template_by_capability = {
+                    str(item["capability_id"]): item
+                    for item in templates
+                    if isinstance(item, dict)
+                }
+                skill_by_capability = {
+                    str(item["capability_id"]): item
+                    for item in skills
+                    if isinstance(item, dict)
+                }
+                target = "product.exact_match"
+                generated = []
+                for capability in sorted(skill_by_capability):
+                    skill = skill_by_capability[capability]
+                    entry = {
+                        "capability_id": capability,
+                        "action": "inherit",
+                        "parent_skill_sha256": skill["skill_sha256"],
                     }
-                    for skill in skills
-                ]
-                return self._result(intent, {"skills": generated})
+                    if capability == target:
+                        template = template_by_capability[capability]
+                        entry = {
+                            **entry,
+                            "action": "patch",
+                            "patch": {
+                                "objective": template["objective"],
+                                "steps": template["steps"],
+                                "fallback_instruction": str(
+                                    template["fallback_instruction"]
+                                )
+                                + " Make the supported-evidence boundary explicit.",
+                                "citation_source_ids": template["citation_source_ids"],
+                            },
+                        }
+                    generated.append(entry)
+                return self._result(
+                    intent,
+                    {"schema_version": 1, "skills": generated},
+                )
             if operation == "s2_route_optimizer":
                 if "s2" in self.reject_stages:
                     return self._result(intent, {"invalid": True})
@@ -145,8 +177,20 @@ class FakeCoreFastAdapter:
                 )
             expected = str(query["canonical_capability"])
             config = str(intent.payload["config"])
+            split = str(intent.payload["split"])
             bucket = _bucket(query_id)
-            if config in {"noskill", "llm_static"}:
+            if config == "llm_static" and split == "static-opt800":
+                # Bootstrap fixtures need both route-correct failures and
+                # anchors so deterministic canary/body selection is covered.
+                # Each capability's first eight rows are six body failures
+                # followed by two anchors; the rest exercise route failures.
+                position = int(query_id.rsplit("-", maxsplit=1)[1]) // len(
+                    CAPABILITIES
+                )
+                route_ok = position < 8
+                evidence = True
+                output_ok = position >= 6
+            elif config in {"noskill", "llm_static"}:
                 route_ok = config == "noskill" or bucket >= 2
                 evidence = True
                 output_ok = True
@@ -183,7 +227,27 @@ class FakeCoreFastAdapter:
                 route_key = None if config == "noskill" else f"route:{selected}"
                 tool_key = f"tool:{query_id}:{selected}"
                 trace = []
-                replay = {"evidence": f"fake evidence for {query_id}"}
+                bank = intent.payload.get("bank")
+                bank_sha256 = (
+                    bank.get("bank_sha256") if isinstance(bank, dict) else None
+                )
+                replay = {
+                    "evidence": f"fake evidence for {query_id}",
+                    "response": {"backbone_model": intent.requested_model},
+                    "receipt": {
+                        "model_calls": [
+                            {
+                                "requested_model": intent.requested_model,
+                                "response_model": intent.requested_model,
+                                "provider_request_id": f"fake-{intent.call_id}",
+                            }
+                        ]
+                    },
+                    "assistant_result": {
+                        "bank_sha256": bank_sha256,
+                        "backbone_model": intent.requested_model,
+                    },
+                }
             components = {
                 "route_acceptable": route_ok,
                 "no_hard_error": True,
@@ -200,8 +264,13 @@ class FakeCoreFastAdapter:
                 "tool_trace_key": tool_key,
                 "tool_trace": trace,
                 "replay_context": replay,
+                "answer_mode": "supported"
+                if all(components.values())
+                else "unresolved",
+                "oracle_available": True,
                 "gcs_components": components,
                 "gcs_score": float(all(components.values())),
+                "gcs_reason_codes": [],
                 "hard_error": False,
                 "card_violation": False,
                 "evidence_violation": not evidence,
