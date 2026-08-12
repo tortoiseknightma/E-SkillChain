@@ -108,7 +108,7 @@ def _environment_value_commitments() -> dict[str, str]:
 def _expected_files() -> dict[Path, bytes]:
     if (
         config.ASSISTANT_PROVIDER,
-        config.ASSISTANT_MODEL,
+        config.LEGACY_PORTFOLIO_ASSISTANT_MODEL,
         config.AUTHOR_PROVIDER,
         config.AUTHOR_MODEL,
         config.AUTHOR_REASONING_EFFORT,

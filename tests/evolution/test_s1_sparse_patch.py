@@ -27,9 +27,7 @@ from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 CODEX_INPUT = ROOT / "specs/authoring/authoring-packet-codex-high-v5.json"
-SEMANTIC_INPUT = (
-    ROOT / "specs/authoring/authoring-packet-primary-v5-candidate.json"
-)
+SEMANTIC_INPUT = ROOT / "specs/authoring/authoring-packet-primary-v5-candidate.json"
 CODEX_DRAFT = (
     ROOT
     / "runs/formal-authoring/llm-static-codex-primary-20260724-high-v5"
@@ -122,9 +120,7 @@ def test_sparse_compile_is_deterministic_and_inherits_parent_bytes_exactly(
     assert first.receipt.canonical_bytes() == second.receipt.canonical_bytes()
     assert first.bank.construction_identity_sha256 == draft.draft_sha256
     parent_by_capability = {item.capability_id: item for item in parent.skills}
-    candidate_by_capability = {
-        item.capability_id: item for item in first.bank.skills
-    }
+    candidate_by_capability = {item.capability_id: item for item in first.bank.skills}
     for binding in first.receipt.bindings:
         if binding.action == "inherit":
             capability = binding.capability_id
@@ -141,12 +137,66 @@ def test_sparse_compile_is_deterministic_and_inherits_parent_bytes_exactly(
     assert candidate_encyclopedia.operators == parent_encyclopedia.operators
     parent_sections = _body_sections(parent_encyclopedia.body)
     candidate_sections = _body_sections(candidate_encyclopedia.body)
-    assert candidate_sections["## Output contract"] == parent_sections[
-        "## Output contract"
-    ]
-    assert "not enough evidence" in candidate_sections[
-        "## Authored fallback instruction"
-    ].lower()
+    assert (
+        candidate_sections["## Output contract"]
+        == parent_sections["## Output contract"]
+    )
+    assert (
+        "not enough evidence"
+        in candidate_sections["## Authored fallback instruction"].lower()
+    )
+
+
+def test_sparse_compile_accepts_safe_result_and_product_evidence_dto_prose(
+    parent_materials,
+) -> None:
+    parent, semantic_input = parent_materials
+    payload = _wire_payload(parent, semantic_input)
+    target = next(
+        item
+        for item in payload["skills"]
+        if item["capability_id"] == "product.multi_search"
+    )
+    parent_content = {
+        item.capability_id: item
+        for item in _decode_parent_authoring_content(parent, semantic_input)
+    }["product.multi_search"]
+    target["action"] = "patch"
+    target["patch"] = {
+        "objective": parent_content.objective,
+        "steps": [
+            {
+                "instruction": (
+                    "Invoke multi_product_search exactly once and do not answer "
+                    "before its result. Treat the returned public result as an "
+                    "immutable DTO. Unresolved entries must have no candidate or "
+                    "product/evidence handle; copy every supported handle exactly."
+                ),
+                "tool_name": "multi_product_search",
+                "success_rule_ids": [
+                    "multi.success.cards",
+                    "multi.success.decomposition",
+                ],
+            }
+        ],
+        "fallback_instruction": parent_content.fallback_instruction,
+        "citation_source_ids": [],
+    }
+
+    draft = bind_sparse_patch_draft(
+        canonical_json_bytes(payload),
+        parent_bank=parent,
+        authoring_input=semantic_input,
+        feedback_bundle_sha256=FEEDBACK_SHA,
+    )
+    compiled = compile_sparse_s1_candidate(
+        parent_bank=parent,
+        authoring_input=semantic_input,
+        sparse_draft=draft,
+        tool_registry_runtime_sha256=RUNTIME_SHA,
+    )
+
+    assert compiled.bank.bank_sha256 != parent.bank_sha256
 
 
 def test_sparse_bind_rejects_missing_fallback_marker_and_parent_drift(
@@ -189,9 +239,7 @@ def test_sparse_bind_rejects_tool_sequence_control_tokens_and_extra_fields(
         for item in payload["skills"]
         if item["capability_id"] == ENCYCLOPEDIA_CAPABILITY
     )
-    encyclopedia["patch"]["steps"] = list(
-        reversed(encyclopedia["patch"]["steps"])
-    )
+    encyclopedia["patch"]["steps"] = list(reversed(encyclopedia["patch"]["steps"]))
     with pytest.raises(S1SparsePatchError, match="tool sequence"):
         bind_sparse_patch_draft(
             canonical_json_bytes(payload),
@@ -240,16 +288,11 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
     branches = skills["items"]["anyOf"]
     assert len(branches) == 12
     assert {
-        branch["properties"]["capability_id"]["enum"][0]
-        for branch in branches
+        branch["properties"]["capability_id"]["enum"][0] for branch in branches
     } == set(capabilities)
     assert all(
         branch["properties"]["parent_skill_sha256"]["enum"]
-        == [
-            parent_sha_by_capability[
-                branch["properties"]["capability_id"]["enum"][0]
-            ]
-        ]
+        == [parent_sha_by_capability[branch["properties"]["capability_id"]["enum"][0]]]
         for branch in branches
     )
     assert set(branches[1]["required"]) == {
@@ -258,6 +301,24 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
         "parent_skill_sha256",
         "patch",
     }
+
+    frozen_objectives = {item.capability_id: item.description for item in parent.skills}
+    frozen_schema = sparse_patch_output_json_schema(
+        parent_skill_sha256_by_capability=parent_sha_by_capability,
+        frozen_objective_by_capability=frozen_objectives,
+    )
+    patch_branches = [
+        branch
+        for branch in frozen_schema["properties"]["skills"]["items"]["anyOf"]
+        if branch["properties"]["action"]["enum"] == ["patch"]
+    ]
+    assert len(patch_branches) == 6
+    for branch in patch_branches:
+        capability = branch["properties"]["capability_id"]["enum"][0]
+        assert branch["properties"]["patch"]["properties"]["objective"] == {
+            "type": "string",
+            "enum": [frozen_objectives[capability]],
+        }
 
 
 def test_development_screen_reverts_failed_capability_to_parent_bytes(
@@ -284,9 +345,7 @@ def test_development_screen_reverts_failed_capability_to_parent_bytes(
         retained_capability_ids=(),
     )
     parent_by_capability = {item.capability_id: item for item in parent.skills}
-    screened_by_capability = {
-        item.capability_id: item for item in reverted.bank.skills
-    }
+    screened_by_capability = {item.capability_id: item for item in reverted.bank.skills}
     assert canonical_json_bytes(
         screened_by_capability[ENCYCLOPEDIA_CAPABILITY].model_dump(mode="json")
     ) == canonical_json_bytes(
@@ -341,14 +400,20 @@ def test_sparse_artifact_loaders_require_canonical_bound_bytes(
     receipt_path = tmp_path / "receipt.json"
     draft_path.write_bytes(draft.canonical_bytes())
     receipt_path.write_bytes(compiled.receipt.canonical_bytes())
-    assert load_sparse_patch_draft(
-        draft_path,
-        expected_file_sha256=sha256_bytes(draft_path.read_bytes()),
-    ) == draft
-    assert load_sparse_compilation_receipt(
-        receipt_path,
-        expected_file_sha256=sha256_bytes(receipt_path.read_bytes()),
-    ) == compiled.receipt
+    assert (
+        load_sparse_patch_draft(
+            draft_path,
+            expected_file_sha256=sha256_bytes(draft_path.read_bytes()),
+        )
+        == draft
+    )
+    assert (
+        load_sparse_compilation_receipt(
+            receipt_path,
+            expected_file_sha256=sha256_bytes(receipt_path.read_bytes()),
+        )
+        == compiled.receipt
+    )
     with pytest.raises(S1SparsePatchError, match="file SHA-256 drifted"):
         load_sparse_patch_draft(
             draft_path,

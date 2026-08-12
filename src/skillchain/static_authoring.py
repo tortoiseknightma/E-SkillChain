@@ -68,10 +68,19 @@ _FORBIDDEN_STRONG = re.compile(
     r"rubrics?|gold|judges?)(?![a-z0-9])",
     re.IGNORECASE,
 )
+_FORBIDDEN_PATH_WORD_PATTERN = r"(?:responses?|gates?|tests?|results?)"
 _FORBIDDEN_PATH = re.compile(
-    r"(?<![a-z0-9])(?:responses?|gates?|tests?|results?)(?![a-z0-9])",
+    rf"(?<![a-z0-9]){_FORBIDDEN_PATH_WORD_PATTERN}(?![a-z0-9])",
     re.IGNORECASE,
 )
+_FORBIDDEN_PATH_SEPARATOR = re.compile(
+    rf"(?:"
+    rf"(?<![a-z0-9]){_FORBIDDEN_PATH_WORD_PATTERN}(?![a-z0-9])\s*[/\\]"
+    rf"|[/\\]\s*{_FORBIDDEN_PATH_WORD_PATTERN}(?![a-z0-9])"
+    rf")",
+    re.IGNORECASE,
+)
+_PATH_MARKERS = ("/", "\\", ".json", ".jsonl", ".parquet")
 _VERIFIED_HANDLE_TOKEN = object()
 _VERIFIED_SANDBOX_PROFILE_TOKEN = object()
 _VERIFIED_CALL_AUTHORIZATION_TOKEN = object()
@@ -142,13 +151,22 @@ def _digest_without(payload: dict[str, object], field: str) -> str:
 def _scan_untrusted_text(value: object, label: str) -> None:
     """Reject private-input names and path-like indirection in authored text."""
 
+    def contains_forbidden_path_reference(item: str) -> bool:
+        # Keep the path marker and its forbidden component local to the same
+        # token.  A sentence may legitimately discuss a tool ``result`` and,
+        # elsewhere, use a slash in domain prose such as ``product/evidence``.
+        # Treating those distant fragments as one path rejected safe authored
+        # instructions while providing no additional path-leak protection.
+        return _FORBIDDEN_PATH_SEPARATOR.search(item) is not None or any(
+            any(marker in token.casefold() for marker in _PATH_MARKERS)
+            and _FORBIDDEN_PATH.search(token) is not None
+            for token in item.split()
+        )
+
     def visit(item: object) -> None:
         if isinstance(item, str):
-            path_like = any(
-                marker in item for marker in ("/", "\\", ".json", ".jsonl", ".parquet")
-            )
-            if _FORBIDDEN_STRONG.search(item) or (
-                path_like and _FORBIDDEN_PATH.search(item)
+            if _FORBIDDEN_STRONG.search(item) or contains_forbidden_path_reference(
+                item
             ):
                 raise AuthoringContractError(
                     f"{label} references forbidden experiment-derived information"

@@ -1446,7 +1446,7 @@ def _verify_role_selection(
         or selection_sha256 != expected_selection_sha256
         or file_sha256 != expected_bound_file_sha256
         or raw.get("schema_version") != expected_schema_version
-        or raw.get("assistant", {}).get("model") != config.ASSISTANT_MODEL
+        or raw.get("assistant", {}).get("model") != PORTFOLIO_QWEN_MODEL
         or feedback.get("provider") != expected_feedback_provider
         or feedback.get("model") != expected_feedback_model
         or (
@@ -2610,7 +2610,7 @@ def build_portfolio_launch_plan(
         "role_selection_file_sha256": role_file_sha256,
         "role_selection_sha256": role_sha256,
         "assistant_provider": "qwen",
-        "assistant_model": config.ASSISTANT_MODEL,
+        "assistant_model": PORTFOLIO_QWEN_MODEL,
         "feedback_provider": "kimi",
         # Launch-plan v4/v6/v7 identities remain historical Kimi contracts.
         # Active Qwen Feedback is bound separately by the typed S1 pipeline.

@@ -43,6 +43,7 @@ from skillchain.runners.assistant import (
     SHARED_STAGE2_ROUTE_POLICY_VERSION,
     AssistantFatalProviderConfigurationError,
     AssistantProviderCallGateError,
+    CoreFastAssistantRunner,
     PortfolioAssistantBudgetContext,
     PortfolioAssistantRunner,
     ProductionAssistantRunner,
@@ -389,9 +390,98 @@ def _runner(
     object.__setattr__(runner, "_banks", banks or {})
     object.__setattr__(runner, "_asset_catalog", catalog)
     object.__setattr__(runner, "_qwen_call_start_waiter", qwen_call_start_waiter)
+    object.__setattr__(runner, "_deterministic_action_contract_version", None)
     if runner_type is PortfolioAssistantRunner:
         object.__setattr__(runner, "_runtime_lock_sha256", "f" * 64)
     return runner
+
+
+def test_core_fast_deterministic_contract_owns_tool_and_response(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="core-fast-deterministic-contract")
+    skill = _Skill(
+        slug="exact-contract-skill",
+        capability_id="product.exact_match",
+        description="Find the exact visible product.",
+        body="# Objective\n\nFind the exact product with image search.",
+        operators=("image_product_search",),
+    )
+    bank = _one_skill_bank(skill, "e")
+    request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="llm_static",
+        bank_sha256=bank.bank_sha256,
+    )
+    model_calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        model_calls.append((provider, messages, kwargs))
+        return _route_response(
+            request_id="deterministic-route-only",
+            selected_capability="product.exact_match",
+            output_tokens=8,
+        )
+
+    def fake_invoke(_registry, name, arguments, _context):
+        assert name == "image_product_search"
+        assert arguments["asset_id"] == request.query.asset_binding.asset_id
+        output = {
+            "hits": [
+                {
+                    "score": 1.0,
+                    "product": {
+                        "product_id": "private-product",
+                        "title": "Deterministic shoe",
+                        "category_l1": "Shoes",
+                        "image_path": "private.jpg",
+                        "source": "fixture",
+                    },
+                }
+            ]
+        }
+        arguments_bytes = canonical_json_bytes(arguments)
+        output_bytes = canonical_json_bytes(output)
+        return ToolInvocationResult(
+            tool_name=name,
+            spec_sha256="1" * 64,
+            arguments=arguments,
+            arguments_bytes=arguments_bytes,
+            arguments_sha256=sha256_bytes(arguments_bytes),
+            output=output,
+            output_bytes=output_bytes,
+            output_sha256=sha256_bytes(output_bytes),
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
+    runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=CoreFastAssistantRunner,
+        banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
+    )
+    object.__setattr__(
+        runner,
+        "_deterministic_action_contract_version",
+        "core-fast-deterministic-action-response-v1",
+    )
+
+    execution = runner.execute(request)
+
+    assert len(model_calls) == 1
+    assert [item.tool_name for item in execution.response.tool_trace] == [
+        "image_product_search"
+    ]
+    assert execution.response.error_code is None
+    assert execution.response.response_text == (
+        "answer:\nThe tool returned eligible candidates listed below.\n"
+        "product_cards:\ntool-call-1-evidence-1 | "
+        "tool-call-1-product-1 | Deterministic shoe\n"
+        "uncertainty:\nOnly the returned public candidate evidence is shown."
+    )
 
 
 def _budget_context(tmp_path, request, *, name: str = "budget-ledger"):
@@ -646,11 +736,7 @@ def test_encyclopedia_contract_gets_one_no_tool_format_repair(
 @pytest.mark.parametrize(
     "invalid_text",
     (
-        (
-            "answer:\nno supported match\n"
-            "none\n"
-            "uncertainty:\ninsufficient evidence"
-        ),
+        ("answer:\nno supported match\nnone\nuncertainty:\ninsufficient evidence"),
         (
             "answer:\nno supported match\n"
             "notes:\nnone\n"

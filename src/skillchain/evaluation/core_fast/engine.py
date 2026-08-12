@@ -3,18 +3,48 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import shutil
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 
 from pydantic import ValidationError
 
+from skillchain.evolution.s1_gcs_gate import (
+    S1GCSGateError,
+    screen_s1_development_patches,
+)
+from skillchain.evolution.s1_sparse_patch import (
+    S1SparsePatchError,
+    bind_sparse_patch_draft,
+    compile_sparse_s1_candidate,
+    compose_screened_sparse_bank,
+    decode_sparse_parent_content,
+    load_sparse_compilation_receipt,
+    sparse_author_content_lexical_guard,
+    sparse_patch_output_json_schema,
+)
+from skillchain.runners.assistant_deterministic_contract import (
+    DETERMINISTIC_ASSISTANT_CONTRACT_SHA256,
+)
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
+from skillchain.evaluation.portfolio_gcs import (
+    GCS_CAPABILITY_ORDER,
+    GCS_BOOTSTRAP_POLICY_VERSION,
+    GCS_BOOTSTRAP_REPLICATES,
+    GCS_BOOTSTRAP_ROOT_SEED,
+    GCSQueryScoreV2,
+    build_gcs_population_v2,
+)
 from skillchain.schemas import Query
-from skillchain.static_authoring import StaticBankArtifact, render_skill_markdown
+from skillchain.static_authoring import (
+    AuthoringInput,
+    StaticBankArtifact,
+    render_skill_markdown,
+)
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
 from .adapters import CoreFastAdapter
@@ -26,10 +56,13 @@ from .models import (
     CallResult,
     CallRole,
     CoreFastSpec,
+    FixedSample,
+    FixedSamples,
     JudgeObservation,
     SPLIT_COUNTS,
     StageDecision,
 )
+from .pacing import StartPacer
 from .store import (
     CallStore,
     FastStoreError,
@@ -41,6 +74,14 @@ from .store import (
 
 class FastPathError(RuntimeError):
     pass
+
+
+class _S1CandidateRejected(ValueError):
+    """Stable, non-sensitive reason for rejecting a sparse Creator proposal."""
+
+    def __init__(self, reason_code: str) -> None:
+        super().__init__(reason_code)
+        self.reason_code = reason_code
 
 
 @dataclass(frozen=True)
@@ -110,6 +151,8 @@ def _observation_from_result(result: CallResult, query_id: str) -> AssistantObse
             selected_capability=None,
             route_trace_key=None,
             tool_trace_key=f"failed:{result.call_id}",
+            answer_mode="unresolved",
+            oracle_available=False,
             gcs_components={
                 "route_acceptable": False,
                 "no_hard_error": False,
@@ -118,6 +161,7 @@ def _observation_from_result(result: CallResult, query_id: str) -> AssistantObse
                 "output_contract_pass": False,
             },
             gcs_score=0.0,
+            gcs_reason_codes=(),
             hard_error=True,
             card_violation=True,
             evidence_violation=True,
@@ -136,6 +180,8 @@ def _observation_from_result(result: CallResult, query_id: str) -> AssistantObse
             selected_capability=None,
             route_trace_key=None,
             tool_trace_key=f"invalid:{result.call_id}",
+            answer_mode="unresolved",
+            oracle_available=False,
             gcs_components={
                 "route_acceptable": False,
                 "no_hard_error": False,
@@ -144,6 +190,7 @@ def _observation_from_result(result: CallResult, query_id: str) -> AssistantObse
                 "output_contract_pass": False,
             },
             gcs_score=0.0,
+            gcs_reason_codes=(),
             hard_error=True,
             card_violation=True,
             evidence_violation=True,
@@ -176,11 +223,17 @@ class CoreFastEngine:
         self.output_root = output_root.resolve()
         self.adapter = adapter
         self.calls = CallStore(self.output_root, spec)
+        self._feedback_start_pacer = StartPacer(
+            spec.concurrency.feedback_requests_per_second
+        )
         self._queries: tuple[Query, ...] | None = None
         self._query_by_id: dict[str, Query] | None = None
         self._static_bank: StaticBankArtifact | None = None
         self._opt_static: dict[str, AssistantObservation] | None = None
         self._opt_attribution: dict[str, dict[str, object]] | None = None
+        self._opt_fold_roles: dict[str, str] | None = None
+        self._val_gate_roles: dict[str, str] | None = None
+        self._s1_authoring_input: AuthoringInput | None = None
 
     # ------------------------------- loading/validation --------------------
 
@@ -212,6 +265,11 @@ class CoreFastEngine:
         if self._static_bank is not None:
             return self._static_bank
         path = self._path("static_bank")
+        if (
+            self.spec.static_bank_file_sha256 is not None
+            and _file_sha(path) != self.spec.static_bank_file_sha256
+        ):
+            raise FastPathError("Static Bank file SHA-256 differs from the frozen spec")
         try:
             self._static_bank = StaticBankArtifact.model_validate_json(
                 path.read_bytes(), strict=True
@@ -221,10 +279,30 @@ class CoreFastEngine:
         self._require_six_capabilities(self._static_bank)
         return self._static_bank
 
+    def s1_authoring_input(self) -> AuthoringInput:
+        if self._s1_authoring_input is not None:
+            return self._s1_authoring_input
+        path = self._path("s1_authoring_input")
+        if _file_sha(path) != self.spec.s1_authoring_input_file_sha256:
+            raise FastPathError(
+                "S1 AuthoringInput SHA-256 differs from the frozen spec"
+            )
+        try:
+            value = AuthoringInput.model_validate_json(path.read_bytes(), strict=True)
+            decode_sparse_parent_content(self.static_bank(), value)
+        except (OSError, ValidationError, S1SparsePatchError) as error:
+            raise FastPathError("invalid S1 sparse AuthoringInput") from error
+        self._s1_authoring_input = value
+        return value
+
     def opt_static(self) -> dict[str, AssistantObservation]:
         if self._opt_static is not None:
             return self._opt_static
         path = self._path("opt_static_results")
+        if _file_sha(path) != self.spec.opt_static_results_sha256:
+            raise FastPathError(
+                "Static opt800 observations SHA-256 differs from the frozen spec"
+            )
         observations: dict[str, AssistantObservation] = {}
         for index, raw in enumerate(_read_jsonl(path), start=1):
             if not isinstance(raw, dict):
@@ -244,8 +322,157 @@ class CoreFastEngine:
             raise FastPathError(
                 "opt Static results must cover the fixed opt800 exactly"
             )
+        self._validate_opt_static_model_identity(observations)
         self._opt_static = observations
         return observations
+
+    def _validate_opt_static_model_identity(
+        self, observations: Mapping[str, AssistantObservation]
+    ) -> None:
+        expected_model = self.spec.models["assistant"].requested_model
+        provider_request_ids: list[str] = []
+        for query_id, observation in observations.items():
+            context = observation.replay_context
+            response = context.get("response")
+            receipt = context.get("receipt")
+            assistant_result = context.get("assistant_result")
+            if not all(
+                isinstance(item, dict) for item in (response, receipt, assistant_result)
+            ):
+                raise FastPathError(
+                    f"Static opt800 model identity evidence is missing: {query_id}"
+                )
+            assert isinstance(response, dict)
+            assert isinstance(receipt, dict)
+            assert isinstance(assistant_result, dict)
+            if (
+                response.get("backbone_model") != expected_model
+                or assistant_result.get("backbone_model") != expected_model
+            ):
+                raise FastPathError(
+                    f"Static opt800 Assistant model differs from spec: {query_id}"
+                )
+            model_calls = receipt.get("model_calls")
+            if not isinstance(model_calls, list) or not model_calls:
+                raise FastPathError(
+                    f"Static opt800 model-call receipt is missing: {query_id}"
+                )
+            for call in model_calls:
+                if (
+                    not isinstance(call, dict)
+                    or call.get("requested_model") != expected_model
+                    or call.get("response_model") != expected_model
+                    or not isinstance(call.get("provider_request_id"), str)
+                    or not call["provider_request_id"]
+                ):
+                    raise FastPathError(
+                        f"Static opt800 model-call identity differs: {query_id}"
+                    )
+                provider_request_ids.append(str(call["provider_request_id"]))
+        if len(provider_request_ids) != len(set(provider_request_ids)):
+            raise FastPathError("Static opt800 provider request IDs are not unique")
+
+    def fixed_samples_from_static(
+        self, observations: Mapping[str, AssistantObservation]
+    ) -> FixedSamples:
+        """Select new-model S1 samples deterministically from discovery600."""
+
+        roles = self.opt_fold_roles()
+        selected_canary: list[FixedSample] = []
+        selected_body: list[FixedSample] = []
+        for capability in CAPABILITIES:
+            population = [
+                query
+                for query in self.queries()
+                if query.split == "opt_pool"
+                and query.canonical_capability == capability
+                and roles[query.query_id] == "discovery"
+            ]
+            failures = [
+                query
+                for query in population
+                if observations[query.query_id].hard_error
+                or observations[query.query_id].gcs_score < 1.0
+            ]
+            anchors = [
+                query
+                for query in population
+                if not observations[query.query_id].hard_error
+                and observations[query.query_id].gcs_score == 1.0
+            ]
+            canary_queries = []
+            if failures:
+                canary_queries.append(failures[0])
+            if anchors:
+                canary_queries.append(anchors[0])
+            for query in (*failures, *anchors):
+                if query not in canary_queries:
+                    canary_queries.append(query)
+                if len(canary_queries) == 2:
+                    break
+            if len(canary_queries) != 2:
+                raise FastPathError(
+                    f"new Static baseline cannot supply canary2 for {capability}"
+                )
+            selected_canary.extend(
+                FixedSample(
+                    query_id=query.query_id,
+                    capability=capability,
+                    role=(
+                        "anchor"
+                        if observations[query.query_id].gcs_score == 1.0
+                        and not observations[query.query_id].hard_error
+                        else "failure"
+                    ),
+                )
+                for query in canary_queries
+            )
+
+            route_correct = [
+                query
+                for query in population
+                if observations[query.query_id].gcs_components["route_acceptable"]
+            ]
+            body_failures = [
+                query
+                for query in route_correct
+                if observations[query.query_id].hard_error
+                or observations[query.query_id].gcs_score < 1.0
+            ]
+            body_anchors = [
+                query
+                for query in route_correct
+                if not observations[query.query_id].hard_error
+                and observations[query.query_id].gcs_score == 1.0
+            ]
+            body_queries = [*body_failures[:6], *body_anchors[:2]]
+            for query in (*body_failures[6:], *body_anchors[2:]):
+                if len(body_queries) == 8:
+                    break
+                if query not in body_queries:
+                    body_queries.append(query)
+            if len(body_queries) != 8:
+                raise FastPathError(
+                    f"new Static baseline cannot supply body8 for {capability}"
+                )
+            selected_body.extend(
+                FixedSample(
+                    query_id=query.query_id,
+                    capability=capability,
+                    role=(
+                        "body_anchor"
+                        if observations[query.query_id].gcs_score == 1.0
+                        and not observations[query.query_id].hard_error
+                        else "body_failure"
+                    ),
+                )
+                for query in body_queries
+            )
+        return FixedSamples(
+            canary12=tuple(selected_canary),
+            dev_smoke24=self.spec.fixed_samples.dev_smoke24,
+            body48=tuple(selected_body),
+        )
 
     def opt_attribution(self) -> dict[str, dict[str, object]]:
         if self._opt_attribution is not None:
@@ -268,6 +495,74 @@ class CoreFastEngine:
         self._opt_attribution = rows
         return rows
 
+    def opt_fold_roles(self) -> dict[str, str]:
+        if self._opt_fold_roles is not None:
+            return self._opt_fold_roles
+        path = self._path("opt_fold_mapping")
+        if _file_sha(path) != self.spec.opt_fold_mapping_sha256:
+            raise FastPathError("opt fold mapping SHA-256 differs from the frozen spec")
+        roles: dict[str, str] = {}
+        for index, raw in enumerate(_read_jsonl(path), start=1):
+            if not isinstance(raw, dict):
+                raise FastPathError(f"invalid opt fold row {index}")
+            query_id = raw.get("query_id")
+            role = raw.get("role")
+            if (
+                not isinstance(query_id, str)
+                or role not in {"discovery", "replay"}
+                or query_id in roles
+            ):
+                raise FastPathError(f"invalid opt fold binding at row {index}")
+            roles[query_id] = str(role)
+        expected = {
+            item.query_id for item in self.queries() if item.split == "opt_pool"
+        }
+        counts = Counter(roles.values())
+        if set(roles) != expected or counts != Counter(
+            {"discovery": 600, "replay": 200}
+        ):
+            raise FastPathError("opt fold mapping must bind discovery600/replay200")
+        self._opt_fold_roles = roles
+        return roles
+
+    def val_gate_roles(self) -> dict[str, str]:
+        if self._val_gate_roles is not None:
+            return self._val_gate_roles
+        path = self._path("val_gate_assignments")
+        if _file_sha(path) != self.spec.val_gate_assignments_sha256:
+            raise FastPathError(
+                "validation gate assignment SHA-256 differs from the frozen spec"
+            )
+        raw = load_json(path)
+        if not isinstance(raw, dict) or not isinstance(raw.get("audit"), dict):
+            raise FastPathError("invalid validation gate assignment artifact")
+        mapping = raw["audit"].get("query_id_to_gate")
+        if not isinstance(mapping, dict):
+            raise FastPathError("validation gate artifact lacks query_id_to_gate")
+        roles = {
+            str(query_id): str(gate)
+            for query_id, gate in mapping.items()
+            if isinstance(query_id, str) and isinstance(gate, str)
+        }
+        expected = {item.query_id for item in self.queries() if item.split == "val"}
+        counts = Counter(roles.values())
+        if set(roles) != expected or counts != Counter(
+            {"body_gate": 75, "route_gate": 75, "shadow_val": 50}
+        ):
+            raise FastPathError(
+                "validation gates must bind body75/route75/shadow50 exactly"
+            )
+        self._val_gate_roles = roles
+        return roles
+
+    def _queries_for_val_gate(self, gate: str) -> list[Query]:
+        roles = self.val_gate_roles()
+        return [
+            query
+            for query in self.queries()
+            if query.split == "val" and roles[query.query_id] == gate
+        ]
+
     def validate(self, *, require_runtime: bool) -> ValidationSummary:
         queries = self.queries()
         counts = Counter(item.split for item in queries)
@@ -278,9 +573,27 @@ class CoreFastEngine:
         if {item.canonical_capability for item in queries} != set(CAPABILITIES):
             raise FastPathError("Core dataset must cover the fixed six capabilities")
         bank = self.static_bank()
+        self.s1_authoring_input()
         opt_static = self.opt_static()
         self.opt_attribution()
+        fold_roles = self.opt_fold_roles()
+        self.val_gate_roles()
         by_id = self.query_by_id()
+        for query_id, observation in opt_static.items():
+            result = observation.replay_context.get("assistant_result")
+            if (
+                not isinstance(result, dict)
+                or result.get("bank_sha256") != bank.bank_sha256
+            ):
+                raise FastPathError(
+                    "Static opt800 observation Bank differs from the frozen parent: "
+                    f"{query_id}"
+                )
+            if observation.assistant_contract != self.spec.runtime.assistant_contract:
+                raise FastPathError(
+                    "Static opt800 observation Assistant contract differs from the "
+                    f"active runtime: {query_id}"
+                )
         sample_sets = (
             (self.spec.fixed_samples.canary12, "opt_pool"),
             (self.spec.fixed_samples.dev_smoke24, "dev_mini"),
@@ -301,6 +614,10 @@ class CoreFastEngine:
                         f"fixed query binding differs: {sample.query_id}"
                     )
         for sample in self.spec.fixed_samples.canary12:
+            if fold_roles[sample.query_id] != "discovery":
+                raise FastPathError(
+                    f"Feedback canary is outside discovery600: {sample.query_id}"
+                )
             observation = opt_static[sample.query_id]
             if sample.role == "failure" and not (
                 observation.hard_error or observation.gcs_score < 1.0
@@ -308,9 +625,11 @@ class CoreFastEngine:
                 raise FastPathError(
                     f"canary failure is not a recorded failure: {sample.query_id}"
                 )
-            if sample.role == "anchor" and observation.hard_error:
+            if sample.role == "anchor" and (
+                observation.hard_error or observation.gcs_score < 1.0
+            ):
                 raise FastPathError(
-                    f"canary anchor has a hard error: {sample.query_id}"
+                    f"canary anchor is not a recorded success: {sample.query_id}"
                 )
         for sample in self.spec.fixed_samples.body48:
             observation = opt_static[sample.query_id]
@@ -326,6 +645,12 @@ class CoreFastEngine:
                 raise FastPathError(
                     f"body48 failure lacks a Body/contract failure: {sample.query_id}"
                 )
+            if sample.role == "body_anchor" and (
+                observation.hard_error or observation.gcs_score < 1.0
+            ):
+                raise FastPathError(
+                    f"body48 anchor is not a recorded success: {sample.query_id}"
+                )
         runtime_ready = True
         # Deliberately coarse call-count ceiling, not a per-call reservation
         # proof.  It includes every physical candidate, all 1,500 post-freeze
@@ -333,7 +658,7 @@ class CoreFastEngine:
         max_calls = {
             "feedback": 12,
             "creator": 3,
-            "assistant": 424 + 224 + 296 + 200 + 1500,
+            "assistant": 624 + 224 + 296 + 200 + 1500,
             "judge": 2 * (48 + 1500),
             "route_only": 4500,
         }
@@ -399,15 +724,23 @@ class CoreFastEngine:
             "spec_path": str(self.spec_path),
             "input_sha256": {
                 "spec": _file_sha(self.spec_path),
+                "asset_catalog": self.spec.asset_catalog_sha256,
+                "static_bank_file": self.spec.static_bank_file_sha256,
                 "queries": _file_sha(self._path("queries")),
                 "static_bank": _file_sha(self._path("static_bank")),
                 "opt_static_results": _file_sha(self._path("opt_static_results")),
                 "opt_route_attribution": _file_sha(self._path("opt_route_attribution")),
+                "opt_fold_mapping": _file_sha(self._path("opt_fold_mapping")),
+                "val_gate_assignments": _file_sha(self._path("val_gate_assignments")),
+                "s1_authoring_input": _file_sha(self._path("s1_authoring_input")),
                 "feedback_schema": sha256_bytes(
                     canonical_json_bytes(VisualFeedbackOutput.model_json_schema())
                 ),
                 "assistant_result_schema": sha256_bytes(
                     canonical_json_bytes(AssistantObservation.model_json_schema())
+                ),
+                "deterministic_assistant_contract": (
+                    DETERMINISTIC_ASSISTANT_CONTRACT_SHA256
                 ),
                 "judge_result_schema": sha256_bytes(
                     canonical_json_bytes(JudgeObservation.model_json_schema())
@@ -422,6 +755,7 @@ class CoreFastEngine:
                 for key, value in self.spec.models.items()
             },
             "gates": self.spec.gates.model_dump(mode="json"),
+            "s1_settings": self.spec.s1_settings.model_dump(mode="json"),
             "concurrency": self.spec.concurrency.model_dump(mode="json"),
             "limits": self.spec.limits.model_dump(mode="json"),
             "runtime": self.spec.runtime.model_dump(mode="json"),
@@ -440,6 +774,8 @@ class CoreFastEngine:
                 "fixed_samples",
                 "models",
                 "gates",
+                "s1_settings",
+                "concurrency",
                 "limits",
                 "runtime",
                 "bootstrap",
@@ -454,6 +790,61 @@ class CoreFastEngine:
         if not bank_path.exists():
             atomic_write_json(bank_path, self.static_bank().model_dump(mode="json"))
 
+    def initialize_static_opt800(self) -> None:
+        """Initialize only inputs needed to produce a new Static baseline."""
+
+        destination = self._path("opt_static_results")
+        manifest_path = self.output_root / "static-opt800-manifest.json"
+        if destination.exists() and not manifest_path.exists():
+            raise FastPathError(
+                "Static opt800 destination predates this run manifest; use a new lineage"
+            )
+        queries = self.queries()
+        if Counter(item.split for item in queries) != Counter(SPLIT_COUNTS):
+            raise FastPathError("Core split geometry differs before Static opt800")
+        bank = self.static_bank()
+        self.opt_fold_roles()
+        if (
+            self.spec.models["assistant"].requested_model
+            != self.spec.models["route_only"].requested_model
+        ):
+            raise FastPathError(
+                "Static Assistant and route-only model identities differ"
+            )
+        if self.spec.runtime.adapter != "python":
+            raise FastPathError(
+                "fresh Static opt800 requires the reviewed Python adapter"
+            )
+        for role in ("assistant",):
+            model = self.spec.models[role]
+            if model.credential_env and not os.environ.get(model.credential_env):
+                raise FastPathError(
+                    f"missing credential {model.credential_env} for {role}"
+                )
+        runtime_validator = getattr(self.adapter, "validate_runtime", None)
+        if runtime_validator is not None:
+            try:
+                runtime_validator()
+            except (OSError, RuntimeError, ValueError) as error:
+                raise FastPathError(f"runtime adapter is not ready: {error}") from error
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "kind": "core-fast-static-opt800-run",
+            "experiment_id": self.spec.experiment_id,
+            "assistant_model": self.spec.models["assistant"].model_dump(mode="json"),
+            "concurrency": self.spec.concurrency.model_dump(mode="json"),
+            "queries_sha256": _file_sha(self._path("queries")),
+            "static_bank_file_sha256": _file_sha(self._path("static_bank")),
+            "static_bank_sha256": bank.bank_sha256,
+            "destination": str(destination),
+        }
+        if manifest_path.exists():
+            if load_json(manifest_path) != payload:
+                raise FastPathError("Static opt800 output root belongs to another run")
+        else:
+            atomic_write_json(manifest_path, payload)
+
     # ------------------------------- calls ---------------------------------
 
     def _call(
@@ -464,10 +855,12 @@ class CoreFastEngine:
         purpose: str,
         payload: dict[str, object],
     ) -> CallResult:
-        if role == "feedback" and self.calls.get(role, call_id) is None:
+        existing = self.calls.get(role, call_id)
+        if role == "feedback" and existing is None:
             if self.calls.role_count(role) >= self.spec.limits.max_feedback_calls:
                 raise FastPathError("Feedback call limit reached")
-        if role == "creator" and self.calls.get(role, call_id) is None:
+            self._feedback_start_pacer.wait()
+        if role == "creator" and existing is None:
             if self.calls.role_count(role) >= self.spec.limits.max_creator_calls:
                 raise FastPathError("Creator/optimizer call limit reached")
         intent = CallIntent(
@@ -481,6 +874,44 @@ class CoreFastEngine:
             return self.calls.invoke(intent, self.adapter.invoke)
         except FastStoreError as error:
             raise FastPathError(str(error)) from error
+
+    def _reused_feedback_call(
+        self,
+        *,
+        call_id: str,
+        purpose: str,
+        payload: dict[str, object],
+    ) -> CallResult:
+        intent_path = self.output_root / "calls" / "feedback" / f"{call_id}.intent.json"
+        try:
+            stored = CallIntent.model_validate(load_json(intent_path), strict=True)
+            result = self.calls.get("feedback", call_id)
+        except (OSError, ValueError, ValidationError, FastStoreError) as error:
+            raise FastPathError("invalid reused Feedback call artifact") from error
+        expected = CallIntent(
+            call_id=call_id,
+            role="feedback",
+            purpose=purpose,
+            requested_model=self.spec.models["feedback"].requested_model,
+            payload=payload,
+        )
+        stored_payload = dict(stored.payload)
+        expected_payload = dict(expected.payload)
+        # Runtime paths are not provider-visible Feedback data. They may move
+        # forward when the exact Static/runtime identity is repaired, while
+        # query, baseline, role, schema, model, and result bytes stay frozen.
+        stored_payload.pop("runtime_paths", None)
+        expected_payload.pop("runtime_paths", None)
+        if (
+            stored.model_copy(update={"payload": stored_payload})
+            != expected.model_copy(update={"payload": expected_payload})
+            or result is None
+            or result.call_id != call_id
+            or result.role != "feedback"
+            or result.requested_model != expected.requested_model
+        ):
+            raise FastPathError("reused Feedback call differs from this S1 input")
+        return result
 
     def _assistant_call_id(self, split: str, config: str, query_id: str) -> str:
         return _safe_id(f"{split}-{config}-{query_id}")
@@ -693,6 +1124,8 @@ class CoreFastEngine:
         *,
         stage: str,
         parent: StaticBankArtifact,
+        feedback_bundle_sha256: str | None = None,
+        feedback_patchable_capabilities: frozenset[str] = frozenset(),
     ) -> StaticBankArtifact | None:
         if (
             result.status != "success"
@@ -702,6 +1135,21 @@ class CoreFastEngine:
             return None
         model_payload = result.output
         full_payload = result.output.get("bank")
+        if stage == "s1":
+            if full_payload is not None or feedback_bundle_sha256 is None:
+                raise _S1CandidateRejected("invalid_sparse_output_envelope")
+            bank = self._compile_sparse_s1_payload(
+                model_payload,
+                parent=parent,
+                feedback_bundle_sha256=feedback_bundle_sha256,
+                feedback_patchable_capabilities=feedback_patchable_capabilities,
+            )
+            if bank is None:
+                raise _S1CandidateRejected("invalid_sparse_compilation")
+            path = self.output_root / "banks" / "s1-candidate.json"
+            if not path.exists():
+                atomic_write_json(path, bank.model_dump(mode="json"))
+            return bank
         if isinstance(full_payload, dict):
             try:
                 supplied = StaticBankArtifact.model_validate_json(
@@ -712,39 +1160,21 @@ class CoreFastEngine:
                 return None
             supplied_by_capability = _bank_by_capability(supplied)
             parent_by_capability = _bank_by_capability(parent)
-            if stage == "s1":
-                model_payload = {
-                    "skills": [
-                        {
-                            "capability_id": capability,
-                            "description": supplied_by_capability[
-                                capability
-                            ].description,
-                            "body": supplied_by_capability[capability].body,
-                            "static_refs": supplied_by_capability[
-                                capability
-                            ].static_refs,
-                            "operators": supplied_by_capability[capability].operators,
-                        }
-                        for capability in CAPABILITIES
-                    ]
-                }
-            else:
-                field = "description" if stage == "s2" else "body"
-                forbidden = self._boundary_changes(parent, supplied, stage)
-                if forbidden:
-                    return None
-                model_payload = {
-                    "edits": [
-                        {
-                            "capability_id": capability,
-                            field: getattr(supplied_by_capability[capability], field),
-                        }
-                        for capability in CAPABILITIES
-                        if getattr(supplied_by_capability[capability], field)
-                        != getattr(parent_by_capability[capability], field)
-                    ]
-                }
+            field = "description" if stage == "s2" else "body"
+            forbidden = self._boundary_changes(parent, supplied, stage)
+            if forbidden:
+                return None
+            model_payload = {
+                "edits": [
+                    {
+                        "capability_id": capability,
+                        field: getattr(supplied_by_capability[capability], field),
+                    }
+                    for capability in CAPABILITIES
+                    if getattr(supplied_by_capability[capability], field)
+                    != getattr(parent_by_capability[capability], field)
+                ]
+            }
         bank = self._compile_candidate_payload(
             model_payload, stage=stage, parent=parent
         )
@@ -754,6 +1184,99 @@ class CoreFastEngine:
         if not path.exists():
             atomic_write_json(path, bank.model_dump(mode="json"))
         return bank
+
+    def _compile_sparse_s1_payload(
+        self,
+        payload: dict[str, object],
+        *,
+        parent: StaticBankArtifact,
+        feedback_bundle_sha256: str,
+        feedback_patchable_capabilities: frozenset[str],
+    ) -> StaticBankArtifact | None:
+        try:
+            authoring_input = self.s1_authoring_input()
+            draft = bind_sparse_patch_draft(
+                canonical_json_bytes(payload),
+                parent_bank=parent,
+                authoring_input=authoring_input,
+                feedback_bundle_sha256=feedback_bundle_sha256,
+            )
+            patched = frozenset(
+                item.capability_id for item in draft.skills if item.action == "patch"
+            )
+            if (
+                not patched
+                or len(patched) > self.spec.s1_settings.max_patched_capabilities
+                or patched & set(self.spec.s1_settings.protected_capabilities)
+                or not patched <= feedback_patchable_capabilities
+            ):
+                raise _S1CandidateRejected("sparse_patch_scope_rejected")
+            draft_by_capability = {item.capability_id: item for item in draft.skills}
+            for (
+                capability,
+                phrases,
+            ) in self.spec.s1_settings.required_patch_phrases.items():
+                item = draft_by_capability.get(capability)
+                if item is None or item.action != "patch" or item.patch is None:
+                    raise _S1CandidateRejected("required_patch_target_missing")
+                authored = "\n".join(
+                    (
+                        item.patch.objective,
+                        *(step.instruction for step in item.patch.steps),
+                        item.patch.fallback_instruction,
+                    )
+                ).casefold()
+                if any(phrase.casefold() not in authored for phrase in phrases):
+                    raise _S1CandidateRejected("required_patch_phrase_missing")
+            compiled = compile_sparse_s1_candidate(
+                parent_bank=parent,
+                authoring_input=authoring_input,
+                sparse_draft=draft,
+                tool_registry_runtime_sha256=parent.tool_registry_runtime_sha256,
+            )
+            parent_by_capability = _bank_by_capability(parent)
+            candidate_by_capability = _bank_by_capability(compiled.bank)
+            if any(
+                parent_by_capability[capability].description
+                != candidate_by_capability[capability].description
+                for capability in CAPABILITIES
+            ):
+                raise _S1CandidateRejected("frozen_description_changed")
+        except _S1CandidateRejected:
+            raise
+        except S1SparsePatchError as error:
+            raise _S1CandidateRejected("sparse_contract_rejected") from error
+        except (ValidationError, ValueError) as error:
+            raise _S1CandidateRejected("sparse_compilation_rejected") from error
+        artifacts = {
+            "s1-sparse-draft.json": draft.model_dump(mode="json"),
+            "s1-sparse-compilation-receipt.json": compiled.receipt.model_dump(
+                mode="json"
+            ),
+        }
+        for name, artifact in artifacts.items():
+            path = self.output_root / "banks" / name
+            if path.exists():
+                if load_json(path) != artifact:
+                    raise FastPathError(f"S1 sparse artifact changed on resume: {name}")
+            else:
+                atomic_write_json(path, artifact)
+        return compiled.bank
+
+    @staticmethod
+    def _write_canonical_resume_artifact(
+        path: Path, payload: object, *, label: str
+    ) -> None:
+        expected = canonical_json_bytes(payload)
+        if path.exists():
+            try:
+                existing = path.read_bytes()
+            except OSError as error:
+                raise FastPathError(f"cannot read {label} on resume") from error
+            if existing != expected:
+                raise FastPathError(f"{label} changed on resume")
+            return
+        atomic_write_json(path, payload)
 
     @staticmethod
     def _boundary_changes(
@@ -880,28 +1403,224 @@ class CoreFastEngine:
     def _smoke_ok(rows: Mapping[str, AssistantObservation]) -> bool:
         return len(rows) == 24 and not any(row.hard_error for row in rows.values())
 
+    @staticmethod
+    def _s1_smoke_ok(rows: Mapping[str, AssistantObservation]) -> bool:
+        # dev smoke is an operational preflight, not a candidate-selection
+        # population.  A captured response-contract lapse remains a valid
+        # observation and is screened only on paired replay200 evidence.
+        return len(rows) == 24 and all(row.oracle_available for row in rows.values())
+
+    @staticmethod
+    def _s1_development_scores(
+        rows: Mapping[str, AssistantObservation],
+        queries: Sequence[Query],
+        *,
+        config: Literal["llm_static", "s1"],
+    ) -> tuple[GCSQueryScoreV2, ...]:
+        query_ids = {query.query_id for query in queries}
+        if len(query_ids) != len(queries) or set(rows) != query_ids:
+            raise FastPathError("S1 development screen population is not rectangular")
+        population = build_gcs_population_v2(tuple(queries))
+        component_by_query = {
+            item.query_id: item.component_id for item in population.bindings
+        }
+        scores: list[GCSQueryScoreV2] = []
+        try:
+            for query in queries:
+                capability = query.canonical_capability
+                assert capability is not None
+                observation = rows[query.query_id]
+                components = observation.gcs_components
+                scores.append(
+                    GCSQueryScoreV2(
+                        query_id=query.query_id,
+                        config=config,
+                        canonical_capability=capability,
+                        component_id=component_by_query[query.query_id],
+                        route_disposition=(
+                            "pass" if components["route_acceptable"] else "fail"
+                        ),
+                        answer_mode=observation.answer_mode,
+                        oracle_available=observation.oracle_available,
+                        semantic_claim_support_resolved=observation.oracle_available,
+                        route_acceptable=int(components["route_acceptable"]),
+                        no_hard_error=int(components["no_hard_error"]),
+                        tool_contract_pass=int(components["tool_contract_pass"]),
+                        evidence_grounded=int(components["evidence_grounded"]),
+                        output_contract_pass=int(components["output_contract_pass"]),
+                        hard_error=int(observation.hard_error),
+                        gcs=int(observation.gcs_score),
+                        reason_codes=observation.gcs_reason_codes,
+                        evaluated_capability=capability,
+                        style_support_status=(
+                            "unresolved"
+                            if capability == "product.style_recommendation"
+                            else None
+                        ),
+                    )
+                )
+        except (KeyError, ValidationError, ValueError) as error:
+            raise FastPathError("invalid S1 development screen score") from error
+        return tuple(scores)
+
+    def _paired_component_bootstrap(
+        self,
+        parent: Mapping[str, AssistantObservation],
+        candidate: Mapping[str, AssistantObservation],
+        queries: Sequence[Query],
+        *,
+        scope: str,
+    ) -> dict[str, object]:
+        """Bootstrap capability-macro GCS over query-connected components."""
+
+        population = build_gcs_population_v2(tuple(queries))
+        mutable_members: dict[str, list[str]] = defaultdict(list)
+        for binding in population.bindings:
+            mutable_members[binding.component_id].append(binding.query_id)
+        members = {
+            component: tuple(sorted(query_ids))
+            for component, query_ids in mutable_members.items()
+        }
+        component_ids = tuple(
+            component for component, _size in population.component_sizes
+        )
+        by_id = {query.query_id: query for query in queries}
+        seed_material = canonical_json_bytes(
+            {
+                "policy_version": GCS_BOOTSTRAP_POLICY_VERSION,
+                "root_seed": GCS_BOOTSTRAP_ROOT_SEED,
+                "scope": scope,
+                "population_mapping_sha256": population.population_mapping_sha256,
+            }
+        )
+        seed = int.from_bytes(hashlib.sha256(seed_material).digest()[:16], "big")
+        rng = random.Random(seed)
+        draw_hasher = hashlib.sha256()
+        samples: list[float] = []
+        for _replicate in range(GCS_BOOTSTRAP_REPLICATES):
+            draw = tuple(
+                component_ids[rng.randrange(len(component_ids))] for _ in component_ids
+            )
+            draw_hasher.update(canonical_json_bytes(list(draw)))
+            parent_values: dict[str, list[float]] = defaultdict(list)
+            candidate_values: dict[str, list[float]] = defaultdict(list)
+            for component in draw:
+                for query_id in members[component]:
+                    capability = by_id[query_id].canonical_capability
+                    assert capability is not None
+                    parent_values[capability].append(parent[query_id].gcs_score)
+                    candidate_values[capability].append(candidate[query_id].gcs_score)
+            if set(parent_values) != set(GCS_CAPABILITY_ORDER) or set(
+                candidate_values
+            ) != set(GCS_CAPABILITY_ORDER):
+                continue
+            parent_macro = sum(
+                sum(parent_values[capability]) / len(parent_values[capability])
+                for capability in GCS_CAPABILITY_ORDER
+            ) / len(GCS_CAPABILITY_ORDER)
+            candidate_macro = sum(
+                sum(candidate_values[capability]) / len(candidate_values[capability])
+                for capability in GCS_CAPABILITY_ORDER
+            ) / len(GCS_CAPABILITY_ORDER)
+            samples.append(100.0 * (candidate_macro - parent_macro))
+        samples.sort()
+        complete = len(samples) == GCS_BOOTSTRAP_REPLICATES
+
+        def percentile(quantile: float) -> float | None:
+            if not complete:
+                return None
+            position = (len(samples) - 1) * quantile
+            lower = int(position)
+            upper = min(lower + 1, len(samples) - 1)
+            fraction = position - lower
+            return samples[lower] * (1.0 - fraction) + samples[upper] * fraction
+
+        return {
+            "component_count": len(component_ids),
+            "replicates_requested": GCS_BOOTSTRAP_REPLICATES,
+            "replicates_available": len(samples),
+            "ci95_low_pp": percentile(0.025),
+            "ci95_high_pp": percentile(0.975),
+            "derived_seed": seed,
+            "draw_stream_sha256": draw_hasher.hexdigest(),
+        }
+
     def _s1_gate(
         self,
         parent: Mapping[str, AssistantObservation],
         candidate: Mapping[str, AssistantObservation],
         queries: Sequence[Query],
+        *,
+        phase: str,
     ) -> tuple[bool, tuple[str, ...], dict[str, object]]:
+        if phase not in {"replay200", "body_gate75"}:
+            raise ValueError(f"unknown S1 gate phase: {phase}")
         before = self._summary(parent, queries)
         after = self._summary(candidate, queries)
         reasons: list[str] = []
-        if after["capability_macro_gcs"] <= before["capability_macro_gcs"]:
-            reasons.append("capability-macro GCS did not strictly improve")
-        if after["hard_errors"] > before["hard_errors"]:
-            reasons.append("hard errors increased")
-        floor = self.spec.gates.s1_max_capability_drop_pp / 100
-        for capability in CAPABILITIES:
-            delta = (
-                after["capability_gcs"][capability]
-                - before["capability_gcs"][capability]
+        coverage_failures = tuple(
+            sorted(
+                {
+                    query_id
+                    for rows in (parent, candidate)
+                    for query_id, observation in rows.items()
+                    if not observation.oracle_available
+                }
             )
-            if delta < -floor - 1e-12:
+        )
+        if coverage_failures:
+            reasons.append("S1 oracle coverage is incomplete")
+        macro_delta_pp = 100.0 * (
+            float(after["capability_macro_gcs"]) - float(before["capability_macro_gcs"])
+        )
+        hard_error_delta_pp = 100.0 * (
+            (int(after["hard_errors"]) - int(before["hard_errors"])) / len(queries)
+        )
+        minimum_macro = (
+            self.spec.gates.s1_replay_macro_delta_pp_min
+            if phase == "replay200"
+            else self.spec.gates.s1_system_macro_delta_pp_min
+        )
+        if macro_delta_pp < minimum_macro - 1e-12:
+            reasons.append(f"capability-macro GCS delta is below {minimum_macro:g}pp")
+        if hard_error_delta_pp > self.spec.gates.s1_hard_error_delta_pp_max + 1e-12:
+            reasons.append("hard-error delta exceeds +1pp")
+        floor_pp = self.spec.gates.s1_max_capability_drop_pp
+        capability_delta_pp: dict[str, float] = {}
+        for capability in CAPABILITIES:
+            delta_pp = 100.0 * (
+                float(after["capability_gcs"][capability])
+                - float(before["capability_gcs"][capability])
+            )
+            capability_delta_pp[capability] = delta_pp
+            if delta_pp < -floor_pp - 1e-12:
                 reasons.append(f"{capability} declined by more than 3pp")
-        return not reasons, tuple(reasons), {"parent": before, "candidate": after}
+        bootstrap: dict[str, object] | None = None
+        if phase == "body_gate75":
+            bootstrap = self._paired_component_bootstrap(
+                parent,
+                candidate,
+                queries,
+                scope="s1-body-gate75",
+            )
+            low = bootstrap["ci95_low_pp"]
+            if low is None:
+                reasons.append("S1 component bootstrap interval is incomplete")
+            elif float(low) < self.spec.gates.s1_bootstrap_ci95_lower_pp_min - 1e-12:
+                reasons.append("S1 component-bootstrap CI95 lower bound is below 0pp")
+        metrics: dict[str, object] = {
+            "phase": phase,
+            "parent": before,
+            "candidate": after,
+            "macro_delta_pp": macro_delta_pp,
+            "hard_error_delta_pp": hard_error_delta_pp,
+            "capability_delta_pp": capability_delta_pp,
+            "oracle_coverage_complete": not coverage_failures,
+            "oracle_coverage_failure_query_ids": list(coverage_failures),
+        }
+        if bootstrap is not None:
+            metrics["paired_component_bootstrap"] = bootstrap
+        return not reasons, tuple(reasons), metrics
 
     def _s2_gate(
         self,
@@ -942,47 +1661,27 @@ class CoreFastEngine:
         }
         return not reasons, tuple(reasons), metrics
 
-    @staticmethod
-    def _creator_schema(stage: str) -> dict[str, object]:
+    def _creator_schema(
+        self,
+        stage: str,
+        *,
+        parent: StaticBankArtifact | None = None,
+    ) -> dict[str, object]:
         capability_enum = list(CAPABILITIES)
         if stage == "s1":
-            item = {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "capability_id",
-                    "description",
-                    "body",
-                    "static_refs",
-                    "operators",
-                ],
-                "properties": {
-                    "capability_id": {"type": "string", "enum": capability_enum},
-                    "description": {"type": "string", "minLength": 1},
-                    "body": {"type": "string", "minLength": 1},
-                    "static_refs": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
-                    "operators": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                    },
+            if parent is None:
+                raise ValueError("S1 sparse schema requires the parent Bank")
+            by_capability = _bank_by_capability(parent)
+            return sparse_patch_output_json_schema(
+                parent_skill_sha256_by_capability={
+                    capability: by_capability[capability].skill_sha256
+                    for capability in CAPABILITIES
                 },
-            }
-            return {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["skills"],
-                "properties": {
-                    "skills": {
-                        "type": "array",
-                        "minItems": 6,
-                        "maxItems": 6,
-                        "items": item,
-                    }
+                frozen_objective_by_capability={
+                    capability: by_capability[capability].description
+                    for capability in CAPABILITIES
                 },
-            }
+            )
         field = "description" if stage == "s2" else "body"
         return {
             "type": "object",
@@ -1034,6 +1733,55 @@ class CoreFastEngine:
 
     # ------------------------------- S1 ------------------------------------
 
+    def run_static_opt800(self) -> dict[str, object]:
+        """Execute a fresh Static baseline and publish one create-only JSONL.
+
+        The configured ``paths.opt_static_results`` is the destination.  It
+        must not already exist, which keeps historical model lineages
+        immutable and prevents a new Assistant identity from being projected
+        over an old baseline.
+        """
+
+        destination = self._path("opt_static_results")
+        queries = [query for query in self.queries() if query.split == "opt_pool"]
+        rows = self._assistant_many(
+            split="static-opt800",
+            config="llm_static",
+            queries=queries,
+            bank=self.static_bank(),
+        )
+        self._validate_opt_static_model_identity(rows)
+        fixed_samples = self.fixed_samples_from_static(rows)
+        payloads = [rows[query.query_id].model_dump(mode="json") for query in queries]
+        expected_bytes = b"".join(canonical_json_bytes(row) for row in payloads)
+        if destination.exists():
+            if destination.read_bytes() != expected_bytes:
+                raise FastPathError(
+                    "Static opt800 destination differs from the completed call journal"
+                )
+        else:
+            atomic_write_jsonl(destination, payloads)
+        observed_sha256 = _file_sha(destination)
+        bootstrap = {
+            "schema_version": 1,
+            "kind": "core-fast-static-opt800-bootstrap",
+            "assistant_model": self.spec.models["assistant"].requested_model,
+            "assistant_contract": self.spec.runtime.assistant_contract,
+            "opt_static_results": str(destination),
+            "opt_static_results_sha256": observed_sha256,
+            "row_count": len(rows),
+            "gcs_success_count": sum(int(item.gcs_score) for item in rows.values()),
+            "hard_error_count": sum(int(item.hard_error) for item in rows.values()),
+            "fixed_samples": fixed_samples.model_dump(mode="json"),
+        }
+        bootstrap_path = self.output_root / "static-opt800-bootstrap.json"
+        if bootstrap_path.exists():
+            if load_json(bootstrap_path) != bootstrap:
+                raise FastPathError("Static opt800 bootstrap differs on resume")
+        else:
+            atomic_write_json(bootstrap_path, bootstrap)
+        return bootstrap
+
     def run_s1(self) -> StageDecision:
         existing = self._existing_decision("s1")
         if existing is not None:
@@ -1042,8 +1790,39 @@ class CoreFastEngine:
         opt = self.opt_static()
         query_by_id = self.query_by_id()
 
+        if self.spec.s1_settings.feedback_mode == "reuse-exact-call-results":
+            source_manifest = (
+                self.output_root / "inputs" / "feedback-source-manifest.json"
+            )
+            expected_manifest_sha256 = (
+                self.spec.s1_settings.feedback_reuse_manifest_sha256
+            )
+            if (
+                expected_manifest_sha256 is None
+                or not source_manifest.is_file()
+                or _file_sha(source_manifest) != expected_manifest_sha256
+            ):
+                raise FastPathError(
+                    "S1 reused Feedback source manifest is missing or changed"
+                )
+            missing_feedback = [
+                sample.query_id
+                for sample in self.spec.fixed_samples.canary12
+                if self.calls.get("feedback", _safe_id(f"canary-{sample.query_id}"))
+                is None
+            ]
+            if missing_feedback:
+                raise FastPathError(
+                    "S1 reused Feedback cache is incomplete; fresh replacement "
+                    "calls are forbidden"
+                )
+
         feedback: dict[str, object] = {}
-        with ThreadPoolExecutor(max_workers=self.spec.concurrency.feedback) as pool:
+        feedback_workers = min(
+            self.spec.concurrency.feedback,
+            len(self.spec.fixed_samples.canary12),
+        )
+        with ThreadPoolExecutor(max_workers=feedback_workers) as pool:
             futures = {}
             for sample in self.spec.fixed_samples.canary12:
                 query = query_by_id[sample.query_id]
@@ -1057,12 +1836,23 @@ class CoreFastEngine:
                     "runtime_paths": self.spec.paths.model_dump(mode="json"),
                     "no_replacement": True,
                 }
+                purpose = f"S1 fixed canary Feedback {sample.query_id}"
                 futures[
                     pool.submit(
-                        self._call,
-                        role="feedback",
+                        (
+                            self._reused_feedback_call
+                            if self.spec.s1_settings.feedback_mode
+                            == "reuse-exact-call-results"
+                            else self._call
+                        ),
                         call_id=call_id,
-                        purpose=f"S1 fixed canary Feedback {sample.query_id}",
+                        **(
+                            {}
+                            if self.spec.s1_settings.feedback_mode
+                            == "reuse-exact-call-results"
+                            else {"role": "feedback"}
+                        ),
+                        purpose=purpose,
                         payload=payload,
                     )
                 ] = sample
@@ -1073,9 +1863,16 @@ class CoreFastEngine:
                 if result.status == "success" and result.schema_valid and result.output:
                     raw = result.output.get("feedback", result.output)
                     try:
-                        parsed = VisualFeedbackOutput.model_validate_json(
+                        feedback_model = VisualFeedbackOutput.model_validate_json(
                             canonical_json_bytes(raw), strict=True
-                        ).model_dump(mode="json")
+                        )
+                        compatible = tuple(
+                            suggestion
+                            for suggestion in feedback_model.skill_suggestions
+                            if suggestion.startswith("[policy_compatible] ")
+                        )
+                        parsed = feedback_model.model_dump(mode="json")
+                        parsed["skill_suggestions"] = list(compatible)
                     except ValidationError:
                         parsed = None
                 feedback[sample.query_id] = {
@@ -1094,14 +1891,36 @@ class CoreFastEngine:
             ]
             for capability in CAPABILITIES
         }
+        feedback_bundle = {
+            "parent_bank_sha256": parent.bank_sha256,
+            "canary_query_ids": [
+                sample.query_id for sample in self.spec.fixed_samples.canary12
+            ],
+            "feedback_by_capability": grouped,
+        }
+        feedback_bundle_sha256 = sha256_bytes(canonical_json_bytes(feedback_bundle))
+        patchable_capabilities = frozenset(
+            capability
+            for capability, rows in grouped.items()
+            if any(
+                isinstance(row.get("feedback"), dict)
+                and bool(row["feedback"].get("skill_suggestions"))
+                for row in rows
+            )
+        )
+        templates = decode_sparse_parent_content(parent, self.s1_authoring_input())
         creator = self._call(
             role="creator",
             call_id="s1-creator-once",
-            purpose="S1 failure-driven six-capability Creator",
+            purpose="S1 parent-bound sparse capability Creator",
             payload={
                 "operation": "s1_creator",
                 "parent_bank": parent.model_dump(mode="json"),
+                "parent_authoring_content": [
+                    item.model_dump(mode="json") for item in templates
+                ],
                 "feedback_by_capability": grouped,
+                "feedback_bundle_sha256": feedback_bundle_sha256,
                 "feedback_success_count": sum(
                     item["feedback"] is not None for item in feedback.values()
                 ),
@@ -1111,22 +1930,68 @@ class CoreFastEngine:
                     if not any(row["feedback"] is not None for row in rows)
                 ],
                 "requirements": {
-                    "complete_six_capability_bank": True,
+                    "round_id": self.spec.s1_settings.round_id,
+                    "complete_six_capability_actions": True,
+                    "default_action": "inherit",
+                    "patch_only_with_policy_compatible_suggestion": True,
+                    "freeze_all_descriptions": True,
+                    "protected_capabilities_must_inherit": list(
+                        self.spec.s1_settings.protected_capabilities
+                    ),
+                    "max_patched_capabilities": (
+                        self.spec.s1_settings.max_patched_capabilities
+                    ),
+                    "creator_directives": list(
+                        self.spec.s1_settings.creator_directives
+                    ),
+                    "required_patch_phrases": {
+                        capability: list(phrases)
+                        for capability, phrases in (
+                            self.spec.s1_settings.required_patch_phrases.items()
+                        )
+                    },
+                    "author_content_lexical_guard": (
+                        sparse_author_content_lexical_guard()
+                    ),
                     "single_candidate": True,
                 },
-                "output_schema": self._creator_schema("s1"),
+                "output_schema": self._creator_schema("s1", parent=parent),
             },
         )
-        candidate = self._candidate_bank(creator, stage="s1", parent=parent)
+        candidate_rejection_reason: str | None = None
+        try:
+            candidate = self._candidate_bank(
+                creator,
+                stage="s1",
+                parent=parent,
+                feedback_bundle_sha256=feedback_bundle_sha256,
+                feedback_patchable_capabilities=patchable_capabilities,
+            )
+        except _S1CandidateRejected as error:
+            candidate = None
+            candidate_rejection_reason = error.reason_code
         reasons: list[str] = []
         metrics: dict[str, object] = {
             "feedback_success_count": sum(
                 item["feedback"] is not None for item in feedback.values()
-            )
+            ),
+            "round_id": self.spec.s1_settings.round_id,
+            "feedback_mode": self.spec.s1_settings.feedback_mode,
+            "feedback_reuse_manifest_sha256": (
+                self.spec.s1_settings.feedback_reuse_manifest_sha256
+            ),
+            "feedback_provider_calls_this_round": (
+                0
+                if self.spec.s1_settings.feedback_mode == "reuse-exact-call-results"
+                else len(self.spec.fixed_samples.canary12)
+            ),
         }
         accepted = False
         if candidate is None:
-            reasons.append("Creator failed or returned an invalid six-capability Bank")
+            reasons.append("Creator failed or returned an invalid sparse S1 proposal")
+            metrics["creator_candidate_rejection_reason"] = (
+                candidate_rejection_reason or "provider_or_schema_invalid"
+            )
         else:
             smoke_queries = [
                 query_by_id[item.query_id]
@@ -1139,29 +2004,191 @@ class CoreFastEngine:
                 bank=candidate,
             )
             metrics["smoke_hard_errors"] = sum(row.hard_error for row in smoke.values())
-            if not self._smoke_ok(smoke):
-                reasons.append("candidate failed fixed dev smoke24")
+            smoke_oracle_failures = sorted(
+                query_id for query_id, row in smoke.items() if not row.oracle_available
+            )
+            metrics["smoke_oracle_coverage_complete"] = not smoke_oracle_failures
+            metrics["smoke_oracle_coverage_failure_query_ids"] = smoke_oracle_failures
+            if not self._s1_smoke_ok(smoke):
+                reasons.append(
+                    "candidate failed fixed dev smoke24 operational/oracle coverage"
+                )
             else:
-                val_queries = [
-                    query for query in self.queries() if query.split == "val"
+                fold_roles = self.opt_fold_roles()
+                replay_queries = [
+                    query
+                    for query in self.queries()
+                    if query.split == "opt_pool"
+                    and fold_roles[query.query_id] == "replay"
                 ]
-                static_rows = self._assistant_many(
-                    split="val",
-                    config="llm_static",
-                    queries=val_queries,
-                    bank=parent,
-                )
-                candidate_rows = self._assistant_many(
-                    split="val",
+                static_replay = {
+                    query.query_id: opt[query.query_id] for query in replay_queries
+                }
+                raw_candidate = candidate
+                raw_candidate_replay = self._assistant_many(
+                    split="opt-replay200",
                     config="s1-candidate",
-                    queries=val_queries,
-                    bank=candidate,
+                    queries=replay_queries,
+                    bank=raw_candidate,
                 )
-                accepted, gate_reasons, gate_metrics = self._s1_gate(
-                    static_rows, candidate_rows, val_queries
+                raw_replay_oracle_failures = sorted(
+                    {
+                        query_id
+                        for rows in (static_replay, raw_candidate_replay)
+                        for query_id, row in rows.items()
+                        if not row.oracle_available
+                    }
                 )
-                reasons.extend(gate_reasons)
-                metrics["gate"] = gate_metrics
+                metrics["raw_candidate_bank"] = raw_candidate.bank_sha256
+                metrics[
+                    "raw_replay_oracle_coverage_complete"
+                ] = not raw_replay_oracle_failures
+                metrics["raw_replay_oracle_coverage_failure_query_ids"] = (
+                    raw_replay_oracle_failures
+                )
+                if raw_replay_oracle_failures:
+                    reasons.append("raw replay200 oracle coverage is incomplete")
+                    self._write_selected_bank("s1", parent)
+                    return self._save_decision(
+                        StageDecision(
+                            stage="s1",
+                            accepted=False,
+                            alias_of="llm_static",
+                            parent_bank=parent.bank_sha256,
+                            candidate_bank=raw_candidate.bank_sha256,
+                            selected_bank=parent.bank_sha256,
+                            reasons=tuple(reasons),
+                            metrics=metrics,
+                        )
+                    )
+                baseline_scores = self._s1_development_scores(
+                    static_replay, replay_queries, config="llm_static"
+                )
+                raw_candidate_scores = self._s1_development_scores(
+                    raw_candidate_replay, replay_queries, config="s1"
+                )
+                try:
+                    development_screen = screen_s1_development_patches(
+                        queries=replay_queries,
+                        baseline_scores=baseline_scores,
+                        candidate_scores=raw_candidate_scores,
+                    )
+                except S1GCSGateError as error:
+                    raise FastPathError(
+                        "S1 replay200 development screen failed"
+                    ) from error
+                screen_payload = development_screen.model_dump(mode="json")
+                screen_bytes = canonical_json_bytes(screen_payload)
+                screen_path = self.output_root / "banks" / "s1-development-screen.json"
+                self._write_canonical_resume_artifact(
+                    screen_path,
+                    screen_payload,
+                    label="S1 development screen",
+                )
+
+                compilation_receipt_path = (
+                    self.output_root / "banks" / "s1-sparse-compilation-receipt.json"
+                )
+                try:
+                    compilation_receipt = load_sparse_compilation_receipt(
+                        compilation_receipt_path,
+                        expected_file_sha256=_file_sha(compilation_receipt_path),
+                    )
+                except (OSError, S1SparsePatchError) as error:
+                    raise FastPathError(
+                        "S1 sparse compilation receipt is invalid"
+                    ) from error
+                patched_capabilities = frozenset(
+                    item.capability_id
+                    for item in compilation_receipt.bindings
+                    if item.action == "patch"
+                )
+                retained_capabilities = tuple(
+                    sorted(
+                        item.capability_id
+                        for item in development_screen.decisions
+                        if item.capability_id in patched_capabilities
+                        and item.decision == "retain_patch"
+                    )
+                )
+                reverted_capabilities = tuple(
+                    sorted(patched_capabilities - set(retained_capabilities))
+                )
+                try:
+                    screened = compose_screened_sparse_bank(
+                        parent_bank=parent,
+                        creator_candidate_bank=raw_candidate,
+                        creator_compilation_receipt=compilation_receipt,
+                        development_screen_sha256=sha256_bytes(screen_bytes),
+                        retained_capability_ids=retained_capabilities,
+                    )
+                except (S1SparsePatchError, ValidationError, ValueError) as error:
+                    raise FastPathError("S1 screened sparse Bank is invalid") from error
+                screened_artifacts = {
+                    "s1-screened-candidate.json": screened.bank.model_dump(mode="json"),
+                    "s1-screened-bank-receipt.json": screened.receipt.model_dump(
+                        mode="json"
+                    ),
+                }
+                for name, artifact in screened_artifacts.items():
+                    self._write_canonical_resume_artifact(
+                        self.output_root / "banks" / name,
+                        artifact,
+                        label=f"S1 {name}",
+                    )
+                candidate = screened.bank
+                metrics["development_screen_sha256"] = sha256_bytes(screen_bytes)
+                metrics["development_screen"] = screen_payload
+                metrics["retained_patch_capabilities"] = list(retained_capabilities)
+                metrics["reverted_patch_capabilities"] = list(reverted_capabilities)
+                metrics["screened_candidate_bank"] = candidate.bank_sha256
+
+                if not retained_capabilities:
+                    reasons.append("replay200 screen reverted all sparse patches")
+                else:
+                    replay_rerun = candidate.bank_sha256 != raw_candidate.bank_sha256
+                    metrics["composite_replay_rerun"] = replay_rerun
+                    candidate_replay = (
+                        self._assistant_many(
+                            split="opt-replay200-composite",
+                            config="s1-candidate",
+                            queries=replay_queries,
+                            bank=candidate,
+                        )
+                        if replay_rerun
+                        else raw_candidate_replay
+                    )
+                    replay_ok, replay_reasons, replay_metrics = self._s1_gate(
+                        static_replay,
+                        candidate_replay,
+                        replay_queries,
+                        phase="replay200",
+                    )
+                    metrics["replay_gate"] = replay_metrics
+                    if not replay_ok:
+                        reasons.extend(f"replay200: {item}" for item in replay_reasons)
+                    else:
+                        gate_queries = self._queries_for_val_gate("body_gate")
+                        static_rows = self._assistant_many(
+                            split="body-gate75",
+                            config="llm_static",
+                            queries=gate_queries,
+                            bank=parent,
+                        )
+                        candidate_rows = self._assistant_many(
+                            split="body-gate75",
+                            config="s1-candidate",
+                            queries=gate_queries,
+                            bank=candidate,
+                        )
+                        accepted, gate_reasons, gate_metrics = self._s1_gate(
+                            static_rows,
+                            candidate_rows,
+                            gate_queries,
+                            phase="body_gate75",
+                        )
+                        reasons.extend(gate_reasons)
+                        metrics["gate"] = gate_metrics
         selected = candidate if accepted and candidate is not None else parent
         self._write_selected_bank("s1", selected)
         decision = StageDecision(

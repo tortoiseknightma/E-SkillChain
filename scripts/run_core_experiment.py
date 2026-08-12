@@ -38,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="skip credential/command readiness checks",
     )
+    commands.add_parser(
+        "static-opt800",
+        help="run a fresh create-only Static opt800 baseline and emit bootstrap metadata",
+    )
     run = commands.add_parser("run", help="run or conservatively resume the experiment")
     run.add_argument("--through", choices=("s1", "s2", "full", "test"), required=True)
     commands.add_parser("report", help="rebuild metrics/cases from completed results")
@@ -87,6 +91,11 @@ def main(argv: list[str] | None = None) -> int:
                     sort_keys=True,
                 )
             )
+            return 0
+        if args.command == "static-opt800":
+            engine.initialize_static_opt800()
+            result = engine.run_static_opt800()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         report = engine.report()
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

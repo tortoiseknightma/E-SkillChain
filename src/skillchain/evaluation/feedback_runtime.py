@@ -1277,6 +1277,12 @@ def _require_policy_labeled_suggestions(feedback: VisualFeedbackOutput) -> None:
             )
 
 
+def require_policy_labeled_suggestions(feedback: VisualFeedbackOutput) -> None:
+    """Validate the active v6 disposition prefix on every suggestion."""
+
+    _require_policy_labeled_suggestions(feedback)
+
+
 def run_visual_feedback(
     packet: FeedbackPacket | FeedbackPacketV3,
     evaluator_isolation: EvaluatorIsolationLock,
@@ -1561,6 +1567,7 @@ __all__ = [
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V6",
     "VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7",
     "load_feedback_evaluation_result",
+    "require_policy_labeled_suggestions",
     "redact_feedback_result_for_creator_privacy",
     "run_visual_feedback",
     "visual_feedback_transport_policy_v1",

@@ -10,13 +10,8 @@ from skillchain.evaluation.final_runtime import (
     FINAL_JUDGE_CACHE_NAMESPACE,
     FINAL_JUDGE_ANSWER_MAX_TOKENS,
     FINAL_JUDGE_MAX_ATTEMPTS,
-    FINAL_JUDGE_MAX_BILLABLE_INPUT_TOKENS,
-    FINAL_JUDGE_MAX_BILLABLE_OUTPUT_TOKENS,
-    FINAL_JUDGE_PROVIDER_INPUT_TOKEN_RESERVE,
-    FINAL_JUDGE_PROVIDER_OUTPUT_TOKEN_LIMIT,
     FINAL_JUDGE_RETRY_POLICY_VERSION,
     FINAL_JUDGE_RESULT_SCHEMA_VERSION,
-    FINAL_JUDGE_THINKING_BUDGET,
 )
 from skillchain.runners.assistant import (
     PORTFOLIO_ROUTER_CONTRACT_SHA256,
@@ -361,7 +356,7 @@ def test_gate0_models_prices_and_token_envelopes_bind_active_runtime() -> None:
     assert assistant["provider"] == config.ASSISTANT_PROVIDER == "qwen"
     assert (
         assistant["model"]
-        == config.ASSISTANT_MODEL
+        == config.LEGACY_PORTFOLIO_ASSISTANT_MODEL
         == portfolio_execution.PORTFOLIO_QWEN_MODEL
         == "qwen3-vl-flash-2026-01-22"
     )
@@ -404,7 +399,7 @@ def test_gate0_models_prices_and_token_envelopes_bind_active_runtime() -> None:
         assert role_contract["provider"] == "kimi"
         assert (
             role_contract["model"]
-            == config.PORTFOLIO_JUDGE_MODEL
+            == config.LEGACY_KIMI_FEEDBACK_JUDGE_MODEL
             == portfolio_execution.PORTFOLIO_KIMI_MODEL
             == "kimi-k2.6"
         )
@@ -414,19 +409,13 @@ def test_gate0_models_prices_and_token_envelopes_bind_active_runtime() -> None:
         judge = models[role]
         assert isinstance(judge, dict)
         assert judge["answer_max_tokens"] == FINAL_JUDGE_ANSWER_MAX_TOKENS
-        assert judge["thinking_budget"] == FINAL_JUDGE_THINKING_BUDGET
-        assert judge["max_billable_input_tokens"] == (
-            FINAL_JUDGE_MAX_BILLABLE_INPUT_TOKENS
-        )
-        assert judge["max_billable_output_tokens"] == (
-            FINAL_JUDGE_MAX_BILLABLE_OUTPUT_TOKENS
-        )
-        assert judge["provider_input_token_reserve"] == (
-            FINAL_JUDGE_PROVIDER_INPUT_TOKEN_RESERVE
-        )
-        assert judge["provider_output_token_limit"] == (
-            FINAL_JUDGE_PROVIDER_OUTPUT_TOKEN_LIMIT
-        )
+        # Gate0 is an immutable legacy Kimi contract; it must not follow the
+        # active Final Judge role used by new Core Fast runs.
+        assert judge["thinking_budget"] == 6144
+        assert judge["max_billable_input_tokens"] == 32768
+        assert judge["max_billable_output_tokens"] == 8192
+        assert judge["provider_input_token_reserve"] == 229376
+        assert judge["provider_output_token_limit"] == 16384
 
     qwen_price = pricing["qwen"]
     kimi_price = pricing["kimi"]

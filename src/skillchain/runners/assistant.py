@@ -92,6 +92,13 @@ from skillchain.runners.assistant_response_contract import (
     repair_preserves_material_atoms,
     validate_assistant_response_contract,
 )
+from skillchain.runners.assistant_deterministic_contract import (
+    DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+    DeterministicToolObservation,
+    compile_deterministic_response,
+    deterministic_tool_names,
+    next_deterministic_tool,
+)
 
 
 SHARED_STAGE2_ROUTE_POLICY_VERSION = "shared-stage2-route-v6"
@@ -1737,6 +1744,7 @@ class ProductionAssistantRunner:
         "_banks",
         "_asset_catalog",
         "_qwen_call_start_waiter",
+        "_deterministic_action_contract_version",
     )
 
     def __init__(
@@ -1787,6 +1795,7 @@ class ProductionAssistantRunner:
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
+        self._deterministic_action_contract_version = None
         _require_evolution_bank_boundaries(held)
 
     @property
@@ -1870,9 +1879,7 @@ class ProductionAssistantRunner:
             "body": selected.body,
             "operators": list(selected.operators),
             "final_response_contract": (
-                _gcs_v2_model_response_contract_for_capability(
-                    selected.capability_id
-                )
+                _gcs_v2_model_response_contract_for_capability(selected.capability_id)
             ),
         }
         presentation_protocol = (
@@ -2993,65 +3000,120 @@ class ProductionAssistantRunner:
             )
             repair_pending = False
             repair_initial_text = ""
-            repair_initial_validation: AssistantResponseContractValidation | None = (
-                None
-            )
+            repair_initial_validation: AssistantResponseContractValidation | None = None
             for action_call_index in range(1, action_turn_budget + 1):
+                deterministic_contract = (
+                    getattr(self, "_deterministic_action_contract_version", None)
+                    == DETERMINISTIC_ASSISTANT_CONTRACT_VERSION
+                    and request.config != "noskill"
+                    and selected_capability is not None
+                )
+                if deterministic_contract:
+                    contract_tools = deterministic_tool_names(selected_capability)
+                    if (
+                        not contract_tools
+                        or selected_operators is None
+                        or not set(contract_tools).issubset(selected_operators)
+                    ):
+                        error = "runtime_error"
+                        break
+                    deterministic_observations = tuple(
+                        DeterministicToolObservation(
+                            tool_name=item.tool_name,
+                            status=item.status,
+                            public_output=item.public_output,
+                        )
+                        for item in response_contract_observations
+                    )
+                    deterministic_response = compile_deterministic_response(
+                        selected_capability,
+                        deterministic_observations,
+                    )
+                    deterministic_tool = next_deterministic_tool(
+                        selected_capability,
+                        deterministic_observations,
+                    )
+                    if deterministic_response is not None:
+                        final = AssistantTurnDecision.model_validate(
+                            {
+                                "kind": "final",
+                                "response_text": deterministic_response,
+                            },
+                            strict=True,
+                        )
+                        break
+                    if deterministic_tool is None:
+                        error = "response_contract_error"
+                        break
+                    decision = AssistantTurnDecision.model_validate(
+                        {
+                            "kind": "tool",
+                            "tool_name": deterministic_tool.tool_name,
+                            "arguments": deterministic_tool.arguments,
+                        },
+                        strict=True,
+                    )
+                    response = None
+                else:
+                    response = None
                 used_output = reserved_route_usage.output_tokens + sum(
                     item.output_tokens for item in model_calls
                 )
                 remaining_output = request.budget.max_output_tokens - used_output
-                try:
-                    response = self._chat(
-                        request,
-                        messages,
-                        remaining_output,
-                        absolute_image_path,
-                        authoritative_asset_id,
-                        json_mode=False,
-                        tools=None if repair_pending else action_tools,
-                        attach_image=not repair_pending,
-                        timeout_seconds=remaining_timeout_seconds(),
-                        failure_stage="action",
-                        portfolio_budget_context=budget_context,
-                        budget_stage=(
-                            "assistant_action" if budget_context is not None else None
-                        ),
-                        budget_call_index=(
-                            action_call_index if budget_context is not None else None
-                        ),
-                    )
-                except AssistantCapturedResponseContractError as captured_error:
-                    if not repair_pending:
-                        raise
-                    assert repair_initial_validation is not None
-                    response = captured_error.response
-                    record_model_call(response)
-                    material_atoms_added = not repair_preserves_material_atoms(
-                        repair_initial_text, response.text
-                    )
-                    repair_wire_reasons = {"response_repair_wire_invalid"}
-                    if material_atoms_added:
-                        repair_wire_reasons.add(
-                            "response_repair_new_material_atom"
-                        )
-                    response_contract_repair = (
-                        make_assistant_response_contract_repair_receipt(
-                            initial_response_text=repair_initial_text,
-                            initial_reason_codes=(
-                                repair_initial_validation.reason_codes
+                if not deterministic_contract:
+                    try:
+                        response = self._chat(
+                            request,
+                            messages,
+                            remaining_output,
+                            absolute_image_path,
+                            authoritative_asset_id,
+                            json_mode=False,
+                            tools=None if repair_pending else action_tools,
+                            attach_image=not repair_pending,
+                            timeout_seconds=remaining_timeout_seconds(),
+                            failure_stage="action",
+                            portfolio_budget_context=budget_context,
+                            budget_stage=(
+                                "assistant_action"
+                                if budget_context is not None
+                                else None
                             ),
-                            repair_call_index=len(model_calls),
-                            repair_call_usage=response.usage,
-                            repaired_response_text=response.text,
-                            final_reason_codes=tuple(sorted(repair_wire_reasons)),
-                            material_atoms_added=material_atoms_added,
+                            budget_call_index=(
+                                action_call_index
+                                if budget_context is not None
+                                else None
+                            ),
                         )
-                    )
-                    error = "response_contract_error"
-                    break
-                record_model_call(response)
-                if response.finish_reason == "length":
+                    except AssistantCapturedResponseContractError as captured_error:
+                        if not repair_pending:
+                            raise
+                        assert repair_initial_validation is not None
+                        response = captured_error.response
+                        record_model_call(response)
+                        material_atoms_added = not repair_preserves_material_atoms(
+                            repair_initial_text, response.text
+                        )
+                        repair_wire_reasons = {"response_repair_wire_invalid"}
+                        if material_atoms_added:
+                            repair_wire_reasons.add("response_repair_new_material_atom")
+                        response_contract_repair = (
+                            make_assistant_response_contract_repair_receipt(
+                                initial_response_text=repair_initial_text,
+                                initial_reason_codes=(
+                                    repair_initial_validation.reason_codes
+                                ),
+                                repair_call_index=len(model_calls),
+                                repair_call_usage=response.usage,
+                                repaired_response_text=response.text,
+                                final_reason_codes=tuple(sorted(repair_wire_reasons)),
+                                material_atoms_added=material_atoms_added,
+                            )
+                        )
+                        error = "response_contract_error"
+                        break
+                    record_model_call(response)
+                if response is not None and response.finish_reason == "length":
                     if repair_pending:
                         assert repair_initial_validation is not None
                         material_atoms_added = not repair_preserves_material_atoms(
@@ -3078,7 +3140,9 @@ class ProductionAssistantRunner:
                     raise AssistantBackendContractError(
                         "Assistant action exhausted its output-token allowance"
                     )
-                if response.tool_calls:
+                if response is None:
+                    tool_call = None
+                elif response.tool_calls:
                     if repair_pending:  # _chat normally rejects this wire shape.
                         raise AssistantBackendContractError(
                             "response repair attempted to call a tool"
@@ -3110,10 +3174,8 @@ class ProductionAssistantRunner:
                     if response.finish_reason != "stop" or not response.text.strip():
                         if repair_pending:
                             assert repair_initial_validation is not None
-                            material_atoms_added = (
-                                not repair_preserves_material_atoms(
-                                    repair_initial_text, response.text
-                                )
+                            material_atoms_added = not repair_preserves_material_atoms(
+                                repair_initial_text, response.text
                             )
                             incomplete_reasons = {
                                 (
@@ -3347,21 +3409,33 @@ class ProductionAssistantRunner:
                     (
                         {
                             "role": "assistant",
-                            "content": response.text or None,
+                            "content": (
+                                None if response is None else response.text or None
+                            ),
                             "tool_calls": [
                                 {
-                                    "id": tool_call.call_id,
+                                    "id": (
+                                        f"runner-tool-{len(tool_trace)}"
+                                        if tool_call is None
+                                        else tool_call.call_id
+                                    ),
                                     "type": "function",
                                     "function": {
-                                        "name": tool_call.name,
-                                        "arguments": tool_call.arguments_json,
+                                        "name": decision.tool_name,
+                                        "arguments": canonical_json_bytes(
+                                            decision.arguments
+                                        ).decode("utf-8"),
                                     },
                                 }
                             ],
                         },
                         {
                             "role": "tool",
-                            "tool_call_id": tool_call.call_id,
+                            "tool_call_id": (
+                                f"runner-tool-{len(tool_trace)}"
+                                if tool_call is None
+                                else tool_call.call_id
+                            ),
                             "content": canonical_json_bytes(tool_message).decode(
                                 "utf-8"
                             ),
@@ -3623,6 +3697,7 @@ class PortfolioAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
+        self._deterministic_action_contract_version = None
         _require_evolution_bank_boundaries(held)
 
 
@@ -3702,6 +3777,7 @@ class PortfolioStaticOptAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
+        self._deterministic_action_contract_version = None
 
 
 _PORTFOLIO_STATIC_OPT_EXECUTE = PortfolioStaticOptAssistantRunner.execute
@@ -3727,6 +3803,7 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         banks: Mapping[str, StaticBankArtifact],
         asset_catalog: AssetCatalog,
         qwen_call_start_waiter: Callable[[str], float] | None = None,
+        deterministic_action_contract_version: str | None = None,
     ) -> None:
         registry = require_portfolio_diagnostic_registry(registry)
         if not system_prompt or system_prompt != system_prompt.strip():
@@ -3756,6 +3833,14 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
+        if deterministic_action_contract_version not in {
+            None,
+            DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+        }:
+            raise ValueError("unknown Core Fast deterministic action contract")
+        self._deterministic_action_contract_version = (
+            deterministic_action_contract_version
+        )
         _require_evolution_bank_boundaries(held)
 
     def execute_body_replay(

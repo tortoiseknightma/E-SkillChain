@@ -66,6 +66,7 @@
 | 48 | 验证幂等不等于内存幂等：Core catalog 深验要复用证明并控制图像副本 | 已验证主修复；跨进程残留已进 backlog | 内存诊断、信任边界、多进程资源治理 |
 | 49 | 跨品类搭配不能伪装成同类视觉相似：需要 query-independent evidence graph | 工具分支与真实 smoke 完成；Core 重锁/模型增益待验证 | 检索建模、Codex 辅助数据闭环、证据边界、实验隔离 |
 | 50 | JSON Schema 能收紧结构契约，但不能让 reasoning-only 空正文变得不可能 | canary 已验证；phase60/全量未执行 | LLM 结构化输出、故障恢复、不可变审计、成本治理 |
+| 51 | Sparse patch 不等于因果隔离：需要 capability-local paired screen 与 byte-exact 回滚 | 已验证；Qwen3.7 S1 两批十轮负结果已冻结，未进入 S2 | 算法实验、因果归因、负迁移防护、诚实停止 |
 
 ---
 
@@ -5234,6 +5235,122 @@ Feedback 模型永久切换为 Qwen3.8-Max 后，原 Round 3 JSON Object root �
 - `tests/evaluation/test_portfolio_s1_qwen_round3_schema_governance.py`
 - `runs/portfolio/core-s1/s1-feedback-round3-qwen38-v1/run-round3-v1.json`
 - `runs/portfolio/core-s1/s1-feedback-round3-qwen38-schema-v1/run-round3-schema-v2.json`
+
+---
+
+## 51. Sparse patch 不等于因果隔离：需要 capability-local paired screen 与 byte-exact 回滚
+
+**状态：已验证；Qwen3.7 S1 两批十轮负结果已冻结，未进入 S2**
+
+### 一句话问题
+
+把 Creator 限制成 sparse patch 只能减少改动面，不能保证模型执行只受目标 Skill 影响；
+必须用配对 development screen 找出 Static-success 回退，并把失败 capability 逐字节恢复。
+
+### 背景与影响
+
+历史 R0 对六能力整 Bank 重写，replay200 的总体 macro 增加 `3.5021pp`，却让 Encyclopedia
+下降 `5pp`，超过冻结的单能力底线。随后新 Qwen3.7 Static lineage 的 R1–R10 采用
+parent-bound `inherit|patch`、policy-labeled Feedback 和 byte-exact inherit。这个设计关闭了“改一个能力顺手改其他能力”的
+文本污染，但没有消除路由采样、工具选择、回答 repair 和高显著度 fallback 指令之间的
+运行时交互。
+
+### 观察到的证据
+
+- R2 只 patch Multi，target replay 从 `8→20`，tool-contract failure 总数从 `15→5`；但
+  `r2-core-0783` 跳过工具并编造 item/card handle，形成 1 条 Static-success 回退和 3 个
+  新 contract occurrence，仍必须回滚。
+- R3 的 DTO-copy 假设没有被 Assistant 检验。Creator 外层成功，但 authored-content guard
+  因同一句中的 `result` 与斜杠组合拒绝 sparse proposal，candidate 为 null、Assistant 0-call。
+- R4 的 Document literal-line copy 为 `0→0` 且引入 3 个新 contract occurrence，没有收益。
+- R5 的 Style evidence copy 从 `7→26`，但有 2 条回退：一条漏掉精确 fallback marker，
+  另一条跳过工具并编造候选；另有 4 个新 contract occurrence，因此同样回滚。
+- 新授权的 R6/R7 分别让 Multi `8→18`、Style `7→22`，但仍各有 2 条 Static-success
+  回退和 4 个新增 tool-contract occurrence，复现了“多数 grounding 改善、少数跳过工具”的模式。
+- R8 的 Recipe 是第二批最可信的方向性信号：`3→10`、0 条 Static-success 回退，tool/fallback
+  总错误也净下降；但 6 条原本已失败的 query 出现 7 个新 reason×query 事件，按预注册的
+  零新增 contract screen 仍须回滚。R9 Exact `17→17`，R10 Document `0→0`，均无可接受收益。
+- 九个实际 replay round 的 outer Assistant 调用均完整，无容量或服务错误；容量不是这些
+  负结果的解释。
+
+### 根因
+
+已验证事实是：R2/R5 的目标能力都有明显净改善，但模型仍偶发跳过必需工具、编造 handle，
+或在 empty-result 分支漏掉精确 fallback marker。自然语言 sparse instruction 能提高大多数
+DTO/evidence closure，却没有把正向分支、工具先行和 fallback 变成确定性互斥状态机。
+R3 又暴露了第二个工程问题：guard 能 fail closed，但没有把精确拒绝原因写入 stage decision，
+使一个词法假阳性看起来像算法候选失败。第二批开始前已修复该局部 guard 并落盘脱敏
+reason code；R6 真正执行了 DTO-copy 假设，仍复现少量跳过工具，说明剩余主因在运行时
+行为约束，而不再是候选校验器。
+
+### 考虑过的方案与取舍
+
+1. 看净分选择 R2 Exact 的 `+3`：会隐藏 paired regression，拒绝。
+2. 冻结或重放 R2 的赢家 route 后再评 R3：会在看到结果后改变比较口径，拒绝。
+3. 降低 non-regression screen 或重跑直到路由更幸运：属于挑结果，拒绝。
+4. capability-local screen + byte-exact compose：保留可归因 patch，失败能力精确恢复；采用。
+5. 第一批用完后无授权追加第六轮：拒绝；获得独立的新五轮授权后，预注册 R6–R10、使用
+   新 round identity 和独立 root 执行，R10 后不再追加 R11。
+
+### 最终方案
+
+S1 smoke 只检查 provider/schema/oracle 等运行覆盖；候选选择使用固定 replay200 的配对
+capability screen。任一 patch 若成功数下降、出现 Static-success 回退或新增 contract reason，
+只回滚对应 capability；组合 Bank 重新过 replay 后才有资格访问一次 body gate。两批十轮
+最终均为 `retained_patch_capabilities=[]` 或无合法 candidate，selected Bank 是 Static
+`da5cfe1f93f2cb57b389c97738034cf10cab931dcc30e145acc6d8873ff1348a`。
+因为用户条件是“S1 不回滚才进入 S2”，本轮没有启动 S2，也不携带任何被拒绝的 Body。
+
+### 如何验证
+
+- 回归覆盖 policy projection、sparse compile、oracle coverage、screened Bank resume/hash、
+  局部回滚、冻结 bootstrap parity、模型 lineage 和并发 exact wire。
+- R1–R10 的 screen/decision 均为 canonical、SHA 绑定产物；`body_gate75`、S2 与 `test300`
+  保持 0-call。
+- 第二批新增 3,588 次 Qwen3.7 provider call、CNY `1.8057772`，0 次新 Feedback call；
+  累计可追踪 provider 记录为 11,411 calls、CNY `5.7260350`。废弃 Static v1 另有一条
+  无法恢复用量的 orphan；10 次 Creator 的人民币 cost basis 不可得。
+
+### 剩余限制
+
+Static 与候选是独立模型采样，受保护 capability 的波动不能归因给目标 patch。R2/R5、
+R6/R7 的目标净增益很强，R8 也没有 Static-success 回退，但预注册的零回归/零新增 contract
+保护真实触发，不能事后放宽。下一次若另行立项，优先把工具调用、DTO/card/evidence 输出
+做成版本化的确定性 compiler/runtime contract，而不是继续堆自然语言 prompt。Core test
+仍未访问，因此本条只报告 development 负结果。
+
+### 30 秒回答
+
+“我把 S1 收紧成单能力 sparse patch 后，两批十轮里多次看到明显净增益：Multi 和 Style
+都能提升十几条，Recipe 也做到 `3→10` 且没有把 Static 成功样本打坏。但候选仍会偶发
+跳过工具或迁移 contract 错误。我没有用净增益覆盖风险，十轮都由 paired screen
+byte-exact 回滚；body gate 和 S2 都没碰，这证明增益门和停止规则是真实工作的。”
+
+### 2 分钟回答
+
+“历史 whole-bank S1 总体上升却伤了 Encyclopedia，所以我把 Creator 改成 parent-bound
+单能力 patch：Description 冻结，其他五项字节继承，只有 policy-compatible Feedback 能进
+Creator。第一批里 R2 Multi 从 8 到 20、R5 Style 从 7 到 26，但都有少量成功样本回退。
+第二批先修掉 DTO guard 假阳性，再预注册五个独立 round；R6/R7 又复现了大幅净改善和
+少量跳工具，R8 Recipe 达到 3 到 10 且零成功回退，但把 6 条既有失败迁移成 7 个新 contract
+事件。我的门要求任何 Static-success 回退或新 contract occurrence 都回滚，所以没有用净分
+掩盖风险，也没有在结果出来后降门。
+
+最终 R1–R10 全部 selected Static，body gate、S2、val/test 全部 0-call。工程层面，guard
+现在会给出稳定、脱敏的拒绝原因；算法层面，证据已经指向自然语言 Skill 能改善 grounding，
+却不能稳定保证工具调用和结构化闭合。下一步若另行立项，应转向确定性 compiler/runtime
+contract，而不是继续追加 prompt 轮次。这个案例体现的是如何区分方向性增益、发布安全、
+执行随机性和工程故障，并在预算与停止边界内诚实交付负结果。”
+
+### 证据入口
+
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `src/skillchain/evolution/s1_gcs_gate.py`
+- `src/skillchain/evolution/s1_sparse_patch.py`
+- `specs/core-experiment-fast-v1.json`
+- `tests/evaluation/test_core_fast.py`
+- `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`
+- `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`
 
 ---
 

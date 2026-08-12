@@ -32,9 +32,16 @@ ASSISTANT_REQUESTS_PER_SECOND = 20.0
 ASSISTANT_ACCEPTABLE_ERROR_RATE = 0.02
 ASSISTANT_SERVICE_ERROR_RATE = 0.0
 
-# Backward-compatible names for code that still calls the production Assistant
-# the backbone.  Data-label synthesis has separate constants below so changing
-# the evaluated Assistant cannot silently change the generated corpus.
+# Immutable Portfolio/Gate0/authoring artifacts predate the active Core Fast
+# Assistant switch.  Historical verifiers must bind this identity explicitly
+# instead of following the moving active Assistant constants above.
+LEGACY_PORTFOLIO_ASSISTANT_PROVIDER = "qwen"
+LEGACY_PORTFOLIO_ASSISTANT_MODEL = "qwen3-vl-flash-2026-01-22"
+LEGACY_PORTFOLIO_ASSISTANT_MODEL_REVISION = "2026-01-22"
+
+# Backward-compatible names continue to identify the active Assistant.  Code
+# which verifies an immutable Portfolio artifact must use the explicit legacy
+# constants above instead of following these moving aliases.
 BACKBONE_PROVIDER = ASSISTANT_PROVIDER
 BACKBONE_MODEL = ASSISTANT_MODEL
 LABEL_VISION_SYNTH_PROVIDER = "qwen"

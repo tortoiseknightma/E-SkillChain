@@ -35,7 +35,7 @@ ASSISTANT_OUTPUT_CNY_PER_MILLION_TOKENS = Decimal("0.8")
 OFFICIAL_SNAPSHOT_RPM = 30_000
 OFFICIAL_SNAPSHOT_TPM = 5_000_000
 # Keep roughly 20% of the Beijing snapshot TPM ceiling available to the main
-# experiment. At the prior production-wire mean of about 3.18k total tokens,
+# experiment. At the prior production-wire mean of about 3.18k tokens/call,
 # 20 requests/s consumes about 4M tokens/minute.
 DEFAULT_REQUESTS_PER_SECOND = 20.0
 DEFAULT_ERROR_RATE_LIMIT = 0.02

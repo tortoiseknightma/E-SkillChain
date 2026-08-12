@@ -15,7 +15,7 @@ from typing import Mapping
 from openai import OpenAI
 from pydantic import ValidationError
 
-from skillchain import config
+from skillchain import config, llm
 from skillchain.data.asset_catalog import load_asset_catalog
 from skillchain.evaluation.assistant_runs import (
     AssistantRequestSnapshot,
@@ -29,10 +29,18 @@ from skillchain.evaluation.evaluator_outputs import (
     parse_final_judge_output_v4,
     parse_visual_feedback_output_v3,
 )
-from skillchain.evaluation.feedback_runtime import visual_feedback_response_format_v1
+from skillchain.evaluation.feedback_runtime import (
+    require_policy_labeled_suggestions,
+    visual_feedback_response_format_v1,
+)
 from skillchain.evaluation.packets import (
     AssistantResult,
+    FeedbackGCSComponentBitsV1,
+    FeedbackGCSContractV1,
+    FeedbackGCSDiagnosticsV1,
     RubricSnapshot,
+    build_feedback_evaluator_prompt_v6,
+    build_feedback_packet_v3,
     build_final_evaluation_packet,
     build_final_evaluator_prompt,
     build_judge_scores,
@@ -40,7 +48,10 @@ from skillchain.evaluation.packets import (
     final_output_contract,
 )
 from skillchain.evaluation.portfolio_gcs import (
+    GCS_V2_POLICY_SHA256,
     build_gcs_population_v2,
+    gcs_policy_payload,
+    gcs_v2_policy_payload,
     portfolio_gcs_oracles_v2,
     score_portfolio_gcs_v2,
 )
@@ -159,6 +170,27 @@ class LiveCoreFastAdapter:
             raise RuntimeError("Codex CLI is required for the three creator sessions")
         if self.spec.paths.final_rubric is None:
             raise RuntimeError("Core Fast live adapter requires paths.final_rubric")
+        if self.spec.asset_catalog_sha256 is None:
+            raise RuntimeError("Core Fast live adapter requires asset_catalog_sha256")
+        _runtime, catalog = self._load_runtime()
+        if catalog.catalog_sha256 != self.spec.asset_catalog_sha256:
+            raise RuntimeError(
+                "Core Fast runtime asset catalog differs from the frozen spec"
+            )
+        try:
+            bank = StaticBankArtifact.model_validate_json(
+                self._path("static_bank").read_bytes(), strict=True
+            )
+        except (OSError, ValidationError) as error:
+            raise RuntimeError("Core Fast live Static Bank is invalid") from error
+        if (
+            bank.tool_registry_sha256 != _runtime.registry.registry_sha256
+            or bank.tool_registry_runtime_sha256
+            != _runtime.registry.registry_runtime_sha256
+        ):
+            raise RuntimeError(
+                "Core Fast live tool registry differs from the Static parent"
+            )
 
     def _clients(self) -> tuple[OpenAI, OpenAI]:
         with self._runtime_lock:
@@ -276,6 +308,9 @@ class LiveCoreFastAdapter:
                     banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
                     asset_catalog=catalog,
                     qwen_call_start_waiter=self._wait_for_assistant_start,
+                    deterministic_action_contract_version=(
+                        self.spec.runtime.assistant_contract
+                    ),
                 )
             )
             self._runner_by_bank[bank.bank_sha256] = runner
@@ -389,8 +424,11 @@ class LiveCoreFastAdapter:
             for call in execution.scorer_calls
             if (expected := expected_multi_items_from_call_v2(call)) is not None
         )
-        if len(multi) > 1:
-            raise RuntimeError("multiple multi-product scorer calls")
+        # A repeated multi_product_search is an Assistant tool-sequence error,
+        # not a provider failure.  Preserve every scorer call in the sidecar
+        # and bind the requested item set from the first call; the existing
+        # GCS allowed-sequence oracle will then score the repeated sequence as
+        # tool_contract_failed instead of dropping the population row.
         sidecar = make_public_scorer_evidence_v2(
             matrix_run_id=self.spec.experiment_id,
             instance_id=sha256_bytes(
@@ -505,8 +543,11 @@ class LiveCoreFastAdapter:
                 ),
                 "assistant_result": result.model_dump(mode="json"),
             },
+            answer_mode=score.answer_mode,
+            oracle_available=bool(score.oracle_available),
             gcs_components=components,
             gcs_score=float(score.gcs),
+            gcs_reason_codes=score.reason_codes,
             hard_error=bool(score.hard_error),
             card_violation=(
                 query.requires_card and not bool(score.output_contract_pass)
@@ -520,6 +561,7 @@ class LiveCoreFastAdapter:
                 if score.style_support_status is None
                 else str(score.style_support_status)
             ),
+            assistant_contract=self.spec.runtime.assistant_contract,
         )
         input_tokens = execution.receipt.aggregate_usage.input_tokens
         output_tokens = execution.receipt.aggregate_usage.output_tokens
@@ -540,64 +582,67 @@ class LiveCoreFastAdapter:
         )
 
     def _invoke_feedback(self, intent: CallIntent) -> CallResult:
-        qwen, _judge = self._clients()
         query = Query.model_validate_json(
             canonical_json_bytes(intent.payload["query"]), strict=True
         )
-        prompt = {
-            "task": (
-                "Diagnose this fixed Assistant result. Return only the strict "
-                "VisualFeedbackOutput JSON. Do not omit failed dimensions."
+        baseline = AssistantObservation.model_validate_json(
+            canonical_json_bytes(intent.payload["baseline"]), strict=True
+        )
+        result = AssistantResult.model_validate_json(
+            canonical_json_bytes(baseline.replay_context["assistant_result"]),
+            strict=True,
+        )
+        _runtime, catalog = self._load_runtime()
+        diagnostics = FeedbackGCSDiagnosticsV1(
+            answer_mode=baseline.answer_mode,
+            gcs=int(baseline.gcs_score),
+            components=FeedbackGCSComponentBitsV1(
+                **{key: int(value) for key, value in baseline.gcs_components.items()}
             ),
-            "query": intent.payload["query"],
-            "baseline": intent.payload["baseline"],
-            "sample_role": intent.payload["sample_role"],
-        }
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an independent visual evaluator. Ground findings in "
-                    "the image, request, visible answer, and recorded tool evidence."
-                ),
-            },
-            {
-                "role": "user",
-                "content": [
-                    self._image_part(self._image_path(query)),
-                    {
-                        "type": "text",
-                        "text": canonical_json_bytes(prompt).decode("utf-8"),
-                    },
-                ],
-            },
-        ]
+            reason_codes=baseline.gcs_reason_codes,
+        )
+        packet = build_feedback_packet_v3(
+            query,
+            result,
+            asset_catalog=catalog,
+            rubric=self._rubric_value(),
+            gcs_diagnostics=diagnostics,
+            gcs_contract=self._feedback_gcs_contract(query.canonical_capability),
+        )
+        prompt = build_feedback_evaluator_prompt_v6(packet)
+        image_path = self._image_path(query)
+        messages = evaluator_wire_messages(prompt, image_bytes=image_path.read_bytes())
         started = time.perf_counter()
-        raw = qwen.chat.completions.create(
+        response = llm.chat(
+            "qwen",
+            messages,
             model=intent.requested_model,
-            messages=messages,
-            response_format=visual_feedback_response_format_v1().model_dump(
-                mode="json", by_alias=True
-            ),
-            max_completion_tokens=4096,
-            stream=False,
-            extra_body={"enable_thinking": True, "thinking_budget": 4096},
-            timeout=600,
+            temperature=config.FEEDBACK_JUDGE_TEMPERATURE,
+            top_p=config.FEEDBACK_JUDGE_TOP_P,
+            thinking=config.FEEDBACK_JUDGE_THINKING,
+            thinking_budget=config.FEEDBACK_JUDGE_THINKING_BUDGET,
+            max_tokens=None,
+            max_completion_tokens=config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS,
+            json_mode=False,
+            response_format=visual_feedback_response_format_v1(),
+            max_attempts=1,
+            record_usage=False,
+            timeout_seconds=config.FEEDBACK_JUDGE_TIMEOUT_SECONDS,
         )
         latency_ms = round((time.perf_counter() - started) * 1000)
-        choice = raw.choices[0]
-        text = choice.message.content or ""
-        input_tokens, output_tokens = _usage(raw)
+        text = response.text
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
         common = {
             "call_id": intent.call_id,
             "role": intent.role,
             "requested_model": intent.requested_model,
-            "returned_model": raw.model,
+            "returned_model": response.response_model,
             "raw_output": text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "cost_cny": self.spec.models["feedback"].estimated_call_cost_cny,
-            "cost_basis": "planning_estimate",
+            "cost_cny": _qwen_cost(input_tokens, output_tokens),
+            "cost_basis": "token_pricing",
             "latency_ms": latency_ms,
         }
         if not text.strip():
@@ -606,7 +651,7 @@ class LiveCoreFastAdapter:
                 status="empty_response",
                 failure_reason="provider returned an empty Feedback answer",
             )
-        if choice.finish_reason != "stop" or choice.message.tool_calls:
+        if response.finish_reason != "stop" or response.tool_calls:
             return CallResult(
                 **common,
                 status="schema_error",
@@ -614,6 +659,7 @@ class LiveCoreFastAdapter:
             )
         try:
             parsed = parse_visual_feedback_output_v3(text)
+            require_policy_labeled_suggestions(parsed)
         except (TypeError, ValueError):
             return CallResult(
                 **common,
@@ -625,6 +671,43 @@ class LiveCoreFastAdapter:
             status="success",
             schema_valid=True,
             output={"feedback": parsed.model_dump(mode="json")},
+        )
+
+    @staticmethod
+    def _feedback_gcs_contract(capability: str | None) -> FeedbackGCSContractV1:
+        if capability is None:
+            raise RuntimeError("Feedback requires one canonical capability")
+        predecessor = gcs_policy_payload()
+        active = gcs_v2_policy_payload()
+        predecessor_oracle = predecessor["oracle_contract"]
+        active_oracle = active["oracle_contract"]
+        assert isinstance(predecessor_oracle, dict)
+        assert isinstance(active_oracle, dict)
+        capabilities = predecessor_oracle["capabilities"]
+        assert isinstance(capabilities, dict)
+        if capability == "product.style_recommendation":
+            style = active_oracle["style"]
+            assert isinstance(style, dict)
+            sequences = style["allowed_tool_sequences"]
+        else:
+            policy = capabilities[capability]
+            assert isinstance(policy, dict)
+            sequences = policy["allowed_tool_sequences"]
+        fallbacks = predecessor["fallback_markers"]
+        assert isinstance(fallbacks, dict)
+        markers = fallbacks[capability]
+        assert isinstance(markers, list)
+        task = load_mvp_task_specification_v1().capabilities_by_id[capability]
+        assert isinstance(sequences, list)
+        return FeedbackGCSContractV1(
+            policy_sha256=GCS_V2_POLICY_SHA256,
+            required_sections=task.output_contract.required_sections,
+            fallback_markers=tuple(str(item) for item in markers),
+            preferred_fallback_marker=str(markers[0]),
+            card_requirement=task.output_contract.card_requirement,
+            legal_tool_sequences=tuple(
+                tuple(str(tool) for tool in item) for item in sequences
+            ),
         )
 
     def _invoke_creator(self, intent: CallIntent) -> CallResult:

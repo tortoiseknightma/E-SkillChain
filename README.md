@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：Portfolio V1 已完成五配置 `dev_mini 200×5` 方向性比较和一次真实 failure-driven S1 闭环；S1 候选总体 GCS 上升，但视觉百科退化触发非退化门，因此候选已被拒绝并 byte-exact 回滚。Core `test300` 尚未运行。**
+> **当前状态：Portfolio V1 已完成五配置 `dev_mini 200×5` 方向性比较；Core Fast 已用 Qwen3.7 重跑 Static opt800、12 条 fresh Feedback，以及两批共十个单能力 S1 候选（R1–R10）。十轮均被 development screen 拒绝，最终 S1 是 Static Bank 的精确 alias；`body_gate75`、S2 与 Core `test300` 均未访问。第二批五轮额度也已耗尽，当前不能进入 S2。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -18,16 +18,38 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 Core r3 完整实验现在使用独立的最小治理入口：
 
 ```powershell
-$env:CORE_FAST_OPT_STATIC_RESULTS = 'E:\path\to\opt800-static-observations.jsonl'
 uv run python scripts/run_core_experiment.py validate
-uv run python scripts/run_core_experiment.py run --through test
-uv run python scripts/run_core_experiment.py report
 ```
 
-该入口固定执行 `dev200 → opt800 → val200 → test300`，生成五配置 `val=1,000`、
+当前默认只推荐上述零调用验证；`run --through ...` 会产生新调用，第二批五轮额度已经耗尽，
+需另行批准新 lineage，且只有 S1 接受后才能继续 S2/test。
+
+推荐先停在 S1：固定 `discovery600` 生成候选，已观察的 `replay200` 只作 development
+筛查，通过后才进入一次 `body_gate75` 接受门。新 Qwen3.7 lineage 的 R1–R10 均采用
+parent-bound 单能力 sparse patch，冻结全部 Description，并对未修改能力执行 byte-exact
+继承。十轮均未通过 replay screen，因此 S1 已停止并保持 Static。
+
+第一批证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`，第二批为
+`E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。十个 round root 均冻结
+`accepted=false`；它们只用于审计，不能任选一个继续 S2，也不能在新目录追加 R11。
+
+新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
+每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
+固定 12 条 Feedback 因而实际最多并发 12。限速作用于每次 provider call，而不是外层
+query。该配置只用于新 Fast execution overlay；历史 Formal profile、配置和 receipt
+保持原样，不回写。
+
+Core Fast 现在还启用版本化的 `core-fast-deterministic-action-response-v1`：模型只按冻结
+Description 选择 capability；路由后由 runner 执行固定工具序列和参数绑定，再由纯函数从
+公开 tool DTO 编译 `item_mapping / product_cards / evidence / uncertainty` 或精确 fallback。
+tool-first、DTO/card/evidence closure 与 supported/fallback 互斥不再依赖 Skill prose。该
+contract 只作用于新的 Core Fast routed 配置；NoSkill 与历史 Portfolio/Formal runner 不变。
+
+完整入口固定执行 `dev200 → opt800 → val200 → test300`，生成五配置 `val=1,000`、
 `test=1,500` 条逻辑结果；回滚配置复用 parent 的精确结果。历史 Formal Core 治理入口仍
 保留兼容，但不再是 Core Portfolio Quickstart 的默认依赖。详见
-[Core 1,500 Fast Path](docs/core-fast-path.md)。
+[Core 1,500 Fast Path](docs/core-fast-path.md) 和
+[唯一增益执行计划](docs/plans/2026-08-06-core-1500-interview-gain-execution-plan.md)。
 
 ## 为什么做这个项目
 
@@ -64,7 +86,7 @@ flowchart TB
   end
 
   subgraph EVOLVE["3 · 分层自进化"]
-    TRACE --> S1["S1 Creator<br/>创建或改进完整 Skill Bank"]
+    TRACE --> S1["S1 Creator<br/>parent-bound sparse capability patch"]
     S1 --> G1{"GCS Gate<br/>总体增益 + 单能力非退化"}
     G1 -- "通过" --> S2["S2 Route Optimizer<br/>仅改 Description"]
     S2 --> G2{"Route Gate"}
@@ -119,9 +141,9 @@ Skill 被拆成影响路由的 Description 与影响执行的 Body。每个阶�
 
 | 阶段 | 主要输入 | 允许的变化 | 接受条件 | V1 状态 |
 | --- | --- | --- | --- | --- |
-| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 创建或改进完整六能力 Bank | GCS 总体增益、hard-error 非劣、单能力不过底线 | 已真实运行；候选被 Gate 拒绝并回滚 |
-| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；本轮因 S1 失败未进入下游 |
-| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；本轮因 S1 失败未进入下游 |
+| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | parent-bound sparse patch；未改项 byte-exact inherit | replay 筛查后一次正式 GCS 接受门 | Qwen3.7 R1–R10 均回滚；最终 alias Static |
+| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；因 S1 未接受而未启动 |
+| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待 S2 disposition |
 
 候选 Bank 保存 parent / candidate lineage 与内容哈希。Gate 失败时，系统恢复到逐字节一致的 Parent Bank，而不是在失败候选上继续“补丁式调参”。
 
@@ -156,7 +178,7 @@ Runtime 将 capability 路由、Skill 注入、模型调用、typed tool registr
 
 ## Portfolio V1：真实结果
 
-### Failure-driven S1 闭环
+### 历史 R0：Failure-driven S1 闭环
 
 本轮实际链路为：
 
@@ -180,6 +202,44 @@ Static opt800 运行
 候选在总体指标上有正向信号，但百科能力跌幅超过预先冻结的 `−3pp` 单能力底线，因此系统拒绝整 Bank 并回滚。这个结果验证的是“失败闭环与风险门控真实生效”，不代表 S1 已被接受或部署。
 
 本轮 Qwen Feedback `48/48` 解析成功，Feedback 与 replay 共 715 次可计量 DashScope 调用，费用 CNY `1.1991934`；Codex Creator 会话单列，不虚构人民币 provider 成本。实际角色为 Assistant `qwen3-vl-flash-2026-01-22`、Feedback `qwen3.7-plus-2026-05-26`、Creator Codex `gpt-5.6-sol/high`；AIFast `gemini-3.6-flash` Final Judge 因前置 GCS Gate 失败而保持 0-call，body gate、val 与 test 也未启动。机器可读绑定见 [model-role-selection-v8](specs/authoring/model-role-selection-v8.json)。
+
+### Core Fast Qwen3.7 R1–R5：sparse S1 终态
+
+Static opt800 已用 `qwen3.7-flash-2026-07-15` fresh 重跑；R1 使用 12 份 fresh Qwen3.8
+Feedback，R2–R5 逐字节复用同一 SHA-bound bundle，新增 Feedback provider call 为 0。
+
+| Round | 唯一变化 | 最深证据 | 结果 | 本轮新增可计量费用 |
+| --- | --- | --- | --- | ---: |
+| R1 | Multi positive closure | smoke24 + replay200 | `8→9`，但有 4 条 paired regression；回滚 | Assistant CNY `0.3461880` |
+| R2 | Multi tool-first + DTO closure | smoke24 + replay200 | `8→20`，但仍有 1 条 paired regression和 3 个新 contract occurrence；回滚 | Assistant CNY `0.3708244` |
+| R3 | Multi DTO template | Creator boundary | sparse authored-content guard 拒绝候选；Assistant 0-call | Creator 费用不可得 |
+| R4 | Document literal line copy | smoke24 + replay200 | `0→0` 且新增 3 个 contract occurrence；回滚 | Assistant CNY `0.3511126` |
+| R5 | Style evidence copy | smoke24 + replay200 | `7→26`，但有 2 条 paired regression和 4 个新 occurrence；回滚 | Assistant CNY `0.3509304` |
+
+R2 与 R5 都出现明显净改善，但预冻结 screen 对任何 Static-success→candidate-failure 或新
+contract occurrence 都 fail closed，因此不能用净增益覆盖新引入的风险。R3 则是词法 guard
+拒绝，DTO 假设并未得到 Assistant 实验，不能写成算法失败或无授权重试。最终 selected Bank
+是 Static `da5cfe1f93f2cb57b389c97738034cf10cab931dcc30e145acc6d8873ff1348a`；本次可追踪
+provider 记录为 7,823 calls、CNY `3.9202578`，另有废弃 Static v1 的一条未知 orphan；
+5 次 Creator 的人民币成本不可得。`body_gate75`、Final Judge、S2、val 与 test 均未访问。
+
+### 授权后的 Qwen3.7 R6–R10：第二批 sparse S1 终态
+
+第二批先修复 R3 暴露的词法 guard 假阳性，并把脱敏的稳定拒绝 reason code 写入 decision；
+随后继续复用同一 Static v2 与同一 SHA-bound Feedback，每轮仍只 patch 一个 capability。
+
+| Round | 唯一变化 | Target replay success | Paired 回退 / 新 contract occurrence | 终态 |
+| --- | --- | ---: | ---: | --- |
+| R6 | Multi tool-first + exact public DTO copier | `8→18` | `2 / 4` | 回滚 |
+| R7 | Style tool-first + evidence/fallback serializer | `7→22` | `2 / 4` | 回滚 |
+| R8 | Recipe detect/lookup + source-only closure | `3→10` | `0 / 7` | 回滚 |
+| R9 | Exact image/text input latch | `17→17` | `2 / 2` | 回滚 |
+| R10 | Document literal OCR lines | `0→0` | `0 / 1` | 回滚 |
+
+R8 最接近安全保留：没有任何 Static-success 回退，但在原失败样本上出现 7 个新的 contract
+occurrence，因此仍按预注册 screen 回滚。第二批 Assistant 共 1,120 个 outer / 3,588 个真实
+Qwen3.7 model calls，新增可计费用 CNY `1.8057772`；五次 Creator 均成功，但人民币 cost
+basis 不可得。五轮都没有访问 `body_gate75`、S2、val 或 test。
 
 > GCS 是五项条件全通过才记 1 的严格二元指标，绝对值不能按传统连续质量分直接解读。
 
@@ -262,8 +322,8 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 - 本项目复现的是 SkillChain 的**机制**，不是论文作者的官方实现，也不声称复现其生产流量、内部数据、专有工具、专家团队、线上 A/B 或绝对分数。
 - 所有合成 query 均标记为 `synthetic_derived`；它们模拟任务结构，不代表真实用户分布。
 - 原始图像、大体量数据、私有授权材料、API key 和大多数真实 run artifact 不随 Git 仓库分发。仓库公开代码、冻结规格、离线 fixture、选定证据与汇总报告。
-- Core r3 语料已经构造，但冻结的 `test300` 尚未执行；README 不把开发诊断写成最终总体增益。
-- S2 / S3 已有真实可执行原型，但本轮 S1 Gate 失败后没有继续运行下游最终评测。
+- Core r3 语料已经构造，但冻结的 `test300` 尚未执行；README 不把 development 诊断写成最终总体增益。
+- S1 已在 Qwen3.7 R10 后冻结为 Static alias；第二批五轮额度耗尽且无接受候选，因此 S2 / S3 虽有可执行原型，本轮也未启动。
 - 部分历史 authoring receipt / runbook 保留创建时的 Windows 本地路径，它们是不可改写实验记录，不是 Quickstart 的可移植依赖。
 
 ## 数据与许可证
@@ -274,9 +334,9 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 
 ## 下一步
 
-1. 修复 S1 对视觉百科的跨能力负迁移，在不改变冻结评测规则的前提下重跑一次闭环。
-2. 让 S2 / S3 分别完成真实接受或回滚，并报告各阶段独立贡献。
-3. 在候选通过 validation gate 后单次解封 `test300`，完成 GCS、盲化语义评测和人类偏好校准。
+1. 保留两批十轮负结果，不启动 S2、不重跑挑样、不放宽零回归门。
+2. 下一步优先把工具先行、DTO/card/evidence closure 和 fallback 分支移入版本化的确定性编译或运行时 contract；不再继续堆自然语言 prompt。
+3. 只有另行批准的新 S1 候选真实通过 replay 与 body gate 后，才进入 S2；随后再按冻结顺序推进 S3 与 `test300`。
 
 ---
 

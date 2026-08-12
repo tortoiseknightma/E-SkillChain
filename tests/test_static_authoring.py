@@ -62,6 +62,7 @@ from skillchain.static_authoring import (
     run_spec_baseline,
     runtime_skill_for_capability,
 )
+from skillchain import static_authoring as static_authoring_module
 from skillchain.task_spec import (
     load_default_task_specification,
     load_mvp_task_specification_v1,
@@ -684,6 +685,32 @@ def test_actual_public_content_is_scanned_for_evaluation_pollution():
     raw["license_evidence_text"] = polluted.decode("utf-8")
     with pytest.raises(ValidationError, match="forbidden"):
         type(source).model_validate(raw, strict=True)
+
+
+def test_untrusted_text_path_scan_keeps_path_terms_locally_bound() -> None:
+    static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+        "Use the returned tool result as an immutable DTO, and copy each "
+        "product/evidence handle exactly.",
+        "authored instruction",
+    )
+
+    for leaked_path in (
+        "Read results/summary.json before authoring.",
+        "Read results / summary.json before authoring.",
+        "Read hidden_results.json before authoring.",
+        r"Read C:\runs\results\summary.json before authoring.",
+    ):
+        with pytest.raises(AuthoringContractError, match="experiment-derived"):
+            static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+                leaked_path,
+                "authored instruction",
+            )
+
+    with pytest.raises(AuthoringContractError, match="experiment-derived"):
+        static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+            "Use the hidden evaluation material.",
+            "authored instruction",
+        )
 
 
 def test_public_authoring_material_requires_exact_readable_utf8_text():
