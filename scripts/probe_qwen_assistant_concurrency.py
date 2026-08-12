@@ -30,14 +30,14 @@ from skillchain.synthesis.store import atomic_create_file, canonical_json_bytes
 from skillchain.tools.portfolio_runtime import PORTFOLIO_SYSTEM_PROMPT
 
 
-ASSISTANT_INPUT_CNY_PER_MILLION_TOKENS = Decimal("0.15")
-ASSISTANT_OUTPUT_CNY_PER_MILLION_TOKENS = Decimal("1.5")
-OFFICIAL_SNAPSHOT_RPM = 60
-OFFICIAL_SNAPSHOT_TPM = 100_000
-# The dated Assistant snapshot has a 100k TPM limit. Historical production
-# action calls and the first capacity batch average roughly 3.1k total tokens,
-# so 0.5 req/s stays just below that token ceiling while remaining below 60 RPM.
-DEFAULT_REQUESTS_PER_SECOND = 0.5
+ASSISTANT_INPUT_CNY_PER_MILLION_TOKENS = Decimal("0.2")
+ASSISTANT_OUTPUT_CNY_PER_MILLION_TOKENS = Decimal("0.8")
+OFFICIAL_SNAPSHOT_RPM = 30_000
+OFFICIAL_SNAPSHOT_TPM = 5_000_000
+# Keep roughly 20% of the Beijing snapshot TPM ceiling available to the main
+# experiment. At the prior production-wire mean of about 3.18k total tokens,
+# 20 requests/s consumes about 4M tokens/minute.
+DEFAULT_REQUESTS_PER_SECOND = 20.0
 DEFAULT_ERROR_RATE_LIMIT = 0.02
 DEFAULT_SERVICE_ERROR_RATE_LIMIT = 0.0
 DEFAULT_COST_CAP_CNY = Decimal("1.000000")

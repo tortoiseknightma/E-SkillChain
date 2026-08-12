@@ -2484,6 +2484,18 @@ class ProductionAssistantRunner:
                 portfolio_budget_context.ledger_root,
                 identity=identity,
             )
+        if (
+            portfolio_budget_context is None
+            and self._qwen_call_start_waiter is not None
+        ):
+            try:
+                self._qwen_call_start_waiter(
+                    f"core-fast:{request.query.query_id}:{failure_stage}"
+                )
+            except Exception as error:
+                raise AssistantProviderCallGateError(
+                    "Qwen provider-call start gate failed before provider call"
+                ) from error
         try:
             response = llm_module.chat(
                 request.backbone.provider,
@@ -3714,6 +3726,7 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         system_prompt: str,
         banks: Mapping[str, StaticBankArtifact],
         asset_catalog: AssetCatalog,
+        qwen_call_start_waiter: Callable[[str], float] | None = None,
     ) -> None:
         registry = require_portfolio_diagnostic_registry(registry)
         if not system_prompt or system_prompt != system_prompt.strip():
@@ -3740,7 +3753,9 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         self._system_prompt = system_prompt
         self._banks = held
         self._asset_catalog = asset_catalog
-        self._qwen_call_start_waiter = None
+        if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
+            raise TypeError("qwen_call_start_waiter must be callable")
+        self._qwen_call_start_waiter = qwen_call_start_waiter
         _require_evolution_bank_boundaries(held)
 
     def execute_body_replay(

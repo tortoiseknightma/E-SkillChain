@@ -46,14 +46,14 @@ def test_probe_alternates_production_action_variants() -> None:
     ]
 
 
-def test_cost_uses_qwen_vl_flash_under_32k_tier() -> None:
-    assert DEFAULT_REQUESTS_PER_SECOND == 0.5
-    assert _cost(1_400, 30) == Decimal("0.000255")
+def test_cost_uses_qwen37_flash_under_32k_tier() -> None:
+    assert DEFAULT_REQUESTS_PER_SECOND == 20.0
+    assert _cost(1_400, 30) == Decimal("0.000304")
 
 
 def test_active_assistant_capacity_constants_bind_the_measured_profile() -> None:
-    assert config.ASSISTANT_VALIDATED_CONCURRENCY == 2
-    assert config.ASSISTANT_REQUESTS_PER_SECOND == 0.5
+    assert config.ASSISTANT_VALIDATED_CONCURRENCY == 60
+    assert config.ASSISTANT_REQUESTS_PER_SECOND == 20.0
     assert config.ASSISTANT_ACCEPTABLE_ERROR_RATE == 0.02
     assert config.ASSISTANT_SERVICE_ERROR_RATE == 0.0
 

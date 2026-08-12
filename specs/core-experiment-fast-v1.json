@@ -10,7 +10,8 @@
     "utility.recipe_guidance"
   ],
   "concurrency": {
-    "assistant": 2,
+    "assistant": 60,
+    "assistant_requests_per_second": 20.0,
     "feedback": 2,
     "final_judge": 4
   },
@@ -134,11 +135,11 @@
     "max_feedback_calls": 12
   },
   "models": {
-    "assistant": {"credential_env":"DASHSCOPE_API_KEY","estimated_call_cost_cny":0.03,"moving_alias":false,"provider":"dashscope","reasoning_effort":null,"requested_model":"qwen3-vl-flash-2026-01-22"},
+    "assistant": {"credential_env":"DASHSCOPE_API_KEY","estimated_call_cost_cny":0.03,"moving_alias":false,"provider":"dashscope","reasoning_effort":null,"requested_model":"qwen3.7-flash-2026-07-15"},
     "creator": {"credential_env":null,"estimated_call_cost_cny":0.0,"moving_alias":false,"provider":"codex","reasoning_effort":"high","requested_model":"gpt-5.6-sol"},
     "feedback": {"credential_env":"DASHSCOPE_API_KEY","estimated_call_cost_cny":0.05,"moving_alias":true,"provider":"dashscope","reasoning_effort":null,"requested_model":"qwen3.8-max"},
     "judge": {"credential_env":"GEMINI_API_KEY","estimated_call_cost_cny":0.02,"moving_alias":false,"provider":"aifast","reasoning_effort":null,"requested_model":"gemini-3.6-flash"},
-    "route_only": {"credential_env":"DASHSCOPE_API_KEY","estimated_call_cost_cny":0.005,"moving_alias":false,"provider":"dashscope","reasoning_effort":null,"requested_model":"qwen3-vl-flash-2026-01-22"}
+    "route_only": {"credential_env":"DASHSCOPE_API_KEY","estimated_call_cost_cny":0.005,"moving_alias":false,"provider":"dashscope","reasoning_effort":null,"requested_model":"qwen3.7-flash-2026-07-15"}
   },
   "paths": {
     "asset_catalog_dir": "E:/skillchain-data/clean/portfolio-core-asset-catalog-v9",

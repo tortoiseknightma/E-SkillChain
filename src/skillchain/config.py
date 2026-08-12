@@ -20,16 +20,15 @@ USAGE_LOG = RUNS_DIR / "usage.jsonl"
 # ---- 模型角色按用途显式分离：Assistant Qwen / Author Codex /
 #      AIFast Gemini visual Feedback / DashScope Kimi final Judge。----
 ASSISTANT_PROVIDER = "qwen"
-ASSISTANT_MODEL = "qwen3-vl-flash-2026-01-22"
-ASSISTANT_MODEL_REVISION = "2026-01-22"
-# Capacity settings measured on 2026-08-12 with the production non-thinking
-# multimodal/function-calling Assistant action wire.  At 0.5 requests/s a
-# 60-call mixed tool-selection/final-response batch reached 95.7k tokens/min,
-# returned 60/60 valid transport responses, and needed only 2 inflight slots.
-# The dated snapshot's public 100k TPM limit, rather than worker count, is the
-# binding capacity constraint.
-ASSISTANT_VALIDATED_CONCURRENCY = 2
-ASSISTANT_REQUESTS_PER_SECOND = 0.5
+ASSISTANT_MODEL = "qwen3.7-flash-2026-07-15"
+ASSISTANT_MODEL_REVISION = "2026-07-15"
+# Capacity measured on 2026-08-12 with the production non-thinking,
+# multimodal/function-calling wire. A 60-call burst reached 60 inflight with
+# 60/60 valid responses and no service errors. Production keeps the 60-worker
+# ceiling but smooths starts to 20 requests/s; even the older conservative
+# 3.18k-token/call estimate stays below 80% of the Beijing 5M TPM quota.
+ASSISTANT_VALIDATED_CONCURRENCY = 60
+ASSISTANT_REQUESTS_PER_SECOND = 20.0
 ASSISTANT_ACCEPTABLE_ERROR_RATE = 0.02
 ASSISTANT_SERVICE_ERROR_RATE = 0.0
 

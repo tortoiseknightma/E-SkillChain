@@ -13,6 +13,8 @@ from pydantic import (
     model_validator,
 )
 
+from skillchain import config
+
 
 CAPABILITIES = (
     "knowledge.visual_encyclopedia",
@@ -137,9 +139,26 @@ class GateRules(FrozenStrictModel):
 
 
 class Concurrency(FrozenStrictModel):
-    assistant: Literal[2] = 2
+    assistant: int = Field(default=config.ASSISTANT_VALIDATED_CONCURRENCY, ge=1)
+    assistant_requests_per_second: float = Field(
+        default=config.ASSISTANT_REQUESTS_PER_SECOND,
+        gt=0,
+    )
     feedback: Literal[2] = 2
     final_judge: Literal[4] = 4
+
+    @model_validator(mode="after")
+    def validate_measured_assistant_capacity(self) -> Self:
+        expected = (
+            config.ASSISTANT_VALIDATED_CONCURRENCY,
+            config.ASSISTANT_REQUESTS_PER_SECOND,
+        )
+        if (self.assistant, self.assistant_requests_per_second) != expected:
+            raise ValueError(
+                "Core Fast Assistant capacity must match the measured profile "
+                f"{expected[0]} inflight/{expected[1]:g} requests per second"
+            )
+        return self
 
 
 class Limits(FrozenStrictModel):

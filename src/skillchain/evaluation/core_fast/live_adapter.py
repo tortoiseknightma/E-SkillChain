@@ -72,10 +72,13 @@ from .models import (
     JudgeObservation,
     ToolTraceItem,
 )
+from .pacing import StartPacer
 
 
 _QWEN_INPUT_CNY_PER_MILLION = 0.15
 _QWEN_OUTPUT_CNY_PER_MILLION = 1.5
+_ASSISTANT_INPUT_CNY_PER_MILLION = 0.2
+_ASSISTANT_OUTPUT_CNY_PER_MILLION = 0.8
 
 
 def _hash(value: object) -> str:
@@ -90,6 +93,13 @@ def _qwen_cost(input_tokens: int, output_tokens: int) -> float:
     return (
         input_tokens * _QWEN_INPUT_CNY_PER_MILLION
         + output_tokens * _QWEN_OUTPUT_CNY_PER_MILLION
+    ) / 1_000_000
+
+
+def _assistant_cost(input_tokens: int, output_tokens: int) -> float:
+    return (
+        input_tokens * _ASSISTANT_INPUT_CNY_PER_MILLION
+        + output_tokens * _ASSISTANT_OUTPUT_CNY_PER_MILLION
     ) / 1_000_000
 
 
@@ -121,6 +131,9 @@ class LiveCoreFastAdapter:
         self._rubric: RubricSnapshot | None = None
         self._qwen_client: OpenAI | None = None
         self._judge_client: OpenAI | None = None
+        self._assistant_start_pacer = StartPacer(
+            spec.concurrency.assistant_requests_per_second
+        )
 
     def _path(self, name: str) -> Path:
         return self.spec.resolved_path(name, base_dir=self.base_dir)
@@ -262,10 +275,15 @@ class LiveCoreFastAdapter:
                     system_prompt=PORTFOLIO_SYSTEM_PROMPT,
                     banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
                     asset_catalog=catalog,
+                    qwen_call_start_waiter=self._wait_for_assistant_start,
                 )
             )
             self._runner_by_bank[bank.bank_sha256] = runner
             return runner
+
+    def _wait_for_assistant_start(self, _label: str) -> float:
+        self._assistant_start_pacer.wait()
+        return time.monotonic()
 
     def _request(
         self,
@@ -516,7 +534,7 @@ class LiveCoreFastAdapter:
             output={"observation": observation.model_dump(mode="json")},
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_cny=_qwen_cost(input_tokens, output_tokens),
+            cost_cny=_assistant_cost(input_tokens, output_tokens),
             cost_basis="token_pricing",
             latency_ms=response.latency_ms,
         )
@@ -879,6 +897,7 @@ class LiveCoreFastAdapter:
             ],
             "output_schema": {"selected_capability": list(self.spec.capabilities)},
         }
+        self._assistant_start_pacer.wait()
         started = time.perf_counter()
         raw = qwen.chat.completions.create(
             model=intent.requested_model,
@@ -910,7 +929,7 @@ class LiveCoreFastAdapter:
             "raw_output": text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "cost_cny": _qwen_cost(input_tokens, output_tokens),
+            "cost_cny": _assistant_cost(input_tokens, output_tokens),
             "cost_basis": "token_pricing",
             "latency_ms": latency_ms,
         }

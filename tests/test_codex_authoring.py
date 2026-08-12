@@ -80,7 +80,7 @@ def test_model_roles_are_explicit_and_historical_qwen_is_separate() -> None:
         config.ASSISTANT_PROVIDER,
         config.ASSISTANT_MODEL,
         config.ASSISTANT_MODEL_REVISION,
-    ) == ("qwen", "qwen3-vl-flash-2026-01-22", "2026-01-22")
+    ) == ("qwen", "qwen3.7-flash-2026-07-15", "2026-07-15")
     assert (
         config.AUTHOR_PROVIDER,
         config.AUTHOR_MODEL,
