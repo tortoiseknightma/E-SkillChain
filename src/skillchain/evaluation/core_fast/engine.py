@@ -1203,6 +1203,9 @@ class CoreFastEngine:
                         item.patch.objective,
                         *(step.instruction for step in item.patch.steps),
                         item.patch.fallback_instruction,
+                        canonical_json_bytes(
+                            item.patch.semantic_policy.model_dump(mode="json")
+                        ).decode("utf-8"),
                     )
                 ).casefold()
                 if any(phrase.casefold() not in authored for phrase in phrases):
@@ -1531,17 +1534,42 @@ class CoreFastEngine:
         queries: Sequence[Query],
         *,
         phase: str,
+        treated_capabilities: frozenset[str] | None = None,
     ) -> tuple[bool, tuple[str, ...], dict[str, object]]:
         if phase not in {"replay200", "body_gate75"}:
             raise ValueError(f"unknown S1 gate phase: {phase}")
+        query_by_id = {query.query_id: query for query in queries}
+        evaluated_candidate = candidate
+        if treated_capabilities is not None:
+            if not treated_capabilities or not treated_capabilities <= set(
+                CAPABILITIES
+            ):
+                raise ValueError("S1 treated capabilities are invalid")
+            evaluated_candidate = {}
+            for query_id in parent:
+                capability = query_by_id[query_id].canonical_capability
+                parent_row = parent[query_id]
+                candidate_row = candidate[query_id]
+                treatment_reached = (
+                    capability in treated_capabilities
+                    and parent_row.selected_capability == capability
+                    and candidate_row.selected_capability == capability
+                )
+                # Description/routing is frozen in S1.  A target row where the
+                # two independent route samples disagree did not receive a
+                # comparable Body treatment, so it is conservatively aliased
+                # to parent just like every byte-inherited capability.
+                evaluated_candidate[query_id] = (
+                    candidate_row if treatment_reached else parent_row
+                )
         before = self._summary(parent, queries)
-        after = self._summary(candidate, queries)
+        after = self._summary(evaluated_candidate, queries)
         reasons: list[str] = []
         coverage_failures = tuple(
             sorted(
                 {
                     query_id
-                    for rows in (parent, candidate)
+                    for rows in (parent, evaluated_candidate)
                     for query_id, observation in rows.items()
                     if not observation.oracle_available
                 }
@@ -1578,7 +1606,7 @@ class CoreFastEngine:
         if phase == "body_gate75":
             bootstrap = self._paired_component_bootstrap(
                 parent,
-                candidate,
+                evaluated_candidate,
                 queries,
                 scope="s1-body-gate75",
             )
@@ -1596,6 +1624,31 @@ class CoreFastEngine:
             "capability_delta_pp": capability_delta_pp,
             "oracle_coverage_complete": not coverage_failures,
             "oracle_coverage_failure_query_ids": list(coverage_failures),
+            "treated_capabilities": (
+                None if treated_capabilities is None else sorted(treated_capabilities)
+            ),
+            "untreated_rows_aliased_to_parent": (
+                0
+                if treated_capabilities is None
+                else sum(
+                    query.canonical_capability not in treated_capabilities
+                    for query in queries
+                )
+            ),
+            "treated_route_mismatch_rows_aliased_to_parent": (
+                0
+                if treated_capabilities is None
+                else sum(
+                    query.canonical_capability in treated_capabilities
+                    and (
+                        parent[query.query_id].selected_capability
+                        != query.canonical_capability
+                        or candidate[query.query_id].selected_capability
+                        != query.canonical_capability
+                    )
+                    for query in queries
+                )
+            ),
         }
         if bootstrap is not None:
             metrics["paired_component_bootstrap"] = bootstrap
@@ -1651,15 +1704,38 @@ class CoreFastEngine:
             if parent is None:
                 raise ValueError("S1 sparse schema requires the parent Bank")
             by_capability = _bank_by_capability(parent)
+            templates = {
+                item.capability_id: item
+                for item in decode_sparse_parent_content(
+                    parent, self.s1_authoring_input()
+                )
+            }
             return sparse_patch_output_json_schema(
                 parent_skill_sha256_by_capability={
                     capability: by_capability[capability].skill_sha256
                     for capability in CAPABILITIES
                 },
                 frozen_objective_by_capability={
-                    capability: by_capability[capability].description
+                    capability: templates[capability].objective
                     for capability in CAPABILITIES
                 },
+                frozen_content_by_capability={
+                    capability: {
+                        "objective": templates[capability].objective,
+                        "steps": [
+                            item.model_dump(mode="json")
+                            for item in templates[capability].steps
+                        ],
+                        "fallback_instruction": templates[
+                            capability
+                        ].fallback_instruction,
+                        "citation_source_ids": list(
+                            templates[capability].citation_source_ids
+                        ),
+                    }
+                    for capability in CAPABILITIES
+                },
+                patch_capabilities=self.spec.s1_settings.target_capabilities,
             )
         field = "description" if stage == "s2" else "body"
         return {
@@ -1949,20 +2025,37 @@ class CoreFastEngine:
         return feedback, resume_hits, provider_calls
 
     @staticmethod
-    def _canary_feedback_ok(feedback: Mapping[str, Mapping[str, object]]) -> bool:
-        if not feedback:
-            return False
-        failures = sum(row["feedback"] is None for row in feedback.values())
+    def _feedback_batch_gate(
+        feedback: Mapping[str, Mapping[str, object]],
+        *,
+        expected_count: int,
+    ) -> dict[str, object]:
+        observed_count = len(feedback)
+        missing_count = max(expected_count - observed_count, 0)
+        parse_failures = missing_count + sum(
+            row["feedback"] is None for row in feedback.values()
+        )
         service_failures = sum(
             row["status"] in {"provider_error", "interrupted_unknown"}
             for row in feedback.values()
         )
-        return (
-            failures / len(feedback)
-            <= project_config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE
-            and service_failures / len(feedback)
-            <= project_config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE
+        parse_error_rate = parse_failures / expected_count
+        service_error_rate = service_failures / expected_count
+        passed = (
+            observed_count == expected_count
+            and parse_error_rate <= project_config.FEEDBACK_JUDGE_ACCEPTABLE_ERROR_RATE
+            and service_error_rate <= project_config.FEEDBACK_JUDGE_SERVICE_ERROR_RATE
         )
+        return {
+            "passed": passed,
+            "expected_count": expected_count,
+            "observed_count": observed_count,
+            "missing_count": missing_count,
+            "parse_failure_count": parse_failures,
+            "parse_error_rate": parse_error_rate,
+            "service_failure_count": service_failures,
+            "service_error_rate": service_error_rate,
+        }
 
     def _feedback_evidence_bundle(
         self,
@@ -2066,7 +2159,10 @@ class CoreFastEngine:
         feedback: dict[str, dict[str, object]] = dict(canary_feedback)
         resume_hits = canary_resume_hits
         provider_calls = canary_provider_calls
-        if self._canary_feedback_ok(canary_feedback):
+        canary_gate = self._feedback_batch_gate(
+            canary_feedback, expected_count=canary_count
+        )
+        if canary_gate["passed"]:
             remaining_feedback, remaining_hits, remaining_calls = self._feedback_batch(
                 samples=samples[canary_count:],
                 query_by_id=query_by_id,
@@ -2092,7 +2188,53 @@ class CoreFastEngine:
                 "feedback_provider_calls_this_round": provider_calls,
                 "feedback_resume_cache_hits": resume_hits,
                 "feedback_remaining_batch_called": False,
+                "feedback_canary_gate": canary_gate,
+                "feedback_full_batch_gate": None,
                 "selection_manifest_sha256": manifest["manifest_sha256"],
+                "replay_accessed": False,
+                "body_accessed": False,
+            }
+            self._write_selected_bank("s1", parent)
+            return self._save_decision(
+                StageDecision(
+                    stage="s1",
+                    accepted=False,
+                    alias_of="llm_static",
+                    parent_bank=parent.bank_sha256,
+                    candidate_bank=None,
+                    selected_bank=parent.bank_sha256,
+                    reasons=reasons,
+                    metrics=metrics,
+                )
+            )
+        full_gate = self._feedback_batch_gate(
+            feedback,
+            expected_count=self.spec.s1_settings.feedback_total_count,
+        )
+        if not full_gate["passed"]:
+            reasons = (
+                "Full Feedback batch failed the frozen completeness or error limits",
+            )
+            metrics = {
+                "round_id": self.spec.s1_settings.round_id,
+                "feedback_mode": self.spec.s1_settings.feedback_mode,
+                "feedback_requested_count": (
+                    self.spec.s1_settings.feedback_total_count
+                ),
+                "feedback_canary_count": canary_count,
+                "feedback_success_count": sum(
+                    row["feedback"] is not None for row in feedback.values()
+                ),
+                "feedback_failure_count": sum(
+                    row["feedback"] is None for row in feedback.values()
+                ),
+                "feedback_provider_calls_this_round": provider_calls,
+                "feedback_resume_cache_hits": resume_hits,
+                "feedback_remaining_batch_called": True,
+                "feedback_canary_gate": canary_gate,
+                "feedback_full_batch_gate": full_gate,
+                "selection_manifest_sha256": manifest["manifest_sha256"],
+                "creator_called": False,
                 "replay_accessed": False,
                 "body_accessed": False,
             }
@@ -2149,8 +2291,24 @@ class CoreFastEngine:
                     "policy_compatible_suggestions"
                 ],
                 "feedback_bundle_sha256": feedback_bundle_sha256,
+                "frozen_parent_content": {
+                    item.capability_id: {
+                        "objective": item.objective,
+                        "steps": [step.model_dump(mode="json") for step in item.steps],
+                        "fallback_instruction": item.fallback_instruction,
+                        "citation_source_ids": list(item.citation_source_ids),
+                    }
+                    for item in decode_sparse_parent_content(
+                        parent, self.s1_authoring_input()
+                    )
+                },
                 "requirements": {
                     "round_id": self.spec.s1_settings.round_id,
+                    "target_capabilities": list(
+                        self.spec.s1_settings.target_capabilities
+                    ),
+                    "typed_semantic_policy_only": True,
+                    "semantic_policy_version": "core-fast-semantic-policy-v2",
                     "complete_six_capability_actions": True,
                     "default_action": "inherit",
                     "patch_only_with_policy_compatible_suggestion": True,
@@ -2205,6 +2363,8 @@ class CoreFastEngine:
             "feedback_provider_calls_this_round": provider_calls,
             "feedback_resume_cache_hits": resume_hits,
             "feedback_remaining_batch_called": True,
+            "feedback_canary_gate": canary_gate,
+            "feedback_full_batch_gate": full_gate,
             "feedback_selection_policy": (
                 self.spec.s1_settings.feedback_selection_policy
             ),
@@ -2398,6 +2558,7 @@ class CoreFastEngine:
                         candidate_replay,
                         replay_queries,
                         phase="replay200",
+                        treated_capabilities=frozenset(retained_capabilities),
                     )
                     metrics["replay_gate"] = replay_metrics
                     if not replay_ok:
@@ -2422,6 +2583,7 @@ class CoreFastEngine:
                             candidate_rows,
                             gate_queries,
                             phase="body_gate75",
+                            treated_capabilities=frozenset(retained_capabilities),
                         )
                         reasons.extend(gate_reasons)
                         metrics["gate"] = gate_metrics

@@ -24,12 +24,16 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from skillchain.evaluation.core_fast.models import (  # noqa: E402
     CAPABILITIES,
+    S1_SEMANTIC_POLICY_TARGETS,
     CallIntent,
     CallResult,
     CoreFastSpec,
     load_core_fast_spec,
 )
 from skillchain.evaluation.core_fast.store import atomic_write_json  # noqa: E402
+from skillchain.runners.assistant_deterministic_contract import (  # noqa: E402
+    DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+)
 from skillchain.tools.serialization import (  # noqa: E402
     ArtifactFormatError,
     canonical_json_bytes,
@@ -48,6 +52,10 @@ STALE_DISCLOSURE_FRAGMENTS = (
     "Static opt800 has no successful",
     "S1 R2/R3 reuse the exact 12 Feedback",
     "bootstrap-only spec:",
+    "Qwen3.7 Static v2 is the selected baseline input",
+    "The recorded S1 R1-R10 optimization allowance is exhausted",
+    "The deterministic action-response runtime requires a fresh symmetric Static",
+    "This default spec is retained for input validation",
 )
 
 
@@ -112,7 +120,17 @@ def prepare_static_bootstrap_spec(
     """Create a bootstrap-only spec for a fresh, create-only Static opt800."""
 
     base_spec_path = base_spec_path.resolve()
-    base = load_core_fast_spec(base_spec_path)
+    # A bootstrap is the migration boundary between runtime contracts.  The
+    # tracked default may intentionally still point at the last completed
+    # lineage, whose Literal no longer validates after a contract version
+    # bump.  Upgrade only the runtime identity before validating; all other
+    # fields still come from the canonical tracked spec.
+    base_payload = _load_canonical_object(base_spec_path, label="base Core Fast spec")
+    runtime = base_payload.get("runtime")
+    if not isinstance(runtime, dict):
+        raise LineagePreparationError("base Core Fast spec lacks runtime settings")
+    runtime["assistant_contract"] = DETERMINISTIC_ASSISTANT_CONTRACT_VERSION
+    base = _validated_spec(base_payload)
     _assert_qwen37(base)
     destination = opt_destination.resolve()
     if destination.exists():
@@ -132,10 +150,12 @@ def prepare_static_bootstrap_spec(
         "feedback_canary_count": 6,
         "feedback_selection_policy": "discovery-stratified-v1",
         "feedback_allocation": "target-focused",
-        "target_capabilities": ["product.multi_search"],
+        "target_capabilities": ["utility.recipe_guidance"],
         "proposal_mode": "sparse-parent-patch-v1",
         "max_patched_capabilities": 1,
-        "protected_capabilities": ["knowledge.visual_encyclopedia"],
+        "protected_capabilities": sorted(
+            set(CAPABILITIES) - {"utility.recipe_guidance"}
+        ),
         "creator_directives": [],
         "required_patch_phrases": {},
     }
@@ -166,11 +186,9 @@ def freeze_r1_spec(
     bootstrap_spec_path = bootstrap_spec_path.resolve()
     source = load_core_fast_spec(bootstrap_spec_path)
     _assert_qwen37(source)
-    if target_capability not in CAPABILITIES:
-        raise LineagePreparationError(f"unknown target capability: {target_capability}")
-    if target_capability == "knowledge.visual_encyclopedia":
+    if target_capability not in S1_SEMANTIC_POLICY_TARGETS:
         raise LineagePreparationError(
-            "Core Fast S1 protects knowledge.visual_encyclopedia after R0"
+            "R1 target must expose a deterministic-runtime semantic policy"
         )
     if not creator_directives:
         raise LineagePreparationError("R1 requires at least one Creator directive")
@@ -234,7 +252,15 @@ def freeze_r1_spec(
         (
             f"Static opt800 was freshly generated with {QWEN37_ASSISTANT_MODEL}; "
             "this spec binds its SHA and deterministic fixed sample roles.",
-            "S1 R1 uses a spec-frozen discovery600 selection and fresh-per-round Feedback.",
+            "Historical S1 R1-R10 remain rejected and read-only; this is a "
+            "separately authorized semantic-policy lineage.",
+            "S1 R1 uses a spec-frozen discovery600 selection and 48 fresh Feedback "
+            "calls with canary6 plus a full-batch terminal gate before Creator.",
+            "S1 may change only the typed semantic policy consumed by deterministic "
+            "runtime; tool, DTO/card/evidence closure, sections, and fallback remain "
+            "runtime-owned.",
+            "Running S1 creates new Feedback, Creator, and Assistant calls and has "
+            "not been started by lineage preparation.",
         )
     )
     payload["disclosures"] = list(dict.fromkeys(disclosures))
@@ -631,23 +657,11 @@ def build_parser() -> argparse.ArgumentParser:
     r1.add_argument("--bootstrap-result", type=Path, required=True)
     r1.add_argument("--output-spec", type=Path, required=True)
     r1.add_argument("--experiment-id", required=True)
-    r1.add_argument("--target-capability", choices=CAPABILITIES, required=True)
+    r1.add_argument(
+        "--target-capability", choices=S1_SEMANTIC_POLICY_TARGETS, required=True
+    )
     r1.add_argument("--creator-directive", action="append", required=True)
     r1.add_argument("--required-patch-phrase", action="append", default=[])
-
-    reuse = commands.add_parser("freeze-reuse-round")
-    reuse.add_argument("--r1-spec", type=Path, required=True)
-    reuse.add_argument("--bundle-dir", type=Path, required=True)
-    reuse.add_argument("--output-spec", type=Path, required=True)
-    reuse.add_argument("--experiment-id", required=True)
-    reuse.add_argument(
-        "--round-id",
-        choices=tuple(f"r{index}" for index in range(2, 11)),
-        required=True,
-    )
-    reuse.add_argument("--target-capability", choices=CAPABILITIES, required=True)
-    reuse.add_argument("--creator-directive", action="append", required=True)
-    reuse.add_argument("--required-patch-phrase", action="append", default=[])
 
     export = commands.add_parser("export-feedback")
     export.add_argument("--source-root", type=Path, required=True)
@@ -684,22 +698,6 @@ def main(argv: list[str] | None = None) -> int:
                 bootstrap_result_path=args.bootstrap_result,
                 output_spec_path=args.output_spec,
                 experiment_id=args.experiment_id,
-                target_capability=args.target_capability,
-                creator_directives=args.creator_directive,
-                required_patch_phrases=args.required_patch_phrase,
-            )
-            result = {
-                "status": "created",
-                "spec": str(args.output_spec),
-                "experiment_id": spec.experiment_id,
-            }
-        elif args.command == "freeze-reuse-round":
-            spec = freeze_reuse_round_spec(
-                r1_spec_path=args.r1_spec,
-                bundle_dir=args.bundle_dir,
-                output_spec_path=args.output_spec,
-                experiment_id=args.experiment_id,
-                round_id=args.round_id,
                 target_capability=args.target_capability,
                 creator_directives=args.creator_directive,
                 required_patch_phrases=args.required_patch_phrase,

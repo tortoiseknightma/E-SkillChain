@@ -98,6 +98,7 @@ from skillchain.runners.assistant_deterministic_contract import (
     compile_deterministic_response,
     deterministic_tool_names,
     next_deterministic_tool,
+    parse_deterministic_semantic_policy,
 )
 
 
@@ -3028,6 +3029,14 @@ class ProductionAssistantRunner:
                     deterministic_response = compile_deterministic_response(
                         selected_capability,
                         deterministic_observations,
+                        semantic_policy=parse_deterministic_semantic_policy(
+                            next(
+                                item.body
+                                for item in bank.skills
+                                if item.slug == skill_slug
+                            ),
+                            capability_id=selected_capability,
+                        ),
                     )
                     deterministic_tool = next_deterministic_tool(
                         selected_capability,

@@ -10,10 +10,10 @@ metadata and body sections.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from collections.abc import Mapping
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
@@ -39,6 +39,13 @@ from skillchain.static_authoring import (
     StaticBankArtifact,
     StrictSkillArtifact,
     normalize_authoring_content_payload,
+)
+from skillchain.runners.assistant_deterministic_contract import (
+    DETERMINISTIC_SEMANTIC_POLICY_VERSION,
+    SEMANTIC_POLICY_CAPABILITIES,
+    DeterministicSemanticPolicy,
+    parse_deterministic_semantic_policy,
+    render_deterministic_semantic_policy,
 )
 from skillchain.tools.serialization import (
     ArtifactFormatError,
@@ -122,6 +129,39 @@ def sparse_author_content_lexical_guard() -> dict[str, object]:
     }
 
 
+class SparseSemanticPolicyV1(_StrictFrozenModel):
+    """Creator-owned semantic selector consumed by deterministic runtime."""
+
+    schema_version: Literal[1] = 1
+    policy_version: Literal["core-fast-semantic-policy-v2"] = (
+        DETERMINISTIC_SEMANTIC_POLICY_VERSION
+    )
+    evidence_terms: tuple[str, ...] = Field(default=(), max_length=16)
+    require_all_terms: bool = False
+    abstain_when_no_evidence: Literal[True] = True
+    ocr_extraction_plan: Literal["all-lines", "literal-material-spans"] = "all-lines"
+
+    @field_validator("evidence_terms", mode="before")
+    @classmethod
+    def _coerce_terms(cls, value: object) -> object:
+        if isinstance(value, (list, tuple)) and all(
+            isinstance(item, str) for item in value
+        ):
+            # Ordering is representation-only for a term set and cannot be
+            # expressed by JSON Schema. Canonicalize it at the compiler edge;
+            # the validator below still rejects duplicates and malformed terms.
+            return tuple(sorted(value, key=str.casefold))
+        return value
+
+    @model_validator(mode="after")
+    def _validate_terms(self) -> Self:
+        if self.evidence_terms != tuple(
+            sorted(set(self.evidence_terms), key=str.casefold)
+        ) or any(not item or item != item.strip() for item in self.evidence_terms):
+            raise ValueError("semantic evidence terms must be canonical and unique")
+        return self
+
+
 class SparseSkillContentPatchV1(_StrictFrozenModel):
     """Only the author-judgment fields accepted for one patched Skill."""
 
@@ -129,6 +169,7 @@ class SparseSkillContentPatchV1(_StrictFrozenModel):
     steps: tuple[DraftToolStepContent, ...] = Field(min_length=1, max_length=16)
     fallback_instruction: str
     citation_source_ids: tuple[str, ...]
+    semantic_policy: SparseSemanticPolicyV1
 
     @field_validator("steps", "citation_source_ids", mode="before")
     @classmethod
@@ -370,6 +411,8 @@ def sparse_patch_output_json_schema(
     *,
     parent_skill_sha256_by_capability: Mapping[str, str],
     frozen_objective_by_capability: Mapping[str, str] | None = None,
+    frozen_content_by_capability: Mapping[str, Mapping[str, object]] | None = None,
+    patch_capabilities: tuple[str, ...] | None = None,
 ) -> dict[str, object]:
     """Return the strict structured-output envelope for one sparse proposal."""
 
@@ -381,6 +424,17 @@ def sparse_patch_output_json_schema(
         for item in capability_ids
     ):
         raise S1SparsePatchError("parent Skill SHA-256 mapping is invalid")
+    allowed_patches = (
+        tuple(sorted(SEMANTIC_POLICY_CAPABILITIES))
+        if patch_capabilities is None
+        else patch_capabilities
+    )
+    if (
+        allowed_patches != tuple(sorted(set(allowed_patches)))
+        or not set(allowed_patches) <= set(capability_ids)
+        or not set(allowed_patches) <= set(SEMANTIC_POLICY_CAPABILITIES)
+    ):
+        raise S1SparsePatchError("semantic patch capabilities are invalid")
     if frozen_objective_by_capability is not None and (
         set(frozen_objective_by_capability) != set(capability_ids)
         or any(
@@ -390,6 +444,20 @@ def sparse_patch_output_json_schema(
         )
     ):
         raise S1SparsePatchError("frozen sparse objectives are invalid")
+    if frozen_content_by_capability is not None and (
+        set(frozen_content_by_capability) != set(capability_ids)
+        or any(
+            set(frozen_content_by_capability[item])
+            != {
+                "objective",
+                "steps",
+                "fallback_instruction",
+                "citation_source_ids",
+            }
+            for item in capability_ids
+        )
+    ):
+        raise S1SparsePatchError("frozen sparse content is invalid")
     tool_step = {
         "type": "object",
         "additionalProperties": False,
@@ -412,6 +480,7 @@ def sparse_patch_output_json_schema(
             "steps",
             "fallback_instruction",
             "citation_source_ids",
+            "semantic_policy",
         ],
         "properties": {
             "objective": {"type": "string"},
@@ -426,8 +495,119 @@ def sparse_patch_output_json_schema(
                 "type": "array",
                 "items": {"type": "string"},
             },
+            "semantic_policy": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "schema_version",
+                    "policy_version",
+                    "evidence_terms",
+                    "require_all_terms",
+                    "abstain_when_no_evidence",
+                    "ocr_extraction_plan",
+                ],
+                "properties": {
+                    "schema_version": {"type": "integer", "enum": [1]},
+                    "policy_version": {
+                        "type": "string",
+                        "enum": [DETERMINISTIC_SEMANTIC_POLICY_VERSION],
+                    },
+                    "evidence_terms": {
+                        "type": "array",
+                        "maxItems": 16,
+                        "items": {"type": "string", "minLength": 1, "maxLength": 80},
+                    },
+                    "require_all_terms": {"type": "boolean"},
+                    "abstain_when_no_evidence": {"type": "boolean", "enum": [True]},
+                    "ocr_extraction_plan": {
+                        "type": "string",
+                        "enum": ["all-lines", "literal-material-spans"],
+                    },
+                },
+            },
         },
     }
+    branches: list[dict[str, object]] = []
+    for capability_id in capability_ids:
+        branches.append(
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "capability_id",
+                    "action",
+                    "parent_skill_sha256",
+                ],
+                "properties": {
+                    "capability_id": {
+                        "type": "string",
+                        "enum": [capability_id],
+                    },
+                    "action": {"type": "string", "enum": ["inherit"]},
+                    "parent_skill_sha256": {
+                        "type": "string",
+                        "enum": [parent_skill_sha256_by_capability[capability_id]],
+                    },
+                },
+            }
+        )
+        if capability_id not in allowed_patches:
+            continue
+        capability_patch = patch
+        if frozen_content_by_capability is not None:
+            frozen = frozen_content_by_capability[capability_id]
+            capability_patch = {
+                **patch,
+                "properties": {
+                    **patch["properties"],
+                    # Structured Outputs accepts primitive enums but rejects
+                    # enums whose values are arrays/objects. The parent-bound
+                    # binder below still checks steps/citations byte-exactly.
+                    "objective": {
+                        "type": "string",
+                        "enum": [frozen["objective"]],
+                    },
+                    "fallback_instruction": {
+                        "type": "string",
+                        "enum": [frozen["fallback_instruction"]],
+                    },
+                },
+            }
+        elif frozen_objective_by_capability is not None:
+            capability_patch = {
+                **patch,
+                "properties": {
+                    **patch["properties"],
+                    "objective": {
+                        "type": "string",
+                        "enum": [frozen_objective_by_capability[capability_id]],
+                    },
+                },
+            }
+        branches.append(
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "capability_id",
+                    "action",
+                    "parent_skill_sha256",
+                    "patch",
+                ],
+                "properties": {
+                    "capability_id": {
+                        "type": "string",
+                        "enum": [capability_id],
+                    },
+                    "action": {"type": "string", "enum": ["patch"]},
+                    "parent_skill_sha256": {
+                        "type": "string",
+                        "enum": [parent_skill_sha256_by_capability[capability_id]],
+                    },
+                    "patch": capability_patch,
+                },
+            }
+        )
     schema: dict[str, object] = {
         "type": "object",
         "additionalProperties": False,
@@ -438,81 +618,7 @@ def sparse_patch_output_json_schema(
                 "type": "array",
                 "minItems": len(capability_ids),
                 "maxItems": len(capability_ids),
-                "items": {
-                    "anyOf": [
-                        branch
-                        for capability_id in capability_ids
-                        for branch in (
-                            {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": [
-                                    "capability_id",
-                                    "action",
-                                    "parent_skill_sha256",
-                                ],
-                                "properties": {
-                                    "capability_id": {
-                                        "type": "string",
-                                        "enum": [capability_id],
-                                    },
-                                    "action": {"type": "string", "enum": ["inherit"]},
-                                    "parent_skill_sha256": {
-                                        "type": "string",
-                                        "enum": [
-                                            parent_skill_sha256_by_capability[
-                                                capability_id
-                                            ]
-                                        ],
-                                    },
-                                },
-                            },
-                            {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "required": [
-                                    "capability_id",
-                                    "action",
-                                    "parent_skill_sha256",
-                                    "patch",
-                                ],
-                                "properties": {
-                                    "capability_id": {
-                                        "type": "string",
-                                        "enum": [capability_id],
-                                    },
-                                    "action": {"type": "string", "enum": ["patch"]},
-                                    "parent_skill_sha256": {
-                                        "type": "string",
-                                        "enum": [
-                                            parent_skill_sha256_by_capability[
-                                                capability_id
-                                            ]
-                                        ],
-                                    },
-                                    "patch": (
-                                        patch
-                                        if frozen_objective_by_capability is None
-                                        else {
-                                            **patch,
-                                            "properties": {
-                                                **patch["properties"],
-                                                "objective": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                        frozen_objective_by_capability[
-                                                            capability_id
-                                                        ]
-                                                    ],
-                                                },
-                                            },
-                                        }
-                                    ),
-                                },
-                            },
-                        )
-                    ]
-                },
+                "items": {"anyOf": branches},
             },
         },
     }
@@ -716,11 +822,52 @@ def compile_sparse_s1_candidate(
                 )
         else:
             _assert_patch_only_changed_mutable_fields(parent, compiled)
-            selected = compiled
-            if selected.skill_sha256 == parent.skill_sha256:
+            assert entry.patch is not None
+            parent_content_item = next(
+                item for item in parent_content if item.capability_id == capability_id
+            )
+            if (
+                entry.patch.objective != parent_content_item.objective
+                or entry.patch.steps != parent_content_item.steps
+                or entry.patch.fallback_instruction
+                != parent_content_item.fallback_instruction
+                or entry.patch.citation_source_ids
+                != parent_content_item.citation_source_ids
+            ):
                 raise S1SparsePatchError(
-                    f"patch produced no Skill change: {capability_id}"
+                    f"patch changed runtime-owned prose: {capability_id}"
                 )
+            parent_policy = parse_deterministic_semantic_policy(
+                parent.body, capability_id=capability_id
+            )
+            if (
+                parent_policy.evidence_terms
+                or parent_policy.ocr_extraction_plan != "all-lines"
+            ):
+                raise S1SparsePatchError(
+                    f"parent already contains a semantic treatment: {capability_id}"
+                )
+            policy = _semantic_policy_for_patch(capability_id, entry.patch)
+            if not policy.evidence_terms and policy.ocr_extraction_plan == "all-lines":
+                raise S1SparsePatchError(
+                    f"patch semantic policy is a no-op: {capability_id}"
+                )
+            selected_payload = parent.model_dump(mode="json")
+            selected_payload["version"] = parent.version + 1
+            selected_payload["parent_skill_sha256"] = parent.skill_sha256
+            selected_payload["body"] = (
+                parent.body + render_deterministic_semantic_policy(policy)
+            )
+            selected_payload["skill_sha256"] = sha256_bytes(
+                canonical_json_bytes(
+                    {
+                        key: value
+                        for key, value in selected_payload.items()
+                        if key != "skill_sha256"
+                    }
+                )
+            )
+            selected = StrictSkillArtifact.model_validate(selected_payload, strict=True)
         selected_bytes = canonical_json_bytes(selected.model_dump(mode="json"))
         frozen_sections = _body_sections(parent.body)
         frozen_section_records.append(
@@ -975,6 +1122,16 @@ def _validate_patch_contract(
     patch: SparseSkillContentPatchV1,
     parent: StrictSkillArtifact,
 ) -> None:
+    _semantic_policy_for_patch(capability_id, patch)
+    try:
+        static_authoring_module._scan_untrusted_text(
+            patch.semantic_policy.evidence_terms,
+            "S1 typed semantic policy",
+        )
+    except static_authoring_module.AuthoringContractError as error:
+        raise S1SparsePatchError(
+            "typed semantic policy references forbidden experiment information"
+        ) from error
     sequence = tuple(item.tool_name for item in patch.steps)
     parent_sequence = tuple(_parse_tool_steps(parent.body)[0])
     if sequence != parent_sequence:
@@ -988,6 +1145,26 @@ def _validate_patch_contract(
             raise S1SparsePatchError(
                 "Encyclopedia patch lacks the exact fallback evidence marker"
             )
+
+
+def _semantic_policy_for_patch(
+    capability_id: str,
+    patch: SparseSkillContentPatchV1,
+) -> DeterministicSemanticPolicy:
+    if capability_id not in SEMANTIC_POLICY_CAPABILITIES:
+        raise S1SparsePatchError(
+            f"capability has no S1-consumed semantic policy: {capability_id}"
+        )
+    try:
+        return DeterministicSemanticPolicy(
+            capability_id=capability_id,  # type: ignore[arg-type]
+            evidence_terms=patch.semantic_policy.evidence_terms,
+            require_all_terms=patch.semantic_policy.require_all_terms,
+            abstain_when_no_evidence=patch.semantic_policy.abstain_when_no_evidence,
+            ocr_extraction_plan=patch.semantic_policy.ocr_extraction_plan,
+        )
+    except (TypeError, ValueError) as error:
+        raise S1SparsePatchError("typed semantic policy is invalid") from error
 
 
 def _validate_parent_lineage(
@@ -1210,6 +1387,7 @@ __all__ = [
     "SparsePatchDraftPayloadV1",
     "SparsePatchDraftV1",
     "SparseScreenedBankReceiptV1",
+    "SparseSemanticPolicyV1",
     "SparseSkillContentPatchV1",
     "SparseSkillDraftV1",
     "bind_sparse_patch_draft",

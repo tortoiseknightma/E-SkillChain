@@ -27,7 +27,7 @@ from skillchain.evaluation.assistant_runs import (
 )
 from skillchain.evaluation.evaluator_outputs import (
     parse_final_judge_output_v4,
-    parse_visual_feedback_output_v3,
+    parse_visual_feedback_output_v4,
 )
 from skillchain.evaluation.feedback_runtime import (
     require_policy_labeled_suggestions,
@@ -115,6 +115,22 @@ def _assistant_cost(input_tokens: int, output_tokens: int) -> float:
     ) / 1_000_000
 
 
+def _resolve_codex_cli() -> str | None:
+    """Prefer the independently updated npm shim on Windows.
+
+    The desktop app ships its own ``codex.exe`` earlier on PATH.  That binary can
+    lag the models-cache schema written by the current app/CLI.  ``codex.cmd`` is
+    the normal npm entrypoint and subprocess can execute it directly on Windows;
+    other platforms keep the ordinary ``codex`` lookup.
+    """
+
+    if os.name == "nt":
+        npm_shim = shutil.which("codex.cmd")
+        if npm_shim is not None:
+            return npm_shim
+    return shutil.which("codex")
+
+
 def _usage(raw: object) -> tuple[int, int]:
     usage = getattr(raw, "usage", None)
     return (
@@ -169,7 +185,7 @@ class LiveCoreFastAdapter:
         return self._query_artifact_sha256
 
     def validate_runtime(self) -> None:
-        if shutil.which("codex") is None:
+        if _resolve_codex_cli() is None:
             raise RuntimeError("Codex CLI is required for the three creator sessions")
         if self.spec.paths.final_rubric is None:
             raise RuntimeError("Core Fast live adapter requires paths.final_rubric")
@@ -693,7 +709,7 @@ class LiveCoreFastAdapter:
                 failure_reason="Feedback response did not finish with stop/no-tool-calls",
             )
         try:
-            parsed = parse_visual_feedback_output_v3(text)
+            parsed = parse_visual_feedback_output_v4(text)
             require_policy_labeled_suggestions(parsed)
         except (TypeError, ValueError):
             return CallResult(
@@ -746,7 +762,7 @@ class LiveCoreFastAdapter:
         )
 
     def _invoke_creator(self, intent: CallIntent) -> CallResult:
-        executable = shutil.which("codex")
+        executable = _resolve_codex_cli()
         if executable is None:
             raise RuntimeError("Codex CLI is unavailable")
         schema = intent.payload.get("output_schema")
@@ -822,14 +838,17 @@ class LiveCoreFastAdapter:
             "latency_ms": latency_ms,
         }
         if completed.returncode != 0:
+            stderr_tail = completed.stderr.decode("utf-8", errors="replace")[
+                -2000:
+            ].strip()
+            stdout_tail = completed.stdout.decode("utf-8", errors="replace")[
+                -4000:
+            ].strip()
+            detail = stderr_tail or stdout_tail or "no diagnostic output"
             return CallResult(
                 **common,
                 status="provider_error",
-                failure_reason=(
-                    "Codex CLI exited "
-                    f"{completed.returncode}: "
-                    + completed.stderr.decode("utf-8", errors="replace")[-2000:]
-                ),
+                failure_reason=(f"Codex CLI exited {completed.returncode}: {detail}"),
             )
         if not final.strip():
             return CallResult(

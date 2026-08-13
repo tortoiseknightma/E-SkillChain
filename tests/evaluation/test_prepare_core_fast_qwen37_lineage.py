@@ -45,8 +45,8 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
     assert bootstrap.s1_settings.feedback_total_count == 48
     assert bootstrap.s1_settings.creator_directives == ()
     assert bootstrap.s1_settings.required_patch_phrases == {}
-    assert bootstrap.s1_settings.protected_capabilities == (
-        "knowledge.visual_encyclopedia",
+    assert bootstrap.s1_settings.protected_capabilities == tuple(
+        sorted(set(lineage.CAPABILITIES) - {"utility.recipe_guidance"})
     )
     assert Path(bootstrap.paths.queries).is_absolute()
 
@@ -75,31 +75,28 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
         bootstrap_result_path=bootstrap_result_path,
         output_spec_path=r1_path,
         experiment_id="qwen37-s1-r1-test",
-        target_capability="product.exact_match",
-        creator_directives=("Patch only evidence-grounded exact-match closure.",),
-        required_patch_phrases=("supported candidate",),
+        target_capability="utility.recipe_guidance",
+        creator_directives=("Patch only source-entailment selection.",),
     )
 
     assert load_core_fast_spec(r1_path) == r1
     assert r1.opt_static_results_sha256 == sha256_bytes(opt_path.read_bytes())
     assert r1.fixed_samples.model_dump(mode="json") == _fixed_samples()
     assert r1.s1_settings.feedback_mode == "fresh-per-round"
-    assert r1.s1_settings.target_capabilities == ("product.exact_match",)
+    assert r1.s1_settings.target_capabilities == ("utility.recipe_guidance",)
     assert r1.s1_settings.max_patched_capabilities == 1
     assert r1.s1_settings.protected_capabilities == tuple(
-        sorted(set(lineage.CAPABILITIES) - {"product.exact_match"})
+        sorted(set(lineage.CAPABILITIES) - {"utility.recipe_guidance"})
     )
-    assert r1.s1_settings.required_patch_phrases == {
-        "product.exact_match": ("supported candidate",)
-    }
+    assert r1.s1_settings.required_patch_phrases == {}
     with pytest.raises(FileExistsError):
         lineage.freeze_r1_spec(
             bootstrap_spec_path=bootstrap_spec_path,
             bootstrap_result_path=bootstrap_result_path,
             output_spec_path=r1_path,
             experiment_id="qwen37-s1-r1-test",
-            target_capability="product.exact_match",
-            creator_directives=("Patch only evidence-grounded exact-match closure.",),
+            target_capability="utility.recipe_guidance",
+            creator_directives=("Patch only source-entailment selection.",),
         )
 
 
@@ -213,7 +210,7 @@ def test_feedback_export_rejects_incomplete_source(tmp_path: Path) -> None:
         )
 
 
-def test_s1_round_identity_supports_forward_rounds() -> None:
+def test_s1_round_identity_supports_forward_rounds_and_hides_reuse_cli() -> None:
     base = load_core_fast_spec(BASE_SPEC)
     payload = base.s1_settings.model_dump()
     assert (
@@ -226,22 +223,5 @@ def test_s1_round_identity_supports_forward_rounds() -> None:
     )
 
     parser = lineage.build_parser()
-    command = [
-        "freeze-reuse-round",
-        "--r1-spec",
-        "r1.json",
-        "--bundle-dir",
-        "feedback",
-        "--output-spec",
-        "r10.json",
-        "--experiment-id",
-        "qwen37-s1-r10-test",
-        "--target-capability",
-        "product.multi_search",
-        "--creator-directive",
-        "Copy one public mapping payload exactly.",
-        "--round-id",
-    ]
-    assert parser.parse_args([*command, "r10"]).round_id == "r10"
     with pytest.raises(SystemExit):
-        parser.parse_args([*command, "r11"])
+        parser.parse_args(["freeze-reuse-round"])

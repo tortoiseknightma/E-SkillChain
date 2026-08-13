@@ -7,11 +7,11 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：Portfolio V1 已完成五配置 `dev_mini 200×5` 方向性比较；Core Fast 已用 Qwen3.7 重跑 Static opt800、12 条 fresh Feedback，以及两批共十个单能力 S1 候选（R1–R10）。十轮均被 development screen 拒绝，最终 S1 是 Static Bank 的精确 alias；`body_gate75`、S2 与 Core `test300` 均未访问。第二批五轮额度也已耗尽，当前不能进入 S2。**
+> **当前状态：Portfolio V1 已完成五配置 `dev_mini 200×5` 方向性比较；历史 Core Fast R1–R10 均回滚。新的 deterministic action-response v4 lineage 已完成 fresh Qwen3.7 Static opt800，并首次接受了一个 S1 typed semantic policy：Document replay200 从 `7/8` 升至 `8/8`，body_gate75 从 `3/4` 升至 `4/4`，selected Bank 为 `efc7cbb3…aef`。按停止规则尚未启动 S2/test。**
 
-[V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
+[V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
-> GitHub 默认展示 HTML 源码；两份 HTML 报告建议下载后用浏览器打开。
+> GitHub 默认展示 HTML 源码；HTML 报告与实验日志建议下载后用浏览器打开。
 
 ## Core 1,500 默认实验入口
 
@@ -21,13 +21,21 @@ Core r3 完整实验现在使用独立的最小治理入口：
 uv run python scripts/run_core_experiment.py validate
 ```
 
-当前默认只推荐上述零调用验证；`run --through ...` 会产生新调用，第二批五轮额度已经耗尽，
-需另行批准新 lineage，且只有 S1 接受后才能继续 S2/test。
+当前默认 spec 已绑定 accepted lineage 的 fresh Static 与 Document-only R1 设计；
+`validate --inputs-only` 和完整 `validate` 均通过。已完成的 accepted 产物位于独立 run root，
+S2 必须显式使用该次运行的 canonical artifact spec 与 run root 继续，默认 spec 因字节 SHA
+不同会按预期拒绝 resume，也不会自动借用 accepted decision。
 
-推荐先停在 S1：固定 `discovery600` 生成候选，已观察的 `replay200` 只作 development
-筛查，通过后才进入一次 `body_gate75` 接受门。新 Qwen3.7 lineage 的 R1–R10 均采用
-parent-bound 单能力 sparse patch，冻结全部 Description，并对未修改能力执行 byte-exact
-继承。十轮均未通过 replay screen，因此 S1 已停止并保持 Static。
+deterministic v4 runtime 在路由后独占 tool-first、typed arguments、DTO/card/evidence
+closure、required sections 与 empty fallback。S1 不能再改这些机械 prose，只能提交
+`core-fast-semantic-policy-v2`。已接受的 R1 只把 Document 的 `ocr_extraction_plan`
+从 `all-lines` 切到 `literal-material-spans`，其余五项 byte-exact inherit。相同工具 DTO 下，typed policy 能改变编译结果；仅改普通 Body
+prose 不会改变结果，这一 treatment-sensitivity 边界已有聚焦测试。
+
+S1 已按规则停止：固定 `discovery600` 生成候选，已观察的 `replay200` 只作 development
+筛查，通过后才进入一次 `body_gate75` 接受门。历史 Qwen3.7 v2/v3 lineage 的 R1–R10
+均未通过 replay screen并保持 Static；新的 v4 Document-only lineage 已通过一次冻结
+body gate，因此选择新 Bank 并停止 S1，等待显式启动 S2。
 
 第一批证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`，第二批为
 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。十个 round root 均冻结
@@ -35,7 +43,8 @@ parent-bound 单能力 sparse patch，冻结全部 Description，并对未修改
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
-固定 12 条 Feedback 因而实际最多并发 12。限速作用于每次 provider call，而不是外层
+采用 `canary6 + remaining42` 的 48 条 Feedback，因而实际最多并发 48。完整 48 条必须在
+Creator 前通过 completeness、service-error 与 parse/schema-error 门。限速作用于每次 provider call，而不是外层
 query。该配置只用于新 Fast execution overlay；历史 Formal profile、配置和 receipt
 保持原样，不回写。
 

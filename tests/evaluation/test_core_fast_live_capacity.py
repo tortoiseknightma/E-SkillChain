@@ -35,6 +35,25 @@ class _FakeClock:
         self.now += delay
 
 
+def test_windows_creator_prefers_independently_updated_npm_codex_shim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    looked_up: list[str] = []
+
+    def fake_which(name: str) -> str | None:
+        looked_up.append(name)
+        return {
+            "codex.cmd": r"C:\npm\codex.cmd",
+            "codex": r"C:\desktop\codex.exe",
+        }.get(name)
+
+    monkeypatch.setattr(live_module.os, "name", "nt")
+    monkeypatch.setattr(live_module.shutil, "which", fake_which)
+
+    assert live_module._resolve_codex_cli() == r"C:\npm\codex.cmd"
+    assert looked_up == ["codex.cmd"]
+
+
 @pytest.mark.parametrize(
     ("requests_per_second", "interval"),
     ((20.0, 0.05), (8.0, 0.125)),
@@ -163,7 +182,7 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
         spec=SimpleNamespace(
             concurrency=SimpleNamespace(assistant_requests_per_second=0.5),
             runtime=SimpleNamespace(
-                assistant_contract="core-fast-deterministic-action-response-v1"
+                assistant_contract="core-fast-deterministic-action-response-v4"
             ),
         ),
         cwd=tmp_path,
@@ -196,7 +215,7 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
     assert len(captured) == 1
     assert (
         captured[0]["deterministic_action_contract_version"]
-        == "core-fast-deterministic-action-response-v1"
+        == "core-fast-deterministic-action-response-v4"
     )
     waiter = captured[0]["qwen_call_start_waiter"]
     assert callable(waiter)
@@ -488,7 +507,7 @@ def test_live_feedback_emits_exact_qwen38_capacity_probe_wire(
     )
     monkeypatch.setattr(
         live_module,
-        "parse_visual_feedback_output_v3",
+        "parse_visual_feedback_output_v4",
         lambda _text: _ParsedFeedback(),
     )
     policy_checks: list[object] = []

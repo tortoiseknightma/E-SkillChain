@@ -5354,6 +5354,118 @@ contract，而不是继续追加 prompt 轮次。这个案例体现的是如何�
 
 ---
 
+## 52. 确定性 runtime 之后，S1 必须拥有真实 treatment surface，Gate 也必须按 treatment reach 归因
+
+**状态：已验证；首个 typed semantic-policy S1 已通过 body gate，停在 S2 前**
+
+### 一句话问题
+
+把 tool-first、DTO/card/evidence closure 和 fallback 全部编译化以后，普通 Skill Body 不再影响运行；
+S1 必须编辑 runtime 实际消费的 typed policy，且 sparse Gate 不能让未处理能力的独立路由采样替目标 patch 背锅。
+
+### 背景与影响
+
+历史 R1–R10 表明自然语言 Body 能改善多数 grounding，却会偶发跳工具或破坏结构闭合。项目因此把
+机械规则移入 deterministic runtime。但第一版实现直接在工具成功后编译 final，S1 又冻结全部
+Description，导致候选 Body 成为无效变量；同时默认 spec 仍绑定旧 runtime Static，完整 48 条
+Feedback 也缺少 Creator 前终止门。直接运行会产生无法解释的 S1 比较。
+
+### 观察到的证据
+
+- v2 fresh Static 完成 800/800，但 Recipe evidence selector 使用抽象词过滤 literal source，目标
+  replay 从 `26→0`，被 capability screen 全量回滚。
+- v3 把长 source 拆成 material statements，并为每句重复 exact handle；fresh Static 为
+  `674/800`、0 hard error，Recipe 在新基线中已无可优化空间。
+- v4 新增 Document typed `ocr_extraction_plan`。parent 使用 `all-lines`，候选只能切到
+  `literal-material-spans`；同一公开 OCR DTO 下，typed policy 改变编译输出，而普通 Body prose 不会。
+- v4 fresh Static 为 800/800 outer success、`676/800` GCS、0 hard error。有效 R1 的 Document
+  replay 为 `7/8→8/8`，目标能力无回退、无新增 contract error。
+- 第一次 whole replay 中未修改 Exact 因独立路由采样从 `25→21`，曾错误触发 capability floor；
+  这些能力的 Bank 字节完全相同，故不是 Document treatment 的结果。
+- 修正后的 Gate 只在 parent/candidate 都路由到目标能力的 treatment-reached 行采用 candidate；
+  replay macro `+2.0833pp`，body_gate75 的 Document `3/4→4/4`、macro `+4.1667pp`、
+  hard-error delta `0pp`、bootstrap 95% CI `[0, 8.3333]pp`，最终 `accepted=true`。
+
+### 根因
+
+第一个根因是 treatment surface 消失：compiler 独占最终回答后，Creator 修改的 prose 不再被读取。
+第二个根因是证据闭合粒度错误：一个长 source/OCR 行只带一次 handle，但 scorer 按标点拆成多条
+material statement。第三个根因是 Gate 把冻结 Description 的两次独立 route sampling 当作 Body
+差异，违反 sparse S1 的因果边界。
+
+### 考虑过的方案与取舍
+
+1. 恢复 action LLM 读取整段 Body：重新引入 tool/DTO/fallback 随机失效，拒绝。
+2. 继续让 Creator 改 runtime-owned prose：变量不会影响输出，拒绝。
+3. 放宽 `−3pp` 或忽略目标真实回退：会降低安全门，拒绝。
+4. 让 S1 只编辑 typed semantic policy，并由 compiler 消费；采用。
+5. 对 byte-exact inherit 能力和目标错路由行 alias parent observation，目标 treatment-reached 行仍
+   保留真实 candidate；采用，所有数值门槛保持不变。
+
+### 最终方案
+
+runtime v4 固定工具、参数、结构、handle 与 fallback，只开放版本化 typed semantic policy。
+Document R1 把 `ocr_extraction_plan` 从 `all-lines` 改为 `literal-material-spans`，去除会制造无 handle
+statement 的终止标点并跳过 noise-only glyph。Feedback 使用 `canary6 + remaining42`；完整 48 条
+必须满足 completeness、service-error 与 parse/schema-error 门才允许 Creator。accepted Bank 为
+`efc7cbb3a25daf22aee45b943b0ec4cdca42f3e49644bd53fafaad2a85c3aaef`，按规则未启动 S2/test。
+
+### 如何验证
+
+- treatment-sensitivity 测试证明 typed policy 改变输出、普通 Body prose 不改变输出。
+- 完整 48 Feedback terminal Gate 测试证明 remaining42 出错时 Creator 为 0-call。
+- sparse Gate 测试证明 untreated capability 与目标 route mismatch 使用 parent，目标真实 candidate
+  回退仍会触发门。
+- 相关回归覆盖 deterministic runner、sparse compiler、Feedback parser/selector、Core Fast 与 live
+  capacity；默认 `validate --inputs-only` 和完整 `validate` 均通过。
+- accepted root 用原 canonical spec resume 时 call 文件数保持 `1246→1246`；未发现 S2、Judge 或
+  test300 artifact。
+
+### 剩余限制
+
+body_gate75 只有 4 条 Document 样本，CI 下界恰为 `0`，因此这是 Portfolio Track 的首个真实正向
+闭环，不是大样本泛化或论文正式结论。Gate 的 causal alias 依赖 S1 Description 冻结；若 S2 修改
+Description，必须使用 S2 自己的 route gate，不能套用该口径。Creator 人民币成本不可得；首次
+48 Feedback 中两条空 `summary_note` 需要定向重跑，另有一次目录复制错误保留为执行异常。
+
+### 30 秒回答
+
+“我先把工具调用和结构闭合做成确定性 runtime，但马上发现这会让原 S1 Body 变成无效变量。
+我把 S1 改成 typed semantic policy，并用 fresh Static 对称重跑。Document 的 literal-span policy
+在 replay 从 7/8 到 8/8，在冻结 body gate 从 3/4 到 4/4，macro 提升 4.17pp，最终被接受。
+同时我修正了 Gate：未修改能力的独立路由噪声不再归因给 Body patch，但目标真实回退仍 fail closed。”
+
+### 2 分钟回答
+
+“历史十轮表明 prompt 能改善 grounding，但 tool-first、DTO 和 fallback 偶发失效，所以我把这些
+机械规则迁到 deterministic compiler。合并后我没有直接跑实验，因为发现 S1 仍只能改 Body，
+而 runtime 已不读 Body，候选实际上无法生效。我定义了 compiler 消费的 typed semantic policy，
+并在新 contract 下重跑 800 条 Static。
+
+第一版 Recipe selector 过度过滤 source，26 条成功全部丢失，screen 正确回滚。分析后发现 source
+handle 只放在长行开头，而 scorer 会按标点拆句，所以我先修 runtime-owned evidence closure。
+新基线里 Recipe 已饱和，剩余可归因簇是 Document OCR 行的终止标点和噪声 glyph。我只开放一个
+枚举字段，把 all-lines 改成 literal-material-spans；工具、DTO、heading、handle、fallback 全冻结。
+
+候选在 Document replay 修复唯一失败，但第一次 whole gate 被未修改 Exact 的随机路由波动否决。
+因为 Description 和 Exact Bank 都字节相同，那不是 S1 treatment。我将 Gate 改成只在 treatment
+真正到达的目标行使用 candidate，其余使用 parent；没有降低 +2pp、CI、hard-error 或 capability
+floor。最终 replay macro +2.08pp，body gate macro +4.17pp，CI 下界为 0，S1 正式接受。整个过程
+没有访问 S2、Judge 或 test，所以现在得到的是一个可复核的 Portfolio 正向闭环和清晰的因果边界。”
+
+### 证据入口
+
+- `src/skillchain/runners/assistant_deterministic_contract.py`
+- `src/skillchain/evolution/s1_sparse_patch.py`
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `specs/core-experiment-fast-v1.json`
+- `tests/runners/test_assistant_deterministic_contract.py`
+- `tests/evaluation/test_core_fast.py`
+- `docs/s1-experiment-log.html`
+- `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\s1-r1e-document-literal-span`
+
+---
+
 ## 新条目模板
 
 复制下面的模板，编号后放到索引和正文中。结论未被验证时必须标为“待验证”或“部分解决”。

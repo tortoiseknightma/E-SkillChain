@@ -35,10 +35,10 @@ def _settings(*, count: int, allocation: str = "balanced-six-capability") -> S1S
     if allocation == "target-focused":
         payload.update(
             {
-                "target_capabilities": ("product.multi_search",),
+                "target_capabilities": ("utility.recipe_guidance",),
                 "max_patched_capabilities": 1,
                 "protected_capabilities": tuple(
-                    item for item in CAPABILITIES if item != "product.multi_search"
+                    item for item in CAPABILITIES if item != "utility.recipe_guidance"
                 ),
             }
         )
@@ -103,10 +103,10 @@ def test_balanced_and_target_focused_allocations(fast_fixture) -> None:
     focused = select_feedback_samples(
         population, _settings(count=48, allocation="target-focused")
     )
-    assert all(row["capability"] == "product.multi_search" for row in focused)
+    assert all(row["capability"] == "utility.recipe_guidance" for row in focused)
     classes = [row["selection_class"] for row in focused]
     assert classes.count("body_fixable_failure") == sum(
-        row["capability"] == "product.multi_search"
+        row["capability"] == "utility.recipe_guidance"
         and row["selection_class"] == "body_fixable_failure"
         for row in population
     )

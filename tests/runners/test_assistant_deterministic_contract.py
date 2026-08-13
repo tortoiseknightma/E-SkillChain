@@ -3,10 +3,13 @@ from __future__ import annotations
 from skillchain.runners.assistant_deterministic_contract import (
     DETERMINISTIC_ASSISTANT_CONTRACT_SHA256,
     DeterministicToolObservation,
+    DeterministicSemanticPolicy,
     compile_deterministic_response,
     deterministic_contract_payload,
     deterministic_tool_names,
     next_deterministic_tool,
+    parse_deterministic_semantic_policy,
+    render_deterministic_semantic_policy,
 )
 
 
@@ -20,7 +23,7 @@ def _success(tool_name: str, output: dict) -> DeterministicToolObservation:
 
 def test_contract_identity_is_versioned_and_canonical() -> None:
     payload = deterministic_contract_payload()
-    assert payload["policy_version"] == "core-fast-deterministic-action-response-v1"
+    assert payload["policy_version"] == "core-fast-deterministic-action-response-v4"
     assert len(DETERMINISTIC_ASSISTANT_CONTRACT_SHA256) == 64
     assert payload["tool_owner"] == "runner"
     assert payload["response_owner"] == "deterministic_public_dto_compiler"
@@ -190,3 +193,128 @@ def test_ocr_compiler_uses_literal_line_substrings_and_handles() -> None:
     assert response is not None
     assert response.count("total: 19.99 tool-call-1-line-1") == 2
     assert response.endswith("uncertainty:\nuntrusted document text")
+
+
+def test_typed_ocr_plan_changes_only_literal_material_spans() -> None:
+    observations = (
+        _success(
+            "document_ocr",
+            {
+                "lines": [
+                    {
+                        "line_reference": "tool-call-1-line-1",
+                        "text": "ACME LTD.",
+                        "fields": [],
+                    },
+                    {
+                        "line_reference": "tool-call-1-line-2",
+                        "text": "��",
+                        "fields": [],
+                    },
+                ]
+            },
+        ),
+    )
+    parent = compile_deterministic_response("utility.document_reading", observations)
+    candidate = compile_deterministic_response(
+        "utility.document_reading",
+        observations,
+        semantic_policy=DeterministicSemanticPolicy(
+            capability_id="utility.document_reading",
+            ocr_extraction_plan="literal-material-spans",
+        ),
+    )
+    assert parent is not None and candidate is not None
+    assert "text: ACME LTD. tool-call-1-line-1" in parent
+    assert "text: �� tool-call-1-line-2" in parent
+    assert "text: ACME LTD tool-call-1-line-1" in candidate
+    assert "tool-call-1-line-2" not in candidate
+
+
+def test_only_typed_semantic_policy_changes_deterministic_response() -> None:
+    observations = (
+        _success(
+            "object_detect",
+            {"result_kind": "detections", "detections": [{"label": "soup"}]},
+        ),
+        _success(
+            "recipe_lookup",
+            {
+                "sources": [
+                    {
+                        "evidence_reference": "tool-call-2-source-1",
+                        "title": "Ingredient note",
+                        "text": "Use tofu and broth.",
+                    },
+                    {
+                        "evidence_reference": "tool-call-2-source-2",
+                        "title": "Serving note",
+                        "text": "Serve in a deep bowl.",
+                    },
+                ]
+            },
+        ),
+    )
+    parent_body = "# Recipe\n\nRuntime-owned prose A.\n"
+    prose_only_body = "# Recipe\n\nRuntime-owned prose B.\n"
+    parent = compile_deterministic_response(
+        "utility.recipe_guidance",
+        observations,
+        semantic_policy=parse_deterministic_semantic_policy(
+            parent_body, capability_id="utility.recipe_guidance"
+        ),
+    )
+    prose_only = compile_deterministic_response(
+        "utility.recipe_guidance",
+        observations,
+        semantic_policy=parse_deterministic_semantic_policy(
+            prose_only_body, capability_id="utility.recipe_guidance"
+        ),
+    )
+    policy = DeterministicSemanticPolicy(
+        capability_id="utility.recipe_guidance",
+        evidence_terms=("tofu",),
+    )
+    candidate_body = parent_body + render_deterministic_semantic_policy(policy)
+    candidate = compile_deterministic_response(
+        "utility.recipe_guidance",
+        observations,
+        semantic_policy=parse_deterministic_semantic_policy(
+            candidate_body, capability_id="utility.recipe_guidance"
+        ),
+    )
+
+    assert parent == prose_only
+    assert candidate != parent
+    assert candidate is not None and "tofu" in candidate
+    assert "deep bowl" not in candidate
+
+
+def test_source_compiler_repeats_handle_for_every_material_statement() -> None:
+    response = compile_deterministic_response(
+        "utility.recipe_guidance",
+        (
+            _success(
+                "object_detect",
+                {"result_kind": "detections", "detections": [{"label": "soup"}]},
+            ),
+            _success(
+                "recipe_lookup",
+                {
+                    "sources": [
+                        {
+                            "evidence_reference": "tool-call-2-source-1",
+                            "title": "Soup",
+                            "text": "Add tofu. Simmer for 10 minutes. Serve hot.",
+                        }
+                    ]
+                },
+            ),
+        ),
+    )
+
+    assert response is not None
+    answer, evidence = response.split("evidence:\n", maxsplit=1)
+    assert answer.count("tool-call-2-source-1") == 3
+    assert evidence.count("tool-call-2-source-1") == 3
+    assert "tool-call-2-source-1 | Simmer for 10 minutes." in response

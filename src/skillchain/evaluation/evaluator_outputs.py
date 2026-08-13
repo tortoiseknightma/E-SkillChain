@@ -610,6 +610,35 @@ def parse_visual_feedback_output_v3(text: str) -> VisualFeedbackOutput:
         ) from error
 
 
+def parse_visual_feedback_output_v4(text: str) -> VisualFeedbackOutput:
+    """Accept one observed empty provider annotation, then apply v3 strictly.
+
+    Qwen3.8 occasionally appends ``summary_note`` despite the strict response
+    schema.  The field carries no evidence and is safe to discard only when it
+    is null or blank.  Non-empty annotations and every other schema drift stay
+    rejected.
+    """
+
+    body = _unwrap_visual_feedback_output_v2(text)
+    decoded = _decode_exact_json_object_v2(body)
+    if "summary_note" in decoded:
+        note = decoded.pop("summary_note")
+        if note is not None and (type(note) is not str or note.strip()):
+            raise EvaluatorOutputParseError(
+                "Feedback summary_note must be absent, null, or blank"
+            )
+    normalized = _trim_visual_feedback_free_text_v3(decoded)
+    try:
+        return VisualFeedbackOutput.model_validate_json(
+            canonical_json_bytes(normalized),
+            strict=True,
+        )
+    except ValidationError as error:
+        raise EvaluatorOutputParseError(
+            "evaluator output violates the frozen normalized JSON contract"
+        ) from error
+
+
 def _applicable_judge_dimensions(
     requires_card: bool,
 ) -> tuple[JudgeDimension, ...]:
@@ -1069,6 +1098,7 @@ __all__ = [
     "parse_visual_feedback_output",
     "parse_visual_feedback_output_v2",
     "parse_visual_feedback_output_v3",
+    "parse_visual_feedback_output_v4",
     "visual_feedback_parser_policy_v1",
     "visual_feedback_parser_policy_v2",
     "visual_feedback_parser_policy_v3",

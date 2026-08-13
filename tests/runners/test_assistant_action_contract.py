@@ -466,7 +466,7 @@ def test_core_fast_deterministic_contract_owns_tool_and_response(
     object.__setattr__(
         runner,
         "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v1",
+        "core-fast-deterministic-action-response-v4",
     )
 
     execution = runner.execute(request)

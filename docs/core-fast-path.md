@@ -8,7 +8,7 @@ claim、bound、receipt、目录树哈希或多级 gate 产物。
 
 ```text
 dev_mini 200：固定 smoke24
-opt_pool 800：discovery600 供失败归因、canary12 Feedback 和候选输入；replay200 只作 development
+opt_pool 800：discovery600 供失败归因、48 条 Feedback 选择和候选输入；replay200 只作 development
 val 200：body_gate75 接受或回滚 S1；其余冻结分区供 S2 / S3 与组合检查
 test_frozen 300：Bank 冻结后的五配置最终评测
 ```
@@ -19,7 +19,7 @@ parent 的精确 alias，不产生新的 Assistant、工具或 Judge 调用。�
 
 冻结配置位于 [`specs/core-experiment-fast-v1.json`](../specs/core-experiment-fast-v1.json)。
 其中包含字面 canary12、smoke24、body48 ID，固定模型角色、Gate、并发度和 CNY 250
-总费用上限。默认 spec 已绑定本轮 fresh Qwen3.7 Static v2 的 800 条
+总费用上限。默认 spec 已绑定 deterministic action-response v4 下 fresh Qwen3.7 Static 的 800 条
 `AssistantObservation` 及其 SHA；旧 `export_core_fast_opt_static.py` 只用于迁移历史 Qwen-VL
 artifact，不能生成或替代当前 Qwen3.7 基线。重新生成新 Static 必须使用独立 bootstrap spec、
 fresh output root 与 `static-opt800` 命令，且会产生 provider 费用。
@@ -28,13 +28,47 @@ fresh output root 与 `static-opt800` 命令，且会产生 provider 费用。
 
 ```text
 Static opt800
-→ discovery600 的固定 canary12 做 Feedback
+→ discovery600 冻结 48 条 Feedback（canary6 + remaining42）
+→ canary6 通过后执行 remaining42
+→ 完整 48 条在 Creator 前通过 completeness/service/parse-schema 终止门
 → parent-bound sparse Creator
 → dev smoke24
 → replay200 development 筛查
 → 仅在通过后访问一次 body_gate75 接受门
 → 接受候选或 byte-exact 回滚到 Static parent
 ```
+
+### Deterministic runtime 与 S1 treatment surface
+
+`core-fast-deterministic-action-response-v4` 在路由后由 runner 固定工具序列和参数，并由纯函数
+从 public DTO 编译 cards、evidence、section 与 fallback。机械 closure 不再属于 S1。
+Creator 必须逐字复制 parent objective、tool steps、fallback instruction 与 citations；唯一可变且
+被 runtime 消费的字段是 `core-fast-semantic-policy-v2`。已接受 R1 只开放 Document 的
+`ocr_extraction_plan=literal-material-spans`，用于从公开 OCR 行选择 literal material span；
+Description 与其余五项 Skill 均冻结。空 policy 或对 Multi/Exact 等无消费面的 patch 会 fail closed。
+
+默认 Static SHA 为
+`fb88a2145b6671de054229117f3b0bd2121d675fa26a6233d8c31471b5987502`，来自独立 create-only
+root `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\static-opt-run`。该 qualification
+为 800/800 outer success、0 hard error、676/800 GCS success。
+
+### Accepted typed semantic-policy R1（2026-08-13）
+
+唯一变量是 Document 的 `ocr_extraction_plan=literal-material-spans`。完整 48 Feedback 在 Creator
+前通过 terminal Gate；Creator 产出 parent-bound 单能力 patch。replay200 中 Document 从 `7/8`
+升至 `8/8`，六能力 macro `+2.0833pp`；body_gate75 中 Document 从 `3/4` 升至 `4/4`，
+六能力 macro `+4.1667pp`，hard-error delta `0pp`，component bootstrap 95% CI 下界 `0pp`。
+decision 为 `accepted=true`、`alias_of=null`，selected Bank 为
+`efc7cbb3a25daf22aee45b943b0ec4cdca42f3e49644bd53fafaad2a85c3aaef`。
+
+S1 Gate 对 sparse treatment 采用能力局部的因果口径：实际 patch capability 且 parent/candidate
+都路由到该 capability 的行使用 candidate observation；byte-exact inherit 的能力和目标路由不一致
+行使用 frozen parent observation。数值阈值没有降低；此调整消除了冻结 Description 的独立路由采样
+噪声，目标能力的真实回退仍全部保留。accepted run root 为
+`D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\s1-r1e-document-literal-span`。
+继续 S2 时必须搭配原 canonical spec
+`D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\specs\s1-r1-document-literal-span.json`；
+tracked default spec 内容虽已同步，但重新格式化后的文件 SHA 不同，会按预期拒绝旧 root resume。
 
 `replay200` 的结果已经在历史 R0 中被观察，因此它只承担 development/过拟合筛查，
 不能再被称为独立验证。其门为 capability-macro GCS delta `≥0pp`、hard-error delta
@@ -133,7 +167,7 @@ R11。证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`�
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |
 |---|---:|---:|---|
 | Assistant | 60 workers；20 requests/s | ≤60 | 每次真实 route/action/body provider call |
-| Qwen3.8 Feedback | 60 workers；8 requests/s | `min(60, 12)=12` | 每条固定 Feedback provider call |
+| Qwen3.8 Feedback | 60 workers；8 requests/s | `min(60, 48)=48` | 每条冻结 Feedback provider call |
 
 新 Assistant 的 60-call 极限轮为 60/60、峰值 inflight 60，未出现 429、5xx、连接或超时
 错误。极限轮以 60 requests/s 启动；主实验使用 20 requests/s，以免账号级合并限流影响

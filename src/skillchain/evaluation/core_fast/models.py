@@ -25,6 +25,11 @@ CAPABILITIES = (
     "utility.recipe_guidance",
 )
 CONFIGS = ("noskill", "llm_static", "s1", "s1s2", "full")
+S1_SEMANTIC_POLICY_TARGETS = (
+    "product.style_recommendation",
+    "utility.document_reading",
+    "utility.recipe_guidance",
+)
 EVOLUTION_STAGES = ("s1", "s2", "full")
 SPLIT_COUNTS = {
     "dev_mini": 200,
@@ -120,10 +125,8 @@ class FixedSamples(FrozenStrictModel):
             canary = [row.role for row in self.canary12 if row.capability == capability]
             smoke = [row for row in self.dev_smoke24 if row.capability == capability]
             body = [row for row in self.body48 if row.capability == capability]
-            if (
-                len(canary) != 2
-                or "failure" not in canary
-                or any(role not in {"failure", "anchor"} for role in canary)
+            if len(canary) != 2 or any(
+                role not in {"failure", "anchor"} for role in canary
             ):
                 raise ValueError(
                     f"canary12 role composition is invalid for {capability}"
@@ -131,12 +134,8 @@ class FixedSamples(FrozenStrictModel):
             if len(smoke) != 4 or any(row.role != "smoke" for row in smoke):
                 raise ValueError(f"dev_smoke24 must contain four rows for {capability}")
             body_roles = sorted(row.role for row in body)
-            if (
-                len(body_roles) != 8
-                or "body_failure" not in body_roles
-                or any(
-                    role not in {"body_failure", "body_anchor"} for role in body_roles
-                )
+            if len(body_roles) != 8 or any(
+                role not in {"body_failure", "body_anchor"} for role in body_roles
             ):
                 raise ValueError(f"body48 role composition is invalid for {capability}")
         return self
@@ -164,7 +163,7 @@ class S1Settings(FrozenStrictModel):
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
     )
-    target_capabilities: tuple[str, ...] = ()
+    target_capabilities: tuple[str, ...] = S1_SEMANTIC_POLICY_TARGETS
     proposal_mode: Literal["sparse-parent-patch-v1"] = "sparse-parent-patch-v1"
     max_patched_capabilities: int = Field(default=3, ge=1, le=3)
     protected_capabilities: tuple[str, ...] = ("knowledge.visual_encyclopedia",)
@@ -209,6 +208,10 @@ class S1Settings(FrozenStrictModel):
             )
         if not set(targets) <= set(CAPABILITIES) - set(protected):
             raise ValueError("S1 target capabilities must be patchable capabilities")
+        if not set(targets) <= set(S1_SEMANTIC_POLICY_TARGETS):
+            raise ValueError(
+                "S1 targets must expose a deterministic-runtime semantic policy"
+            )
         if self.feedback_allocation == "target-focused" and (
             len(targets) != 1 or self.max_patched_capabilities != 1
         ):
@@ -229,8 +232,8 @@ class Concurrency(FrozenStrictModel):
         gt=0,
     )
     # This is a provider-capacity ceiling, not the number of calls that every
-    # stage must create.  S1 currently has a fixed 12-row Feedback batch, so
-    # its effective concurrency is min(feedback, 12).
+    # stage must create.  S1 has a canary6 + remaining42 Feedback batch, so
+    # its effective concurrency is min(feedback, 48).
     feedback: int = Field(default=config.FEEDBACK_JUDGE_VALIDATED_CONCURRENCY, ge=1)
     feedback_requests_per_second: float = Field(
         default=config.FEEDBACK_JUDGE_REQUESTS_PER_SECOND,
@@ -286,8 +289,8 @@ class RuntimeSettings(FrozenStrictModel):
     python_factory: str | None = None
     commands: CommandSet = CommandSet()
     command_timeout_seconds: int = Field(default=1800, ge=1)
-    assistant_contract: Literal["core-fast-deterministic-action-response-v1"] = (
-        "core-fast-deterministic-action-response-v1"
+    assistant_contract: Literal["core-fast-deterministic-action-response-v4"] = (
+        "core-fast-deterministic-action-response-v4"
     )
 
     @model_validator(mode="after")

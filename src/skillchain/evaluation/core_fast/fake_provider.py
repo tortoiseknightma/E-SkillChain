@@ -20,12 +20,14 @@ class FakeCoreFastAdapter:
         *,
         reject_stages: frozenset[str] = frozenset(),
         feedback_fail_ids: frozenset[str] = frozenset(),
+        feedback_schema_fail_ids: frozenset[str] = frozenset(),
         judge_first_status: str | None = None,
         assistant_fail_ids: frozenset[str] = frozenset(),
         break_s3_common_trace: bool = False,
     ) -> None:
         self.reject_stages = reject_stages
         self.feedback_fail_ids = feedback_fail_ids
+        self.feedback_schema_fail_ids = feedback_schema_fail_ids
         self.judge_first_status = judge_first_status
         self.assistant_fail_ids = assistant_fail_ids
         self.break_s3_common_trace = break_s3_common_trace
@@ -69,6 +71,17 @@ class FakeCoreFastAdapter:
                     returned_model="qwen3.8-max-202608",
                     failure_reason="injected Feedback failure",
                 )
+            if query_id in self.feedback_schema_fail_ids:
+                return CallResult(
+                    call_id=intent.call_id,
+                    role=intent.role,
+                    status="schema_error",
+                    requested_model=intent.requested_model,
+                    returned_model="qwen3.8-max-202608",
+                    raw_output="{}",
+                    schema_valid=False,
+                    failure_reason="injected Feedback schema failure",
+                )
             feedback = VisualFeedbackOutput(
                 schema_version=1,
                 summary=f"fixed feedback for {query_id}",
@@ -104,7 +117,19 @@ class FakeCoreFastAdapter:
                     for item in skills
                     if isinstance(item, dict)
                 }
-                target = "product.exact_match"
+                requirements = intent.payload["requirements"]
+                assert isinstance(requirements, dict)
+                targets = requirements["target_capabilities"]
+                assert isinstance(targets, list) and targets
+                target = next(
+                    capability
+                    for capability in (
+                        "utility.recipe_guidance",
+                        "product.style_recommendation",
+                        "utility.document_reading",
+                    )
+                    if capability in targets
+                )
                 generated = []
                 for capability in sorted(skill_by_capability):
                     skill = skill_by_capability[capability]
@@ -121,11 +146,18 @@ class FakeCoreFastAdapter:
                             "patch": {
                                 "objective": template["objective"],
                                 "steps": template["steps"],
-                                "fallback_instruction": str(
-                                    template["fallback_instruction"]
-                                )
-                                + " Make the supported-evidence boundary explicit.",
+                                "fallback_instruction": template[
+                                    "fallback_instruction"
+                                ],
                                 "citation_source_ids": template["citation_source_ids"],
+                                "semantic_policy": {
+                                    "schema_version": 1,
+                                    "policy_version": "core-fast-semantic-policy-v2",
+                                    "evidence_terms": ["ingredient"],
+                                    "require_all_terms": False,
+                                    "abstain_when_no_evidence": True,
+                                    "ocr_extraction_plan": "all-lines",
+                                },
                             },
                         }
                     generated.append(entry)
@@ -184,9 +216,7 @@ class FakeCoreFastAdapter:
                 # anchors so deterministic canary/body selection is covered.
                 # Each capability's first eight rows are six body failures
                 # followed by two anchors; the rest exercise route failures.
-                position = int(query_id.rsplit("-", maxsplit=1)[1]) // len(
-                    CAPABILITIES
-                )
+                position = int(query_id.rsplit("-", maxsplit=1)[1]) // len(CAPABILITIES)
                 route_ok = position < 8
                 evidence = True
                 output_ok = position >= 6

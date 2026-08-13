@@ -1,0 +1,1540 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ECommerceSkillChain S1 实验日志：逐轮记录实验身份、结果、失败归因、算法决策、成本与后续可证伪假设。">
+  <title>ECommerceSkillChain｜S1 实验与算法演进日志</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f3f6f8;
+      --surface: #ffffff;
+      --surface-soft: #edf3f5;
+      --ink: #142532;
+      --muted: #536874;
+      --line: #cad6dc;
+      --brand: #0d6b73;
+      --brand-strong: #07535a;
+      --brand-soft: #d9eef0;
+      --good: #087d5b;
+      --good-soft: #dff4ea;
+      --warn: #9a5d00;
+      --warn-soft: #fff0ce;
+      --bad: #ad3838;
+      --bad-soft: #fbe5e5;
+      --violet: #6453a5;
+      --violet-soft: #ede8ff;
+      --hero: #102c3b;
+      --hero-2: #164d54;
+      --hero-ink: #f7fbfc;
+      --shadow: 0 18px 44px rgba(16, 44, 59, .10);
+      --radius: 18px;
+      --max: 1180px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d171d;
+        --surface: #13232c;
+        --surface-soft: #182d37;
+        --ink: #eef6f8;
+        --muted: #b7c9d0;
+        --line: #35505c;
+        --brand: #63c5ca;
+        --brand-strong: #82d7dc;
+        --brand-soft: #173e45;
+        --good: #61d3a6;
+        --good-soft: #123a2d;
+        --warn: #ffc66d;
+        --warn-soft: #493719;
+        --bad: #ff8b8b;
+        --bad-soft: #482424;
+        --violet: #c6b7ff;
+        --violet-soft: #2d2850;
+        --hero: #0a202c;
+        --hero-2: #123e45;
+        --hero-ink: #f7fbfc;
+        --shadow: 0 18px 44px rgba(0, 0, 0, .24);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; overflow-x: clip; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 16px;
+      line-height: 1.68;
+      overflow-wrap: anywhere;
+    }
+    a { color: var(--brand-strong); text-underline-offset: 3px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible,
+    [tabindex="0"]:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--brand) 72%, transparent);
+      outline-offset: 3px;
+    }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+    code { font-size: .9em; }
+    pre {
+      margin: .8rem 0 0;
+      padding: 1rem;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-soft);
+      color: var(--ink);
+      font-size: .82rem;
+      line-height: 1.55;
+      white-space: pre;
+    }
+    .skip-link {
+      position: absolute;
+      left: 1rem;
+      top: -5rem;
+      z-index: 30;
+      padding: .65rem 1rem;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+    }
+    .skip-link:focus { top: 1rem; }
+    .wrap { width: min(calc(100% - 2rem), var(--max)); margin-inline: auto; }
+
+    .hero {
+      color: var(--hero-ink);
+      background:
+        radial-gradient(circle at 88% 12%, rgba(118, 220, 214, .18), transparent 27rem),
+        linear-gradient(135deg, var(--hero), var(--hero-2));
+      border-bottom: 1px solid rgba(255, 255, 255, .15);
+    }
+    .hero-inner { padding: 4.2rem 0 3.4rem; }
+    .eyebrow {
+      margin: 0 0 .8rem;
+      color: #a9e4e1;
+      font-size: .82rem;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, h4 { line-height: 1.2; letter-spacing: -.02em; }
+    h1 { max-width: 940px; margin: 0; font-size: clamp(2.1rem, 5vw, 4rem); }
+    h2 { margin: 0; font-size: clamp(1.65rem, 3.4vw, 2.45rem); }
+    h3 { margin: 0; font-size: clamp(1.2rem, 2.4vw, 1.65rem); }
+    h4 { margin: 0 0 .45rem; font-size: 1rem; }
+    .subtitle {
+      max-width: 850px;
+      margin: 1.15rem 0 0;
+      color: #d5e8eb;
+      font-size: clamp(1rem, 2vw, 1.2rem);
+    }
+    .hero-status {
+      display: inline-flex;
+      max-width: 100%;
+      gap: .6rem;
+      align-items: center;
+      margin-top: 1.35rem;
+      padding: .55rem .78rem;
+      border: 1px solid rgba(255, 255, 255, .24);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .08);
+      color: #f7fbfc;
+      font-weight: 700;
+    }
+    .status-dot {
+      flex: 0 0 auto;
+      width: .7rem;
+      height: .7rem;
+      border-radius: 50%;
+      background: #ffc66d;
+      box-shadow: 0 0 0 4px rgba(255, 198, 109, .14);
+    }
+    .hero-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .8rem;
+      margin-top: 2.1rem;
+    }
+    .hero-stat {
+      min-width: 0;
+      padding: 1rem 1.05rem;
+      border: 1px solid rgba(255, 255, 255, .16);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .07);
+    }
+    .hero-stat strong { display: block; font-size: clamp(1.25rem, 3vw, 1.9rem); }
+    .hero-stat span { color: #cce0e3; font-size: .88rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.4rem; }
+    .hero-actions a, .hero-actions button {
+      appearance: none;
+      min-height: 44px;
+      padding: .65rem .95rem;
+      border: 1px solid rgba(255, 255, 255, .34);
+      border-radius: 10px;
+      background: transparent;
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hero-actions .primary { background: #f7fbfc; color: #12323f; }
+
+    .toc-shell {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 90%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .toc { display: flex; gap: .3rem; padding: .65rem 0; overflow-x: auto; scrollbar-width: thin; }
+    .toc a {
+      flex: 0 0 auto;
+      padding: .42rem .65rem;
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: .88rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .toc a:hover, .toc a[aria-current="location"] { background: var(--surface-soft); color: var(--ink); }
+
+    main { padding: 1rem 0 4rem; }
+    section { scroll-margin-top: 5rem; padding: 3.2rem 0 0; }
+    .section-head { max-width: 830px; margin-bottom: 1.3rem; }
+    .section-kicker {
+      margin: 0 0 .35rem;
+      color: var(--brand-strong);
+      font-size: .78rem;
+      font-weight: 850;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+    .section-head p { margin: .7rem 0 0; color: var(--muted); }
+    .card {
+      min-width: 0;
+      padding: 1.2rem;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .8rem;
+      margin: 1rem 0;
+    }
+    .metric {
+      padding: .92rem 1rem;
+      border-left: 4px solid var(--brand);
+      border-radius: 10px;
+      background: var(--surface-soft);
+    }
+    .metric.good { border-color: var(--good); }
+    .metric.warn { border-color: var(--warn); }
+    .metric.bad { border-color: var(--bad); }
+    .metric strong { display: block; font-size: 1.42rem; line-height: 1.2; }
+    .metric span { display: block; margin-top: .22rem; color: var(--muted); font-size: .84rem; }
+    .callout {
+      padding: 1.05rem 1.15rem;
+      border-left: 5px solid var(--brand);
+      border-radius: 12px;
+      background: var(--brand-soft);
+    }
+    .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+    .callout.bad { border-color: var(--bad); background: var(--bad-soft); }
+    .callout.good { border-color: var(--good); background: var(--good-soft); }
+    .callout strong { display: block; margin-bottom: .25rem; }
+
+    .tag, .kind, .state {
+      display: inline-block;
+      padding: .2rem .5rem;
+      border-radius: 999px;
+      font-size: .73rem;
+      font-weight: 820;
+      letter-spacing: .025em;
+      white-space: nowrap;
+    }
+    .tag { background: var(--brand-soft); color: var(--brand-strong); }
+    .state.baseline, .state.accepted { background: var(--good-soft); color: var(--good); }
+    .state.rollback { background: var(--bad-soft); color: var(--bad); }
+    .state.invalid, .state.pending { background: var(--warn-soft); color: var(--warn); }
+    .state.analysis { background: var(--violet-soft); color: var(--violet); }
+    .kind.fact { background: var(--brand-soft); color: var(--brand-strong); }
+    .kind.inference { background: var(--warn-soft); color: var(--warn); }
+    .kind.decision { background: var(--violet-soft); color: var(--violet); }
+
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    table { width: 100%; min-width: 850px; border-collapse: collapse; }
+    caption { padding: .75rem; color: var(--muted); text-align: left; font-size: .85rem; }
+    th, td { padding: .72rem .78rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: var(--surface-soft); font-size: .8rem; letter-spacing: .02em; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    tr:hover td { background: color-mix(in srgb, var(--brand-soft) 36%, transparent); }
+    .delta-pos { color: var(--good); font-weight: 800; }
+    .delta-neg { color: var(--bad); font-weight: 800; }
+    .delta-zero { color: var(--muted); font-weight: 750; }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      align-items: end;
+      margin: 1rem 0 1.2rem;
+      padding: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+    .filter-field { display: grid; gap: .25rem; }
+    .filter-field label { color: var(--muted); font-size: .76rem; font-weight: 800; }
+    select, .filter-reset {
+      min-height: 42px;
+      padding: .5rem .7rem;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-soft);
+      color: var(--ink);
+      font: inherit;
+    }
+    .filter-reset { cursor: pointer; font-weight: 700; }
+    .filter-count { margin-left: auto; padding-bottom: .55rem; color: var(--muted); font-size: .88rem; }
+
+    .ledger { display: grid; gap: 1.15rem; }
+    .experiment {
+      position: relative;
+      scroll-margin-top: 5.2rem;
+      padding: 1.35rem 1.35rem 1.35rem 1.55rem;
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--brand);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .experiment.status-rollback { border-left-color: var(--bad); }
+    .experiment.status-invalid { border-left-color: var(--warn); }
+    .experiment.status-baseline { border-left-color: var(--good); }
+    .experiment.status-analysis { border-left-color: var(--violet); }
+    .experiment:target, .decision-card:target, .future-card:target {
+      outline: 4px solid color-mix(in srgb, var(--brand) 55%, transparent);
+      outline-offset: 5px;
+    }
+    .experiment[hidden] { display: none; }
+    .experiment-head {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+    }
+    .experiment-head p { margin: .4rem 0 0; color: var(--muted); }
+    .experiment-labels { display: flex; flex-wrap: wrap; gap: .4rem; justify-content: flex-end; }
+    .experiment-meta {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: .65rem;
+      margin: 0 0 1rem;
+    }
+    .experiment-meta > div { min-width: 0; padding: .72rem .8rem; border-radius: 10px; background: var(--surface-soft); }
+    .experiment-meta dt { color: var(--muted); font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+    .experiment-meta dd { margin: .18rem 0 0; font-size: .9rem; font-weight: 700; }
+    .result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: .9rem 0; }
+    .result-box { padding: .85rem .9rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+    .result-box strong { display: block; font-size: 1.2rem; }
+    .result-box span { color: var(--muted); font-size: .82rem; }
+    .analysis-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-top: 1rem; }
+    .finding { padding: .95rem 1rem; border-top: 4px solid var(--brand); border-radius: 12px; background: var(--surface-soft); }
+    .finding.inference { border-color: var(--warn); }
+    .finding.decision { border-color: var(--violet); }
+    .finding p { margin: .55rem 0 0; color: var(--muted); font-size: .9rem; }
+    .experiment-note { margin: 1rem 0 0; padding-top: .9rem; border-top: 1px solid var(--line); }
+    .experiment-note strong { color: var(--brand-strong); }
+
+    .decision-list, .future-grid { display: grid; gap: 1rem; }
+    .decision-card, .future-card {
+      scroll-margin-top: 5rem;
+      min-width: 0;
+      padding: 1.15rem;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .decision-card { display: grid; grid-template-columns: minmax(8rem, .7fr) minmax(0, 2.3fr); gap: 1rem; }
+    .decision-id { color: var(--muted); font-size: .76rem; font-weight: 850; letter-spacing: .06em; }
+    .decision-card p, .future-card p { margin: .5rem 0 0; color: var(--muted); }
+    .decision-meta, .future-meta { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+    .future-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .future-card.priority { border-top: 5px solid var(--brand); }
+    .future-card h3 { font-size: 1.18rem; }
+    .future-fields { display: grid; gap: .55rem; margin: .8rem 0 0; }
+    .future-fields div { padding-top: .55rem; border-top: 1px solid var(--line); }
+    .future-fields dt { color: var(--muted); font-size: .72rem; font-weight: 850; text-transform: uppercase; }
+    .future-fields dd { margin: .15rem 0 0; font-size: .9rem; }
+
+    .maintenance-steps { counter-reset: step; display: grid; gap: .7rem; }
+    .maintenance-step {
+      position: relative;
+      padding: .95rem 1rem .95rem 3.3rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .maintenance-step::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 1rem;
+      top: .9rem;
+      display: grid;
+      place-items: center;
+      width: 1.65rem;
+      height: 1.65rem;
+      border-radius: 50%;
+      background: var(--brand);
+      color: #fff;
+      font-size: .8rem;
+      font-weight: 850;
+    }
+    details {
+      margin-top: 1rem;
+      padding: .8rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    summary { cursor: pointer; font-weight: 780; }
+    .source-list { padding-left: 1.2rem; }
+    .source-list li { margin: .48rem 0; }
+    .source-list code { word-break: break-all; }
+    .path { word-break: break-all; }
+    .muted { color: var(--muted); }
+    .tiny { font-size: .8rem; }
+    footer { padding: 2rem 0 3rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .87rem; }
+
+    @media (max-width: 900px) {
+      .hero-stats, .metric-strip, .experiment-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-3, .analysis-grid { grid-template-columns: 1fr; }
+      .future-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .wrap { width: min(calc(100% - 1.1rem), var(--max)); }
+      .hero-inner { padding: 3rem 0 2.6rem; }
+      h1 { font-size: 2rem; }
+      .hero-status { width: 100%; border-radius: 14px; align-items: flex-start; }
+      .hero-stats, .metric-strip, .grid-2, .experiment-meta, .result-grid { grid-template-columns: 1fr; }
+      .toc-shell { position: static; }
+      .toc { white-space: nowrap; }
+      section { padding-top: 2.5rem; }
+      .experiment { padding: 1rem; border-radius: 14px; }
+      .experiment-head { display: block; }
+      .experiment-labels { justify-content: flex-start; margin-top: .75rem; }
+      .decision-card { grid-template-columns: 1fr; }
+      .filter-count { width: 100%; margin-left: 0; padding: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @media print {
+      :root {
+        color-scheme: light;
+        --bg: #fff;
+        --surface: #fff;
+        --surface-soft: #f4f4f4;
+        --ink: #111;
+        --muted: #444;
+        --line: #bbb;
+        --shadow: none;
+      }
+      body { font-size: 10.5pt; }
+      .toc-shell, .hero-actions, .skip-link, .filter-bar { display: none; }
+      .hero { color: #111; background: #fff; border-bottom: 2px solid #222; }
+      .hero-inner { padding: 1.2rem 0; }
+      .hero .subtitle, .hero-stat span { color: #333; }
+      .hero-status, .hero-stat { color: #111; border-color: #aaa; background: #fff; }
+      .status-dot { background: #b36d00; box-shadow: none; }
+      section { padding-top: 1.2rem; }
+      h2, h3, h4, .metric, .result-box { break-inside: avoid; }
+      .card, .experiment, .decision-card, .future-card, details { box-shadow: none; }
+      a { color: #111; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+
+  <header class="hero">
+    <div class="wrap hero-inner">
+      <p class="eyebrow">Core Fast · S1 Experiment Ledger · Updated 2026-08-13</p>
+      <h1>S1 实验与算法演进日志</h1>
+      <p class="subtitle">
+        逐轮记录“做了什么、发生了什么、为什么回滚、下一次改哪里”。本页是可读索引；
+        canonical artifact、manifest 与 decision 始终是实验事实的最终来源。
+      </p>
+      <div class="hero-status">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span>deterministic v4 Document semantic-policy S1 已接受；按规则停在 S2 前</span>
+      </div>
+
+      <div class="hero-stats" aria-label="当前实验快照">
+        <div class="hero-stat"><strong>1 accepted</strong><span>typed semantic-policy S1</span></div>
+        <div class="hero-stat"><strong>676 / 800</strong><span>v4 Static GCS success</span></div>
+        <div class="hero-stat"><strong>+4.1667pp</strong><span>body-gate capability macro</span></div>
+        <div class="hero-stat"><strong>0 calls</strong><span>S2 / Final Judge / test300</span></div>
+      </div>
+
+      <div class="hero-actions">
+        <a class="primary" href="#round-index">查看轮次索引</a>
+        <a href="#future-work">查看下一批算法</a>
+        <button id="print-page" type="button">打印 / 导出 PDF</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc-shell" aria-label="页面目录">
+    <div class="wrap toc">
+      <a href="#current-state">当前状态</a>
+      <a href="#round-index">轮次索引</a>
+      <a href="#experiments">逐轮日志</a>
+      <a href="#algorithm-decisions">算法决策</a>
+      <a href="#future-work">未来改造</a>
+      <a href="#maintenance">维护约定</a>
+      <a href="#evidence">证据入口</a>
+    </div>
+  </nav>
+
+  <main id="main" class="wrap">
+    <section id="current-state">
+      <div class="section-head">
+        <p class="section-kicker">Current snapshot</p>
+        <h2>当前状态与解释边界</h2>
+        <p>快照可以更新；下方已经终结的实验条目只追加更正，不原地改写。</p>
+      </div>
+
+      <div class="metric-strip">
+        <div class="metric good"><strong>800 / 800</strong><span>deterministic v4 Static success</span></div>
+        <div class="metric good"><strong>676 / 800</strong><span>deterministic v4 GCS success</span></div>
+        <div class="metric good"><strong>7/8 → 8/8</strong><span>Document replay200</span></div>
+        <div class="metric good"><strong>3/4 → 4/4</strong><span>Document body_gate75</span></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <span class="kind fact">FACT</span>
+          <h3>最终选择</h3>
+          <p>
+            历史 R1–R10 仍全部回滚；新的 v4 lineage 为
+            <code>accepted=true</code>、<code>alias_of=null</code>，selected Bank 为
+            <code>efc7cbb3a25daf22…a85c3aaef</code>。本轮访问了冻结的
+            <code>body_gate75</code>，但未启动 S2、Final Judge 或 test。
+          </p>
+        </div>
+        <div class="card">
+          <span class="kind decision">DECISION</span>
+          <h3>首次 S1 接受已完成</h3>
+          <p>
+            deterministic v4 的 fresh Static、48-row Feedback、Creator、replay200 和 body_gate75
+            均真实运行。唯一变量是 Document 的 typed
+            <code>ocr_extraction_plan=literal-material-spans</code>；其余五能力使用 parent observation
+            消除冻结 Description 的独立采样噪声，Gate 数值阈值未降低。
+          </p>
+        </div>
+      </div>
+
+      <div class="callout warn" style="margin-top: 1rem;">
+        <strong>成本口径</strong>
+        ¥4.5056716 = 可用 Static v2（¥1.2222646）+ 唯一 fresh Feedback（¥0.0585744）+
+        R1/R2/R4/R5 Assistant（¥1.4190554）+ R6–R10 Assistant（¥1.8057772）。
+        10 次 Creator 共 339,206 input / 10,375 output tokens，但人民币 cost basis 不可得；
+        不能把 receipt 中的 <code>0</code> 当成免费。若计入废弃 Static v1，Qwen3.7 两批 S1 周期的可追踪下界为
+        11,411 provider calls / ¥5.7260350，另有该失败行可能产生的未知 orphan；可用 v2+v3 lineage
+        为 8,914 calls / ¥4.5056716。
+      </div>
+    </section>
+
+    <section id="round-index">
+      <div class="section-head">
+        <p class="section-kicker">Round index</p>
+        <h2>实验轮次索引</h2>
+        <p>R0 是历史 whole-bank 诊断；R1–R10 是 Qwen3.7 Static v2 上的单能力 sparse 轮次。</p>
+      </div>
+
+      <div class="table-wrap" role="region" aria-labelledby="round-index-title" tabindex="0">
+        <table>
+          <caption id="round-index-title">当前已记录的 S1 轮次；“回退 / 新”均为 target capability 的 development screen 事件。</caption>
+          <thead>
+            <tr>
+              <th scope="col">Round</th>
+              <th scope="col">唯一目标</th>
+              <th scope="col">Target success / 核心结果</th>
+              <th scope="col" class="num">Paired 回退</th>
+              <th scope="col" class="num">新 contract occurrence</th>
+              <th scope="col">最深 gate</th>
+              <th scope="col">终态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-s1-document">R1-v4</a></th>
+              <td>Document typed literal spans</td>
+              <td><span class="delta-pos">7/8 → 8/8</span>；body 3/4 → 4/4</td>
+              <td class="num">0</td>
+              <td class="num">0</td>
+              <td>body_gate75</td>
+              <td><span class="state accepted">接受</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-r1-recipe-policy">R1-v2 semantic</a></th>
+              <td>Recipe typed evidence selector</td>
+              <td><span class="delta-neg">26 → 0</span></td>
+              <td class="num">26</td>
+              <td class="num">0 structural</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260810-r00">R0</a></th>
+              <td>whole-bank rewrite</td>
+              <td>macro <span class="delta-pos">+3.5021pp</span>；Encyclopedia <span class="delta-neg">−5pp</span></td>
+              <td class="num">2</td>
+              <td class="num">—</td>
+              <td>replay200</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-static-v1">Static v1</a></th>
+              <td>Qwen3.7 opt800 首次运行</td>
+              <td>799 success + 1 adapter failure</td>
+              <td class="num">—</td>
+              <td class="num">—</td>
+              <td>Static publish</td>
+              <td><span class="state invalid">废弃</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-static-v2">Static v2</a></th>
+              <td>Qwen3.7 opt800 对称基线</td>
+              <td>800 / 800 outer success；GCS 167 / 800</td>
+              <td class="num">—</td>
+              <td class="num">—</td>
+              <td>Static publish</td>
+              <td><span class="state baseline">基线</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r01">R1</a></th>
+              <td>Multi positive closure</td>
+              <td><span class="delta-pos">8 → 9</span></td>
+              <td class="num">4</td>
+              <td class="num">7</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r02">R2</a></th>
+              <td>Multi tool-first + DTO closure</td>
+              <td><span class="delta-pos">8 → 20</span></td>
+              <td class="num">1</td>
+              <td class="num">3</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r03">R3</a></th>
+              <td>Multi DTO template</td>
+              <td>Assistant 未运行</td>
+              <td class="num">—</td>
+              <td class="num">—</td>
+              <td>Creator boundary</td>
+              <td><span class="state invalid">未评测算法</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r04">R4</a></th>
+              <td>Document literal line copy</td>
+              <td><span class="delta-zero">0 → 0</span></td>
+              <td class="num">0</td>
+              <td class="num">3</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r05">R5</a></th>
+              <td>Style evidence copy</td>
+              <td><span class="delta-pos">7 → 26</span></td>
+              <td class="num">2</td>
+              <td class="num">4</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r06">R6</a></th>
+              <td>Multi exact public DTO copier</td>
+              <td><span class="delta-pos">8 → 18</span></td>
+              <td class="num">2</td>
+              <td class="num">4</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r07">R7</a></th>
+              <td>Style evidence/fallback serializer</td>
+              <td><span class="delta-pos">7 → 22</span></td>
+              <td class="num">2</td>
+              <td class="num">4</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r08">R8</a></th>
+              <td>Recipe detect/lookup + source-only closure</td>
+              <td><span class="delta-pos">3 → 10</span></td>
+              <td class="num">0</td>
+              <td class="num">7*</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r09">R9</a></th>
+              <td>Exact image/text input latch</td>
+              <td><span class="delta-zero">17 → 17</span></td>
+              <td class="num">2</td>
+              <td class="num">2</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260812-r10">R10</a></th>
+              <td>Document literal OCR lines</td>
+              <td><span class="delta-zero">0 → 0</span></td>
+              <td class="num">0</td>
+              <td class="num">1</td>
+              <td>replay200 screen</td>
+              <td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-runtime-v2-static">Runtime v2 Static</a></th>
+              <td>deterministic contract qualification</td>
+              <td>800 / 800 success；GCS 658 / 800；hard error 0</td>
+              <td class="num">—</td>
+              <td class="num">—</td>
+              <td>Static publish + preflight</td>
+              <td><span class="state baseline">通过</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tiny muted">* R8 的 7 是 reason×query 事件，落在 6 条原本就失败的 query 上；不是 7 条 Static-success 回退。</p>
+    </section>
+
+    <section id="experiments">
+      <div class="section-head">
+        <p class="section-kicker">Append-only ledger</p>
+        <h2>逐轮实验日志</h2>
+        <p>正文按时间正序维护。筛选只改变当前显示，不改变页面内容或实验终态。</p>
+      </div>
+
+      <div class="filter-bar" aria-label="实验筛选器">
+        <div class="filter-field">
+          <label for="filter-status">终态</label>
+          <select id="filter-status">
+            <option value="all">全部</option>
+            <option value="baseline">基线</option>
+            <option value="rollback">回滚</option>
+            <option value="invalid">未评测算法</option>
+            <option value="analysis">分析 / 决策</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-capability">Capability</label>
+          <select id="filter-capability">
+            <option value="all">全部</option>
+            <option value="all-capabilities">全 Bank</option>
+            <option value="product.multi_search">Multi</option>
+            <option value="product.style_recommendation">Style</option>
+            <option value="utility.recipe_guidance">Recipe</option>
+            <option value="utility.document_reading">Document</option>
+            <option value="product.exact_match">Exact</option>
+            <option value="runtime">Runtime / pipeline</option>
+          </select>
+        </div>
+        <button class="filter-reset" id="filter-reset" type="button">重置</button>
+          <div class="filter-count" id="filter-count" aria-live="polite">显示 15 / 15 条</div>
+      </div>
+
+      <div class="ledger" id="experiment-ledger">
+        <!-- LEDGER-APPEND-START: finalized entries below are append-only. -->
+
+        <article class="experiment status-rollback" id="exp-20260810-r00" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div>
+              <h3>R0 · Whole-bank failure-driven S1</h3>
+              <p>历史第一轮：用失败反馈重写完整六能力 Bank。</p>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">全 Bank</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>日期</dt><dd><time datetime="2026-08-10">2026-08-10</time></dd></div>
+            <div><dt>Parent</dt><dd>Static opt800</dd></div>
+            <div><dt>最深 gate</dt><dd>replay200</dd></div>
+            <div><dt>未访问</dt><dd>body / val / test</dd></div>
+            <div><dt>可计调用</dt><dd>715 DashScope calls</dd></div>
+            <div><dt>可计成本</dt><dd>Feedback + replay ¥1.1991934</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">+3.5021pp</strong><span>GCS macro，21.7729% → 25.2749%</span></div>
+            <div class="result-box"><strong class="delta-pos">+5.00pp</strong><span>micro，26% → 31%</span></div>
+            <div class="result-box"><strong class="delta-neg">−5.00pp</strong><span>Encyclopedia，7.5% → 2.5%</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Encyclopedia 跌破预冻结的 −3pp floor，触发 byte-exact rollback。<code>r2-core-0695</code> 新增 fallback failure；<code>0796</code> 是 output-section lapse。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>whole-bank rewrite 混合了真实 Skill 负迁移与模型执行噪声；不能把两条回退都归为同一 Skill 根因。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>后续改为 capability-local sparse patch、未改项 byte-exact inherit，并过滤与 evidence policy 冲突的 Feedback。</p></div>
+          </div>
+          <p class="experiment-note"><strong>结果后算法改进：</strong>形成 <a href="#decision-sparse">DEC-01 sparse isolation</a>，不降低 gate、不拼接局部赢家。</p>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260812-static-v1" data-status="invalid" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div>
+              <h3>Static v1 · Qwen3.7 首次 opt800（废弃）</h3>
+              <p>首次模型切换运行；暴露 adapter 将合法重复 Multi tool call 误报为 provider failure。</p>
+            </div>
+            <div class="experiment-labels"><span class="state invalid">废弃 lineage</span><span class="tag">opt800</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Assistant</dt><dd><code>qwen3.7-flash-2026-07-15</code></dd></div>
+            <div><dt>Outer</dt><dd>799 success / 1 failure</dd></div>
+            <div><dt>已记录 inner</dt><dd>2,497 calls</dd></div>
+            <div><dt>已记录成本</dt><dd>¥1.2203634 + orphan unknown</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong>4,929,387</strong><span>4,538,577 input + 390,810 output tokens</span></div>
+            <div class="result-box"><strong class="delta-neg">1 row</strong><span><code>r2-core-0734</code> adapter exception</span></div>
+            <div class="result-box"><strong>0</strong><span>可发布 Static artifact</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>失败为 <code>multiple multi-product scorer calls</code>，发生在 runner 输出适配阶段；799 份 receipt 的已计价调用闭合。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>失败行很可能已经调用 provider，但没有 receipt，实际账单增量不可恢复；¥1.2203634 只是可追踪下界。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>整个 v1 不作为 parent。adapter 改为保留重复 scorer calls，再以新 identity 重跑 800 条。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-baseline" id="exp-20260812-static-v2" data-status="baseline" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div>
+              <h3>Static v2 · Qwen3.7 对称基线</h3>
+              <p>切换 Assistant 模型后重新运行 opt800，为 R1–R10 提供同代 parent。</p>
+            </div>
+            <div class="experiment-labels"><span class="state baseline">基线发布</span><span class="tag">opt800</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Assistant</dt><dd><code>qwen3.7-flash-2026-07-15</code></dd></div>
+            <div><dt>容量</dt><dd>60 workers / 20 req/s</dd></div>
+            <div><dt>Static SHA</dt><dd><code>ced36fb30506…7368fc0</code></dd></div>
+            <div><dt>Bank SHA</dt><dd><code>da5cfe1f93f2…ff1348a</code></dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>outer success；2,489 inner calls</span></div>
+            <div class="result-box"><strong>4,915,712</strong><span>4,517,175 input + 398,537 output tokens</span></div>
+            <div class="result-box"><strong>¥1.2222646</strong><span>可复算 Assistant 成本</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>所有 inner requested/returned model 均为 Qwen3.7，request ID 非空且唯一；GCS 167/800，hard error 118/800。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>这是 R1–R10 的公平 parent，但它不包含正在开发的新 deterministic action-response contract。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>fixed samples 按新 Static 在 discovery600 中重选；旧 Qwen-VL opt 不能混入本 lineage。</p></div>
+          </div>
+          <p class="experiment-note"><strong>已修 P0：</strong>废弃 v1 中 adapter 把合法重复 Multi tool call 误报为 provider error；v2 保留该行并由 GCS fail closed 计分。</p>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r01" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><h3>R1 · Multi positive closure</h3><p>仅强化非空 Multi mapping 的正向闭合，其他五能力 inherit。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Multi</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Feedback</dt><dd>fresh Qwen3.8，12 / 12，¥0.0585744</dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 697 inner</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3461880</dd></div>
+            <div><dt>Parent</dt><dd>Static v2</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">8 → 9</strong><span>target success</span></div>
+            <div class="result-box"><strong class="delta-neg">4</strong><span>Static-success → candidate-failure</span></div>
+            <div class="result-box"><strong class="delta-neg">7</strong><span>new contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>仅净增 1，却出现 4 条 paired 回退；20 条 target failure 中大部分仍为 tool skip。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>“requested item / eligible candidate”式宽泛自然语言可能诱发语义过滤、重命名或提前回答。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>按零回退 screen 回滚；下一轮将 tool-first 与 DTO closure 作为唯一变化。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r02" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><h3>R2 · Multi tool-first + DTO closure</h3><p>要求先调用工具，再按 public mapping 闭合 item 与 cards。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Multi</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Feedback</dt><dd>byte-exact reuse，0 新调用</dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 723 inner</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3708244</dd></div>
+            <div><dt>最深 gate</dt><dd>replay200 screen</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">8 → 20</strong><span>target success，净增 12</span></div>
+            <div class="result-box"><strong class="delta-neg">1</strong><span>paired 回退</span></div>
+            <div class="result-box"><strong class="delta-neg">3</strong><span>new contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>tool-contract failure 总数 15→5，是第一批最强 Multi 信号；唯一目标回退 <code>0783</code> 跳过工具并编造 handles。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>提案语义有效，但 Assistant 对“先工具、后闭合”的消费不稳定；瓶颈更像 execution adoption 而非缺少更多 DTO 文案。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>安全门不放宽，回滚。R2 后来与 R6 的 8 条重复 gain 被保留为跨轮信号。</p></div>
+          </div>
+          <p class="experiment-note"><strong>稳定证据：</strong>R2∩R6 重复 gains 为 8 条；这支持迁移 update surface，不支持事后接受 R2。</p>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260812-r03" data-status="invalid" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><h3>R3 · Multi DTO template</h3><p>试图把 exact public DTO copier 写成更紧凑的模板。</p></div>
+            <div class="experiment-labels"><span class="state invalid">算法未评测</span><span class="tag">Creator boundary</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Creator</dt><dd>1 session，schema-valid outer result</dd></div>
+            <div><dt>Assistant</dt><dd>0 calls</dd></div>
+            <div><dt>成本</dt><dd>Creator cost unknown</dd></div>
+            <div><dt>终态</dt><dd>candidate = null</dd></div>
+          </dl>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>一句话中的 <code>result</code> 与远处 <code>product/evidence</code> 被旧 scanner 组合成 path-like violation，proposal 在 Assistant 前被拒。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>这是 authoring guard 假阳性，不是 DTO copier 的负实验；不能记成 target 0 gain。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>只修 guard 的局部 token 关联和可观察 reason；不重写 R3，也不补跑同 identity。</p></div>
+          </div>
+          <p class="experiment-note"><strong>结果后工程改进：</strong><a href="#decision-guard">DEC-02 validator transparency</a>。</p>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r04" data-status="rollback" data-capability="utility.document_reading">
+          <div class="experiment-head">
+            <div><h3>R4 · Document literal line copy</h3><p>将字段值限制为 OCR 原文行并绑定 line handle。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Document</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Feedback</dt><dd>reuse，0 新调用</dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 703 inner</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3511126</dd></div>
+            <div><dt>最深 gate</dt><dd>replay200 screen</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-zero">0 → 0</strong><span>target success</span></div>
+            <div class="result-box"><strong>0</strong><span>paired success regression</span></div>
+            <div class="result-box"><strong class="delta-neg">3</strong><span>new contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>没有修复任何 target query，并引入 output/tool contract failure。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>单纯要求“一字段一 OCR 行”过强；真实任务需要用户字段到一个或多个 OCR span 的选择与组合。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>停止 literal-line prompt 方向；只有 runtime 后仍有可观察 span provenance 时才考虑 typed extraction plan。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r05" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><h3>R5 · Style evidence copy</h3><p>按 style evidence 逐项闭合 rationale 与 product cards。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Style</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Feedback</dt><dd>reuse，0 新调用</dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 702 inner</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3509304</dd></div>
+            <div><dt>最深 gate</dt><dd>replay200 screen</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">7 → 26</strong><span>target success，净增 19</span></div>
+            <div class="result-box"><strong class="delta-neg">2</strong><span>paired 回退</span></div>
+            <div class="result-box"><strong class="delta-neg">4</strong><span>new contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>第一批最强 Style 信号；一条 empty branch 丢 marker，另一条跳过工具并编造候选。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>evidence serializer 能稳定改善 grounding，但工具调用与 fallback 状态机仍无法由 prose 保证。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；第二批以 tool-first + 完整 empty/unsupported branch 做一次预注册复核。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260812-batch1-analysis" data-status="analysis" data-capability="runtime">
+          <div class="experiment-head">
+            <div><h3>R1–R5 后分析 · update surface 分离</h3><p>把 authoring/pipeline 问题和 S1 语义问题分开。</p></div>
+            <div class="experiment-labels"><span class="state analysis">分析</span><span class="tag">跨轮</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R2/R5 都有大幅净增，但少量回退集中在 tool skip、handle、fallback；R3 根本未评测算法。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>继续加长 Skill 会同时增加正确语义与状态机负担，难以达到零 contract regression。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>先修透明 guard，再用 R6–R10 验证 exact copier / evidence closure 是否能靠 prose 收口；五轮题目事前冻结。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r06" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><h3>R6 · Multi exact public DTO copier</h3><p>词法安全地重测 tool-first + immutable public DTO exact copy。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Multi</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Spec SHA</dt><dd><code>6410d678b090…b4a91</code></dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 720 inner</dd></div>
+            <div><dt>Tokens</dt><dd>1,364,051 / 114,537</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3644398</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">8 → 18</strong><span>12 gains / 2 regressions</span></div>
+            <div class="result-box"><strong class="delta-neg">2</strong><span>paired 回退</span></div>
+            <div class="result-box"><strong class="delta-neg">4</strong><span>new tool-contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>4 个新 occurrence 都是跳过 <code>multi_product_search</code>；R2∩R6 有 8 条重复 gain。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>DTO 语义方向可复现，但 prose 无法稳定强制 action adoption；回退样本本身跨轮不稳定。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；Multi 暂停 prompt 优化，等待 deterministic runtime 后只检查残余 item↔candidate 语义。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r07" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><h3>R7 · Style evidence/fallback serializer</h3><p>tool-first + exact style evidence + 完整 empty/unsupported branch。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Style</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Spec SHA</dt><dd><code>dd38bf00cc9c…2e8fb</code></dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 724 inner</dd></div>
+            <div><dt>Tokens</dt><dd>1,385,426 / 107,938</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3634356</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">7 → 22</strong><span>17 gains / 2 regressions</span></div>
+            <div class="result-box"><strong class="delta-neg">2</strong><span>paired 回退</span></div>
+            <div class="result-box"><strong class="delta-neg">4</strong><span>new tool-contract occurrences</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R5∩R7 有 11 条重复 gain；唯一重复回退 <code>0787</code> 两轮均为 tool skip。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Style 的可复现收益来自 evidence-bounded grounding；结构失败应由 runtime 吸收，S1 只保留 claim selection。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；新 runtime 后若仍有 unsupported claims，才运行语义 selector 实验。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r08" data-status="rollback" data-capability="utility.recipe_guidance">
+          <div class="experiment-head">
+            <div><h3>R8 · Recipe detect/lookup + source-only closure</h3><p>固定 detect→lookup，并限制 ingredient / preparation statement 到公开 source。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Recipe</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Spec SHA</dt><dd><code>ab6c8e981040…a0d64</code></dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 728 inner</dd></div>
+            <div><dt>Tokens</dt><dd>1,387,225 / 107,736</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3636338</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-pos">3 → 10</strong><span>7 gains / 0 regressions</span></div>
+            <div class="result-box"><strong class="delta-pos">0</strong><span>Static-success regression</span></div>
+            <div class="result-box"><strong class="delta-neg">7</strong><span>new reason×query events，6 条旧失败</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>全部 3 条 Static-success 保持成功；工具失败净下降，但 6 条原失败迁移成新的 output/tool error。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>这是十轮最干净的语义方向，但当前仍是 error migration；不能因“无旧成功回退”放宽 new-occurrence 门。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；把 Recipe source entailment 作为 runtime 后首个 S1 候选，并用 branch-local promotion 而非直接持久化长指令。</p></div>
+          </div>
+          <p class="experiment-note"><strong>下一假设：</strong>runtime 先消除 17/20 个 skip/invalid-args 结构残余；只对仍存在的 source entailment cluster 做 typed semantic patch。</p>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r09" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><h3>R9 · Exact image/text input latch</h3><p>约束 image/text search 的适用输入与零候选分支。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Exact</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Spec SHA</dt><dd><code>eb58c0f68fcf…01411</code></dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 707 inner</dd></div>
+            <div><dt>Tokens</dt><dd>1,346,013 / 111,925</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3587426</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-zero">17 → 17</strong><span>2 gains / 2 regressions</span></div>
+            <div class="result-box"><strong class="delta-neg">2</strong><span>paired 回退</span></div>
+            <div class="result-box"><strong>29 / 35</strong><span>target failures 含 route_unacceptable</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>净增为 0；新 tool failures 对应两条 paired 回退，且多数 target failure 的主因是路由。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Description 冻结时，S1 Body 无法可靠修复 Exact→其他 capability 的 route sampling。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>停止 Exact S1 input-latch；交给 S2 或在固定 parent route 的 counterfactual replay 中再判断 Body。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260812-r10" data-status="rollback" data-capability="utility.document_reading">
+          <div class="experiment-head">
+            <div><h3>R10 · Document literal OCR lines</h3><p>重新约束 OCR line handle、literal substring 与 unsupported claims。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">Document</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Spec SHA</dt><dd><code>4bb1b3029f3e…20ca9</code></dd></div>
+            <div><dt>Assistant</dt><dd>224 outer / 709 inner</dd></div>
+            <div><dt>Tokens</dt><dd>1,335,631 / 110,499</dd></div>
+            <div><dt>成本</dt><dd>Assistant ¥0.3555254</dd></div>
+          </dl>
+          <div class="result-grid">
+            <div class="result-box"><strong class="delta-zero">0 → 0</strong><span>0 gains / 0 regressions</span></div>
+            <div class="result-box"><strong>0</strong><span>paired success regression</span></div>
+            <div class="result-box"><strong class="delta-neg">1</strong><span>new output-section occurrence</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>第二次 Document 实验仍无任何 target gain；一条 OCR 成功后 repair 失败并产生新 hard error。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Document 当前受限于 field↔OCR span 选择和证据可观察性，继续改自然语言 line-copy 规则价值低。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>第二批停止，不追加 R11；Document 只有在 typed span provenance 可用时才重新排期。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260812-r10-analysis" data-status="analysis" data-capability="runtime">
+          <div class="experiment-head">
+            <div><h3>R0–R10 总结 · 从 prompt 状态机转向确定性 runtime</h3><p>第二批结束后的跨轮因果结论。</p></div>
+            <div class="experiment-labels"><span class="state analysis">算法决策</span><span class="tag">跨轮</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Multi 与 Style 的大部分 gains 可跨轮复现，但剩余回退持续集中于 tool skip、args、DTO/card/evidence 与 fallback；R8 Recipe 7 gains / 0 paired regression。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>自然语言 Skill 能改善语义，却不能无偶发地执行状态机。重复改写同类 prose 的边际信息已经不足。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>版本化 deterministic compiler/runtime contract；S1 下一阶段只优化 semantic selection、grounded claim 与 abstention。</p></div>
+          </div>
+          <p class="experiment-note"><strong>效果尚未验证：</strong>runtime 代码已在 <code>956bb08</code> 合入且聚焦离线回归 56 passed；没有 fresh Static/no-op 结果前，本页不宣称 GCS 改善或已吸收旧收益。</p>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-runtime-v2-static" data-status="accepted" data-capability="runtime">
+          <div class="experiment-head">
+            <div><h3>Runtime v2 qualification · fresh Static opt800</h3><p>确定性 contract 的对称新基线；不是 S1 增益实验。</p></div>
+            <div class="experiment-labels"><span class="state baseline">qualification 通过</span><span class="tag">2026-08-13</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>outer success</span></div>
+            <div class="result-box"><strong>658 / 800</strong><span>GCS success</span></div>
+            <div class="result-box"><strong>0</strong><span>hard errors</span></div>
+            <div class="result-box"><strong>CNY 0.0746178</strong><span>traceable provider cost</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p><code>core-fast-deterministic-action-response-v2</code> 在 Qwen3.7 opt800 上完成 800/800；Static artifact SHA 为 <code>66bf7465957041cf…bcffa1e63</code>。默认 spec、fresh fixed samples 与 48-row Feedback selection 已冻结；完整 validate 为 <code>runtime_ready=true</code>。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>相较旧 Static 的高 hard-error，机械 closure 已明显改变观测分布；由于 runtime 和采样同时变化，这里不能把差值写成 S1 或单一算法增益。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>该 runtime qualification 后的 Recipe typed-policy R1 已真实运行并回滚；随后 v3 修复了 source evidence closure，v4 新 lineage 转向 Document typed OCR plan，最终得到已接受的 S1。</p></div>
+          </div>
+          <p class="experiment-note"><strong>失败 lineage：</strong>首次 v2 root 因并发启动了第二个 resume 进程，留下 796 success + 4 <code>interrupted_unknown</code>，可追踪 CNY 0.0742442；该 root 未发布、不可用于比较。正式 qualification 使用独立 v2b root。Feedback、Creator、S1 Assistant 均 0-call。</p>
+          <details open><summary>证据与身份</summary><div class="artifact-list"><code>E:\skillchain-data\runs\portfolio-core-qwen37-deterministic-v2b-20260813\static-opt-run</code><code>selection manifest b419451c5109bc06…cbbf465b7</code><code>324,825 input / 12,066 output tokens</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-r1-recipe-policy" data-status="rollback" data-capability="utility.recipe_guidance">
+          <div class="experiment-head">
+            <div><h3>Typed semantic-policy R1 · Recipe abstract evidence terms</h3><p>第一条真正被 deterministic runtime 消费的 S1 policy；结果为明确负实验。</p></div>
+            <div class="experiment-labels"><span class="state rollback">回滚</span><span class="tag">2026-08-13</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>26 → 0</strong><span>Recipe replay success</span></div>
+            <div class="result-box"><strong>26</strong><span>Static-success regressions</span></div>
+            <div class="result-box"><strong>0</strong><span>body gate calls</span></div>
+            <div class="result-box"><strong>CNY 0.0208996</strong><span>Assistant replay/smoke</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator 只 patch Recipe typed evidence selector；其他五项继承。候选把抽象的 ingredient / preparation terms 当成 literal source filter，导致 parent 的 26 条成功全部变成失败。capability-local screen 将 Recipe byte-exact 回滚，selected Bank 仍为 Static。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>失败说明“让 selector 更严格”并不自动等于 entailment 更可靠：当 public source 主要是自由文本时，抽象 policy term 与可见字面 evidence 不对齐，会系统性清空证据。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不放宽 screen、不调整词表重试；先修 runtime-owned material-statement handle closure。v3 新基线中 Recipe 已饱和，因此后续不再以 Recipe 作为 S1 target。</p></div>
+          </div>
+          <details open><summary>证据、成本与身份</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v2-20260813\s1-r1f-recipe-semantic-policy</code><code>candidate 2c95444b…d2ce53a；selected Static da5cfe1f…1348a</code><code>48 fresh Feedback CNY 0.2402142；224 Assistant outer CNY 0.0208996；Creator CNY cost basis unavailable</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-runtime-v3-static" data-status="accepted" data-capability="runtime">
+          <div class="experiment-head">
+            <div><h3>Runtime v3 qualification · material-statement evidence closure</h3><p>修复 Recipe / Knowledge 长来源文本只有首句带 handle 的 runtime-owned 闭合缺陷。</p></div>
+            <div class="experiment-labels"><span class="state baseline">qualification 通过</span><span class="tag">2026-08-13</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>outer success</span></div>
+            <div class="result-box"><strong>674 / 800</strong><span>GCS success</span></div>
+            <div class="result-box"><strong>+16</strong><span>vs runtime v2 GCS rows</span></div>
+            <div class="result-box"><strong>0</strong><span>hard errors</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p><code>core-fast-deterministic-action-response-v3</code> 对每个 material statement 重复 exact public source handle；fresh Static 从 v2 的 658/800 升至 674/800。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该差值同时包含独立路由采样，不能把全部 16 行严格归因于 renderer；但 Recipe 的 material-claim failure 在新基线中归零，机制与代码修复一致。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>这属于 compiler/runtime qualification，不占 S1 算法轮次；Recipe 不再作为新 S1 target。</p></div>
+          </div>
+          <details open><summary>证据与身份</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v3-20260813\static-opt-run</code><code>Static SHA 35dd7bb838bf5f52…4f68a435</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-runtime-v4-static" data-status="accepted" data-capability="runtime">
+          <div class="experiment-head">
+            <div><h3>Runtime v4 qualification · typed OCR extraction plan</h3><p>在不改变 parent 行为的前提下，为 S1 接通 compiler 实际消费的 Document treatment surface。</p></div>
+            <div class="experiment-labels"><span class="state baseline">qualification 通过</span><span class="tag">2026-08-13</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>outer success</span></div>
+            <div class="result-box"><strong>676 / 800</strong><span>GCS success</span></div>
+            <div class="result-box"><strong>20 / 24</strong><span>Document discovery</span></div>
+            <div class="result-box"><strong>7 / 8</strong><span>Document replay parent</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>parent policy 默认为 <code>all-lines</code>；候选可且只能选择 <code>literal-material-spans</code>。离线 treatment-sensitivity 在 5 个已知 Document 失败上全部修复 scorer grounding，普通 Body prose 仍不影响输出。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>replay 中只有一条 Document failure，理论上修复后提供六能力 macro +2.0833pp，足以在不放宽 +2pp Gate 的情况下进入 body gate。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>冻结 Document-only R1；其他五能力 byte-exact inherit，tool-first、DTO/card/evidence handle 和 fallback 继续由 runtime 独占。</p></div>
+          </div>
+          <details open><summary>证据与身份</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\static-opt-run</code><code>Static SHA fb88a2145b6671de…1b5987502</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-s1-document" data-status="accepted" data-capability="utility.document_reading">
+          <div class="experiment-head">
+            <div><h3>Typed semantic-policy R1 · Document literal material spans</h3><p>首次通过 replay200 与冻结 body_gate75 的 S1 候选。</p></div>
+            <div class="experiment-labels"><span class="state accepted">accepted</span><span class="tag">2026-08-13</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>7/8 → 8/8</strong><span>Document replay200</span></div>
+            <div class="result-box"><strong>+2.0833pp</strong><span>replay capability macro</span></div>
+            <div class="result-box"><strong>3/4 → 4/4</strong><span>Document body_gate75</span></div>
+            <div class="result-box"><strong>+4.1667pp</strong><span>body capability macro</span></div>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>完整 48 Feedback terminal Gate 通过；Creator 只 patch <code>utility.document_reading</code>，将 <code>ocr_extraction_plan</code> 设为 <code>literal-material-spans</code>。replay 和 body 均 0 target regression、0 hard-error delta；bootstrap 95% CI 为 [0, 8.3333]pp。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>改进机制是去除 OCR 行末会把 handle 切到下一 statement 的终止标点，并跳过 noise-only glyph；它修复的是 literal span selection，不是更强的 OCR 理解或计算能力。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p><code>accepted=true</code>、<code>alias_of=null</code>；selected Bank 从 <code>da5cfe…</code> 切到 <code>efc7cb…</code>。按用户停止规则不启动 S2/test。</p></div>
+          </div>
+          <p class="experiment-note"><strong>Gate correction：</strong>初次 replay 的非目标 Exact 因独立路由采样从 25→21，曾错误触发 capability floor。最终 Gate 对 byte-exact inherit 能力和目标路由不一致行使用 parent observation；数值阈值不变，target 的实际 candidate 行仍全部保留。</p>
+          <p class="experiment-note"><strong>执行异常：</strong>首批 Feedback 为 46 success + 2 带空 <code>summary_note</code> 的 schema errors；parser 仅允许并丢弃 null/blank annotation，随后只重跑两条。一个恢复 root 因目录多复制一层再次触发 canary，作为执行失误保留，不计 S1 算法结论。</p>
+          <details open><summary>证据、成本与身份</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\s1-r1e-document-literal-span</code><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\specs\s1-r1-document-literal-span.json</code><code>selected efc7cbb3a25daf22…a85c3aaef</code><code>48 Feedback + 1 Creator + 574 Assistant outer results（accepted root）</code><code>accepted-root Assistant CNY 0.0537732；首批 48 Feedback CNY 0.2399019，另两条定向重跑 CNY 0.00998445；Creator CNY cost basis unavailable</code></div></details>
+        </article>
+
+        <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
+      </div>
+    </section>
+
+    <section id="algorithm-decisions">
+      <div class="section-head">
+        <p class="section-kicker">Algorithm changelog</p>
+        <h2>由实验触发的算法决策</h2>
+        <p>这里记录“结果后决定采用什么”，与每轮已经被评测的候选内容分开。</p>
+      </div>
+
+      <div class="decision-list">
+        <article class="decision-card" id="decision-sparse">
+          <div>
+            <div class="decision-id">DEC-20260812-01</div>
+            <span class="state baseline">已采用</span>
+          </div>
+          <div>
+            <h3>Whole-bank rewrite → parent-bound sparse patch</h3>
+            <p>由 R0 的跨能力负迁移触发。每轮只允许一个 capability patch，其他五项 byte-exact inherit；Description、parent、fold、GCS 和 gate 均冻结。</p>
+            <div class="decision-meta"><span class="tag">证据：R0</span><span class="tag">作用域：S1 Creator/compiler</span><span class="tag">验证：R1–R10 lineage</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-guard">
+          <div>
+            <div class="decision-id">DEC-20260812-02</div>
+            <span class="state baseline">已采用</span>
+          </div>
+          <div>
+            <h3>Authoring guard 局部关联 + 脱敏拒绝原因</h3>
+            <p>由 R3 假阳性触发。path marker 与禁词只在同一 token / 相邻路径组件时关联；真实路径与强禁词继续拒绝。decision 记录稳定 reason code，不回显不可信原文。</p>
+            <div class="decision-meta"><span class="tag">证据：R3</span><span class="tag">作用域：authoring pipeline</span><span class="tag">算法收益：未声明</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-runtime">
+          <div>
+            <div class="decision-id">DEC-20260812-03</div>
+            <span class="state baseline">Static qualification 通过</span>
+          </div>
+          <div>
+            <h3>确定性 action-response compiler/runtime contract</h3>
+            <p>把 tool-first、typed args、DTO/card/evidence closure、required sections 和 empty fallback 从 Skill prose 移到版本化 runtime。v2 fresh Static 已 800/800 完成并绑定新 SHA；这验证了运行边界，但不等同于 S1 增益。</p>
+            <div class="decision-meta"><span class="tag">证据：R2/R5/R6/R7/R8</span><span class="tag">v4 Static：800/800</span><span class="tag">S1：Document accepted</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-semantic-s1">
+          <div>
+            <div class="decision-id">DEC-20260812-04</div>
+            <span class="state accepted">已接线并验证</span>
+          </div>
+          <div>
+            <h3>S1 只保留可归因的语义策略编辑</h3>
+            <p>S1 patch IR 已缩为 runtime 实际消费的 typed semantic policy；Creator 不再修改 runtime-owned prose。Recipe evidence selector 的首轮候选回滚；随后 Document 的 <code>literal-material-spans</code> 在 v4 lineage 通过 replay 与 body gate。</p>
+            <div class="decision-meta"><span class="tag">证据：R0–R10 + v4 R1</span><span class="tag">treatment sensitivity：通过</span><span class="tag">S1 效果：accepted</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-causal-s1-gate">
+          <div>
+            <div class="decision-id">DEC-20260813-05</div>
+            <span class="state accepted">已验证并采用</span>
+          </div>
+          <div>
+            <h3>Sparse S1 Gate 使用 treatment-reached observation</h3>
+            <p>仅对实际 patch capability 且 parent/candidate 都路由到该 capability 的行评估 candidate；byte-exact inherit 能力与目标路由不一致行 alias parent。保持 +2pp、CI、hard-error 与 −3pp 数值门不变。</p>
+            <div class="decision-meta"><span class="tag">证据：v4 R1</span><span class="tag">消除冻结 Description 采样噪声</span><span class="tag">验证：accepted body gate</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="future-work">
+      <div class="section-head">
+        <p class="section-kicker">Forward algorithm backlog</p>
+        <h2>未来值得做的算法改造</h2>
+        <p>这些都是可证伪假设，不是已取得的增益。通用 P2/P3 仍只维护在 project backlog。</p>
+      </div>
+
+      <div class="callout">
+        <strong>统一停止条件</strong>
+        新 lineage 仍按词典序接受：目标 capability 的 paired hard regression = 0；new hard contract occurrence = 0；
+        target success 净增至少 1。只有 development finalist 通过，才访问一次冻结 body gate；不得用 body/val/test 反向选题。
+      </div>
+
+      <div class="future-grid" style="margin-top: 1rem;">
+        <article class="future-card priority" id="future-runtime-qualification">
+          <span class="state baseline">qualification 已完成</span>
+          <h3>ALG-00 · Runtime no-op qualification</h3>
+          <p>先证明新 compiler 没有把候选专属 repair 注入比较。</p>
+          <dl class="future-fields">
+            <div><dt>机制</dt><dd>同一 runtime contract 下对称运行 fresh Static 与 no-op compiled candidate；绑定 contract hash。</dd></div>
+            <div><dt>可证伪预测</dt><dd>同 route、同 tool payload 下 structural contract delta 必须为 0；否则先修 runtime，不开 S1。</dd></div>
+            <div><dt>结果</dt><dd>fresh Static 800/800，SHA <code>66bf7465…1e63</code>；typed-policy 会改变输出、普通 prose 不会。</dd></div>
+            <div><dt>下一步</dt><dd>该前置已关闭；进入已冻结 Recipe R1 前仍需显式启动付费命令。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card priority" id="future-contrastive-packet">
+          <span class="state pending">Ready after ALG-00</span>
+          <h3>ALG-01 · Attribution-aware contrastive packet</h3>
+          <p>让 Creator 真正消费上一轮 replay delta，而不是十轮反复读取同一 canary12。</p>
+          <dl class="future-fields">
+            <div><dt>机制</dt><dd>按 route → tool precondition → tool outcome → semantic selection → serialization → fallback → GCS 标 first causal divergence。</dd></div>
+            <div><dt>输入</dt><dd>每个 failure cluster 同时给 representative failure、最近 protected success、历史 stable gain、历史 1→0 和 rejected-edit reason。</dd></div>
+            <div><dt>可证伪预测</dt><dd>相较 raw Feedback，候选不再修改 runtime-owned surface，并能在 targeted canary 上保持所有 protected anchors。</dd></div>
+            <div><dt>参考</dt><dd>SkillChain 的跨样本统计与正/反例；综述中的 Counterfactual Trace Auditing、SkillForge。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card" id="future-edit-search">
+          <span class="state pending">Idea / P1</span>
+          <h3>ALG-02 · 受约束的小编辑搜索</h3>
+          <p>把 single-shot long rewrite 改成 bounded add / delete / replace 算子。</p>
+          <dl class="future-fields">
+            <div><dt>机制</dt><dd>一个 Creator session 生成 2–3 个单算子候选；schema/static verifier 与 targeted canary 做 successive halving，只允许一个 finalist 进 replay。</dd></div>
+            <div><dt>保护约束</dt><dd>一个 capability、一个 failure cluster、一个 rule ID；runtime contract、Description、tool schema 全冻结。</dd></div>
+            <div><dt>可证伪预测</dt><dd>finalist 在 failure cluster 有至少 1 个稳定 gain，且 protected-success set 无回退。</dd></div>
+            <div><dt>风险</dt><dd>多候选会改变成本与协议，必须事前冻结排序规则，不能 repeated rollout 挑赢家。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card" id="future-failed-edit-memory">
+          <span class="state pending">Idea / P1</span>
+          <h3>ALG-03 · Failed-edit meta-memory</h3>
+          <p>把 rejected candidate 变成可检索的反例，而不是下一轮重新犯同类错误。</p>
+          <dl class="future-fields">
+            <div><dt>结构</dt><dd>hypothesis → edit → first divergence → gains / regressions / new reasons → reject cause。</dd></div>
+            <div><dt>Promotion</dt><dd>context-sensitive 经验先保持 local；只有跨路径或跨轮一致有效才写入 durable Skill。</dd></div>
+            <div><dt>证据</dt><dd>R2/R6 与 R5/R7 的稳定 gains，同时伴随不稳定或重复的 tool-skip 回退。</dd></div>
+            <div><dt>可证伪预测</dt><dd>新候选不再生成与已拒 edit 语义等价的 patch，除非显式提供新证据。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card priority" id="future-recipe">
+          <span class="state pending">首选语义实验</span>
+          <h3>ALG-04 · Recipe source-entailment selector</h3>
+          <p>利用 R8 的 7 gains / 0 paired regression，只处理 runtime 后仍存在的三类 source grounding 残余。</p>
+          <dl class="future-fields">
+            <div><dt>前置</dt><dd>tool sequence completion、typed args、fallback marker 和 evidence handle 已由 runtime 保证。</dd></div>
+            <div><dt>Patch IR</dt><dd>source span selector + allowed ingredient/preparation claims + unsupported abstention；不修改工具顺序。</dd></div>
+            <div><dt>可证伪预测</dt><dd>source-supported line ratio = 100%，target 净增 ≥1，0 regression / 0 new hard occurrence。</dd></div>
+            <div><dt>取消条件</dt><dd>fresh baseline 上没有剩余 semantic cluster，或 compiler 已确定性闭合全部相关 claims。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card" id="future-style">
+          <span class="state pending">第二优先</span>
+          <h3>ALG-05 · Style evidence-bounded claim selector</h3>
+          <p>保留 R5/R7 的 11 条重复 gains，把“机械证据复制”和“语义主张”彻底分开。</p>
+          <dl class="future-fields">
+            <div><dt>Patch IR</dt><dd>public facet/value allowlist、用户偏好 coverage、无证据时 abstain；禁止新增材质、场景、舒适度等暗含事实。</dd></div>
+            <div><dt>可证伪预测</dt><dd>unsupported_claim = 0；每个 material claim 可映射到至少一个 public style evidence atom。</dd></div>
+            <div><dt>保护集</dt><dd>R5∩R7 稳定 gains + 两轮回退 anchors + empty/unsupported branch。</dd></div>
+            <div><dt>依赖</dt><dd>runtime 已保证 tool call、card/evidence closure 与 exact fallback。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card" id="future-document">
+          <span class="state accepted">已验证最小版本</span>
+          <h3>ALG-06 · Document typed extraction planner</h3>
+          <p>不再追加 literal-line prompt；最小 typed literal-span plan 已被 runtime 消费并通过 S1 Gate。</p>
+          <dl class="future-fields">
+            <div><dt>机制</dt><dd>用户字段 → 一个或多个 OCR line spans → literal / normalized value → uncertainty，保留逐 span 引用。</dd></div>
+            <div><dt>已验证</dt><dd>Document replay 7/8→8/8，body 3/4→4/4，0 target regression；selected Bank <code>efc7cb…</code>。</dd></div>
+            <div><dt>可证伪预测</dt><dd>每个 material span 绑定有效 OCR line；无 unsupported computation / normalization；target 至少 1 gain。</dd></div>
+            <div><dt>剩余边界</dt><dd>目前只做 literal material span；跨行字段组合、计算与语义归纳仍未验证，留待 S2/S3 后再评估。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card" id="future-routing-boundary">
+          <span class="state analysis">分流规则</span>
+          <h3>ALG-07 · Multi residual / Exact 转 S2</h3>
+          <p>防止把不属于 S1 的问题继续塞进 Body。</p>
+          <dl class="future-fields">
+            <div><dt>Multi</dt><dd>只有 runtime 后仍有 item↔candidate semantic association / coverage 错误时才排期；不再做 DTO prose。</dd></div>
+            <div><dt>Exact</dt><dd>29/35 target failures 含 route_unacceptable；优先交给 S2，或固定 parent route 做 counterfactual Body replay。</dd></div>
+            <div><dt>可证伪预测</dt><dd>route/control noise 从 S1 attribution 中剥离后，Body patch 的 1→0 应显著减少。</dd></div>
+            <div><dt>边界</dt><dd>不改变六 capability、五配置和冻结 GCS；surrogate verifier 不能替代 oracle。</dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <section id="maintenance">
+      <div class="section-head">
+        <p class="section-kicker">Maintenance contract</p>
+        <h2>如何维护这份日志</h2>
+        <p>目标是让未来每一轮都能快速追加，同时不制造新的审计体系。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="maintenance-steps">
+          <div class="maintenance-step"><strong>先复核 canonical artifacts</strong><br><span class="muted">decision、manifest、calls、Bank、screen、成本与未访问 split。</span></div>
+          <div class="maintenance-step"><strong>在 LEDGER-APPEND-END 前追加条目</strong><br><span class="muted">固定永久 ID，例如 <code>exp-20260820-r11</code>；终态后不原地改指标。</span></div>
+          <div class="maintenance-step"><strong>分开写 FACT / INFERENCE / DECISION</strong><br><span class="muted">算法候选、归因推断和结果后改造不能混成一段“成功故事”。</span></div>
+          <div class="maintenance-step"><strong>刷新派生快照与索引</strong><br><span class="muted">只更新顶部 current snapshot、round index、成本小计和 future status。</span></div>
+          <div class="maintenance-step"><strong>做离线 HTML 与视觉检查</strong><br><span class="muted">检查内部锚点、链接、成本加总、移动端和打印；确认历史 article 未被误改。</span></div>
+        </div>
+        <div>
+          <div class="callout warn">
+            <strong>发现历史错误时</strong>
+            不覆写 finalized article。追加新的 <code>erratum</code> 条目，记录时间、原 entry、错误原因、纠正值和 canonical 证据；若本页与 artifact 冲突，以 artifact 为准。
+          </div>
+          <details open>
+            <summary>最小条目模板</summary>
+            <pre>&lt;article class="experiment status-rollback"
+  id="exp-YYYYMMDD-rNN"
+  data-status="rollback"
+  data-capability="capability.id"&gt;
+  &lt;!-- identity: date / round / lineage / parent / runtime --&gt;
+  &lt;!-- hypothesis + one allowed change --&gt;
+  &lt;!-- split / n / deepest gate / unvisited splits --&gt;
+  &lt;!-- parent→candidate / 0→1 / 1→0 / new reasons --&gt;
+  &lt;!-- FACT / INFERENCE / DECISION --&gt;
+  &lt;!-- provider calls / tokens / priced + unknown cost --&gt;
+  &lt;!-- canonical artifacts / hashes / tests --&gt;
+&lt;/article&gt;</pre>
+          </details>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top: 1rem;">
+        <strong>职责边界</strong>
+        本页维护 S1 实验索引与算法演进；冻结展示报告仍是
+        <a href="portfolio-v1-results.html">Portfolio V1 结果页</a>，当前状态摘要仍在
+        <a href="../README.md">README</a>，非平凡工程经验仍在
+        <a href="interview-project-lessons.md">interview-project-lessons</a>，通用 P2/P3 仍在
+        <a href="project-backlog.md">project-backlog</a>。
+      </div>
+    </section>
+
+    <section id="evidence">
+      <div class="section-head">
+        <p class="section-kicker">Evidence & source of truth</p>
+        <h2>证据入口与适用限制</h2>
+        <p>以下文档帮助理解；真正的每轮终态仍以外部 run root 中的 canonical bytes 为准。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>仓内权威记录</h3>
+          <ul class="source-list">
+            <li><a href="core-fast-path.md">Core Fast Path</a>：R0、R1–R10 终态和运行边界。</li>
+            <li><a href="plans/2026-08-06-core-1500-interview-gain-execution-plan.md">Core 1,500 增益执行计划</a>：逐轮 ledger、gate 和停止规则。</li>
+            <li><a href="interview-project-lessons.md">面试项目经验</a>：确定性 runtime contract 的非平凡工程取舍。</li>
+            <li><a href="project-backlog.md">项目 backlog</a>：不阻塞主线的 P2/P3。</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>外部 artifact roots</h3>
+          <ul class="source-list">
+            <li>R1–R5：<code>E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2</code></li>
+            <li>R6–R10：<code>E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3</code></li>
+            <li>Static v2 SHA：<code>ced36fb3050612be9a45a9fcb0d0d835b0f7a40ef422009066b6680df7368fc0</code></li>
+            <li>Feedback manifest SHA：<code>4e5d7013665d5ba70ce7c92fbe71ba5c44a363477c1d19d2337552382fb88043</code></li>
+          </ul>
+        </div>
+      </div>
+
+      <details>
+        <summary>论文与综述如何影响“未来改造”</summary>
+        <ul class="source-list">
+          <li><a href="https://arxiv.org/abs/2606.12984">SkillChain 论文</a>：统计聚合、正/反例、Engineer Loop 和显式 Skill 结构支持 contrastive packet 与 bounded candidate loop；未公开的 prompt、样本数和循环细节不声称复现。</li>
+          <li><a href="Self_Improving_Agents.pdf">Self-Improving Agents 综述</a>：SkillOpt、SkillForge、SkillLens、XSkill 与 counterfactual trace auditing 支持有限编辑、消费侧归因和 promotion memory。该综述的方法收益来自不同任务，不能直接外推到本项目。</li>
+          <li>RL/LoRA/GRPO、自改代码和大规模 Skill retrieval 会改变比较面或超出当前六能力 Portfolio，不列为下一批最小实验。</li>
+        </ul>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <strong>ECommerceSkillChain S1 Experiment Ledger</strong><br>
+      最后更新：2026-08-12 · 本页为可读索引，不替代 canonical experiment artifacts。
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const status = document.querySelector('#filter-status');
+      const capability = document.querySelector('#filter-capability');
+      const reset = document.querySelector('#filter-reset');
+      const count = document.querySelector('#filter-count');
+      const entries = [...document.querySelectorAll('.experiment')];
+
+      function applyFilters() {
+        let visible = 0;
+        for (const entry of entries) {
+          const statusMatch = status.value === 'all' || entry.dataset.status === status.value;
+          const capabilityMatch = capability.value === 'all' || entry.dataset.capability === capability.value;
+          entry.hidden = !(statusMatch && capabilityMatch);
+          if (!entry.hidden) visible += 1;
+        }
+        count.textContent = `显示 ${visible} / ${entries.length} 条`;
+      }
+
+      status.addEventListener('change', applyFilters);
+      capability.addEventListener('change', applyFilters);
+      reset.addEventListener('click', () => {
+        status.value = 'all';
+        capability.value = 'all';
+        applyFilters();
+      });
+      document.querySelector('#print-page').addEventListener('click', () => window.print());
+
+      const detailsState = new Map();
+      window.addEventListener('beforeprint', () => {
+        document.querySelectorAll('details').forEach((item) => {
+          detailsState.set(item, item.open);
+          item.open = true;
+        });
+      });
+      window.addEventListener('afterprint', () => {
+        detailsState.forEach((wasOpen, item) => { item.open = wasOpen; });
+        detailsState.clear();
+      });
+
+      applyFilters();
+    })();
+  </script>
+</body>
+</html>

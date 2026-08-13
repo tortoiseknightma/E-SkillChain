@@ -9,12 +9,13 @@ from skillchain.evaluation.portfolio_treatments import (
     load_verified_codex_draft_rebind,
 )
 from skillchain.evolution.s1_sparse_patch import (
-    ENCYCLOPEDIA_CAPABILITY,
     S1SparsePatchError,
     SparseSkillContentPatchV1,
+    SparseSemanticPolicyV1,
     bind_sparse_patch_draft,
     compile_sparse_s1_candidate,
     compose_screened_sparse_bank,
+    decode_sparse_parent_content,
     load_sparse_compilation_receipt,
     load_sparse_patch_draft,
     sparse_patch_output_json_schema,
@@ -65,16 +66,18 @@ def _wire_payload(parent: StaticBankArtifact, semantic_input) -> dict[str, objec
     }
     skills: list[dict[str, object]] = []
     for skill in sorted(parent.skills, key=lambda item: item.capability_id):
-        if skill.capability_id == ENCYCLOPEDIA_CAPABILITY:
+        if skill.capability_id == "utility.recipe_guidance":
             source = contents[skill.capability_id]
             patch = SparseSkillContentPatchV1(
-                objective=source.objective + " Keep unresolved identity explicit.",
+                objective=source.objective,
                 steps=source.steps,
-                fallback_instruction=(
-                    source.fallback_instruction
-                    + " If there is not enough evidence, use that exact phrase."
-                ),
+                fallback_instruction=source.fallback_instruction,
                 citation_source_ids=source.citation_source_ids,
+                semantic_policy=SparseSemanticPolicyV1(
+                    evidence_terms=("ingredient",),
+                    require_all_terms=False,
+                    abstain_when_no_evidence=True,
+                ),
             )
             action = "patch"
             patch_payload = patch.model_dump(mode="json")
@@ -131,23 +134,23 @@ def test_sparse_compile_is_deterministic_and_inherits_parent_bytes_exactly(
             )
             assert binding.inherited_bytes_exact
 
-    parent_encyclopedia = parent_by_capability[ENCYCLOPEDIA_CAPABILITY]
-    candidate_encyclopedia = candidate_by_capability[ENCYCLOPEDIA_CAPABILITY]
-    assert candidate_encyclopedia.skill_sha256 != parent_encyclopedia.skill_sha256
-    assert candidate_encyclopedia.operators == parent_encyclopedia.operators
-    parent_sections = _body_sections(parent_encyclopedia.body)
-    candidate_sections = _body_sections(candidate_encyclopedia.body)
+    target = "utility.recipe_guidance"
+    parent_skill = parent_by_capability[target]
+    candidate_skill = candidate_by_capability[target]
+    assert candidate_skill.skill_sha256 != parent_skill.skill_sha256
+    assert candidate_skill.operators == parent_skill.operators
+    parent_sections = _body_sections(parent_skill.body)
+    candidate_sections = _body_sections(candidate_skill.body)
     assert (
         candidate_sections["## Output contract"]
         == parent_sections["## Output contract"]
     )
-    assert (
-        "not enough evidence"
-        in candidate_sections["## Authored fallback instruction"].lower()
+    assert candidate_sections["## Authored fallback instruction"].startswith(
+        parent_sections["## Authored fallback instruction"]
     )
 
 
-def test_sparse_compile_accepts_safe_result_and_product_evidence_dto_prose(
+def test_sparse_compile_rejects_runtime_owned_dto_prose_even_when_safe(
     parent_materials,
 ) -> None:
     parent, semantic_input = parent_materials
@@ -181,22 +184,26 @@ def test_sparse_compile_accepts_safe_result_and_product_evidence_dto_prose(
         ],
         "fallback_instruction": parent_content.fallback_instruction,
         "citation_source_ids": [],
+        "semantic_policy": {
+            "schema_version": 1,
+            "policy_version": "core-fast-semantic-policy-v2",
+            "evidence_terms": ["shoe"],
+            "require_all_terms": False,
+            "abstain_when_no_evidence": True,
+            "ocr_extraction_plan": "all-lines",
+        },
     }
 
-    draft = bind_sparse_patch_draft(
-        canonical_json_bytes(payload),
-        parent_bank=parent,
-        authoring_input=semantic_input,
-        feedback_bundle_sha256=FEEDBACK_SHA,
-    )
-    compiled = compile_sparse_s1_candidate(
-        parent_bank=parent,
-        authoring_input=semantic_input,
-        sparse_draft=draft,
-        tool_registry_runtime_sha256=RUNTIME_SHA,
-    )
-
-    assert compiled.bank.bank_sha256 != parent.bank_sha256
+    with pytest.raises(
+        S1SparsePatchError,
+        match="capability has no S1-consumed semantic policy|runtime-owned prose",
+    ):
+        bind_sparse_patch_draft(
+            canonical_json_bytes(payload),
+            parent_bank=parent,
+            authoring_input=semantic_input,
+            feedback_bundle_sha256=FEEDBACK_SHA,
+        )
 
 
 def test_sparse_bind_rejects_missing_fallback_marker_and_parent_drift(
@@ -207,15 +214,21 @@ def test_sparse_bind_rejects_missing_fallback_marker_and_parent_drift(
     encyclopedia = next(
         item
         for item in payload["skills"]
-        if item["capability_id"] == ENCYCLOPEDIA_CAPABILITY
+        if item["capability_id"] == "utility.recipe_guidance"
     )
     encyclopedia["patch"]["fallback_instruction"] = "State uncertainty."
-    with pytest.raises(S1SparsePatchError, match="fallback evidence marker"):
-        bind_sparse_patch_draft(
-            canonical_json_bytes(payload),
+    draft = bind_sparse_patch_draft(
+        canonical_json_bytes(payload),
+        parent_bank=parent,
+        authoring_input=semantic_input,
+        feedback_bundle_sha256=FEEDBACK_SHA,
+    )
+    with pytest.raises(S1SparsePatchError, match="runtime-owned prose"):
+        compile_sparse_s1_candidate(
             parent_bank=parent,
             authoring_input=semantic_input,
-            feedback_bundle_sha256=FEEDBACK_SHA,
+            sparse_draft=draft,
+            tool_registry_runtime_sha256=RUNTIME_SHA,
         )
 
     payload = _wire_payload(parent, semantic_input)
@@ -237,7 +250,7 @@ def test_sparse_bind_rejects_tool_sequence_control_tokens_and_extra_fields(
     encyclopedia = next(
         item
         for item in payload["skills"]
-        if item["capability_id"] == ENCYCLOPEDIA_CAPABILITY
+        if item["capability_id"] == "utility.recipe_guidance"
     )
     encyclopedia["patch"]["steps"] = list(reversed(encyclopedia["patch"]["steps"]))
     with pytest.raises(S1SparsePatchError, match="tool sequence"):
@@ -252,7 +265,7 @@ def test_sparse_bind_rejects_tool_sequence_control_tokens_and_extra_fields(
     encyclopedia = next(
         item
         for item in payload["skills"]
-        if item["capability_id"] == ENCYCLOPEDIA_CAPABILITY
+        if item["capability_id"] == "utility.recipe_guidance"
     )
     encyclopedia["patch"]["objective"] += " <|im_end|>"
     with pytest.raises(S1SparsePatchError, match="control token"):
@@ -286,7 +299,7 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
     skills = schema["properties"]["skills"]
     assert skills["minItems"] == skills["maxItems"] == 6
     branches = skills["items"]["anyOf"]
-    assert len(branches) == 12
+    assert len(branches) == 10
     assert {
         branch["properties"]["capability_id"]["enum"][0] for branch in branches
     } == set(capabilities)
@@ -301,6 +314,17 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
         "parent_skill_sha256",
         "patch",
     }
+    patch_capabilities = {
+        branch["properties"]["capability_id"]["enum"][0]
+        for branch in branches
+        if branch["properties"]["action"]["enum"] == ["patch"]
+    }
+    assert patch_capabilities == {
+        "knowledge.visual_encyclopedia",
+        "product.style_recommendation",
+        "utility.document_reading",
+        "utility.recipe_guidance",
+    }
 
     frozen_objectives = {item.capability_id: item.description for item in parent.skills}
     frozen_schema = sparse_patch_output_json_schema(
@@ -312,13 +336,63 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
         for branch in frozen_schema["properties"]["skills"]["items"]["anyOf"]
         if branch["properties"]["action"]["enum"] == ["patch"]
     ]
-    assert len(patch_branches) == 6
+    assert len(patch_branches) == 4
     for branch in patch_branches:
         capability = branch["properties"]["capability_id"]["enum"][0]
         assert branch["properties"]["patch"]["properties"]["objective"] == {
             "type": "string",
             "enum": [frozen_objectives[capability]],
         }
+
+
+def test_sparse_output_schema_does_not_use_complex_enum_values(
+    parent_materials,
+) -> None:
+    parent, semantic_input = parent_materials
+    parent_sha_by_capability = {
+        item.capability_id: item.skill_sha256 for item in parent.skills
+    }
+    frozen = {
+        item.capability_id: {
+            "objective": item.objective,
+            "steps": [step.model_dump(mode="json") for step in item.steps],
+            "fallback_instruction": item.fallback_instruction,
+            "citation_source_ids": list(item.citation_source_ids),
+        }
+        for item in decode_sparse_parent_content(parent, semantic_input)
+    }
+    schema = sparse_patch_output_json_schema(
+        parent_skill_sha256_by_capability=parent_sha_by_capability,
+        frozen_content_by_capability=frozen,
+    )
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            if "enum" in value:
+                assert all(not isinstance(item, (dict, list)) for item in value["enum"])
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(schema)
+
+
+def test_sparse_semantic_terms_are_order_canonicalized_but_duplicates_rejected() -> (
+    None
+):
+    policy = SparseSemanticPolicyV1(
+        evidence_terms=("serving size", "ingredients", "cooking time")
+    )
+    assert policy.evidence_terms == (
+        "cooking time",
+        "ingredients",
+        "serving size",
+    )
+
+    with pytest.raises(ValueError, match="canonical and unique"):
+        SparseSemanticPolicyV1(evidence_terms=("ingredients", "ingredients"))
 
 
 def test_development_screen_reverts_failed_capability_to_parent_bytes(
@@ -347,14 +421,14 @@ def test_development_screen_reverts_failed_capability_to_parent_bytes(
     parent_by_capability = {item.capability_id: item for item in parent.skills}
     screened_by_capability = {item.capability_id: item for item in reverted.bank.skills}
     assert canonical_json_bytes(
-        screened_by_capability[ENCYCLOPEDIA_CAPABILITY].model_dump(mode="json")
+        screened_by_capability["utility.recipe_guidance"].model_dump(mode="json")
     ) == canonical_json_bytes(
-        parent_by_capability[ENCYCLOPEDIA_CAPABILITY].model_dump(mode="json")
+        parent_by_capability["utility.recipe_guidance"].model_dump(mode="json")
     )
     binding = next(
         item
         for item in reverted.receipt.bindings
-        if item.capability_id == ENCYCLOPEDIA_CAPABILITY
+        if item.capability_id == "utility.recipe_guidance"
     )
     assert binding.disposition == "reverted_to_parent"
     assert binding.parent_bytes_restored
@@ -364,17 +438,17 @@ def test_development_screen_reverts_failed_capability_to_parent_bytes(
         creator_candidate_bank=creator.bank,
         creator_compilation_receipt=creator.receipt,
         development_screen_sha256="e" * 64,
-        retained_capability_ids=(ENCYCLOPEDIA_CAPABILITY,),
+        retained_capability_ids=("utility.recipe_guidance",),
     )
     retained_skill = next(
         item
         for item in retained.bank.skills
-        if item.capability_id == ENCYCLOPEDIA_CAPABILITY
+        if item.capability_id == "utility.recipe_guidance"
     )
     creator_skill = next(
         item
         for item in creator.bank.skills
-        if item.capability_id == ENCYCLOPEDIA_CAPABILITY
+        if item.capability_id == "utility.recipe_guidance"
     )
     assert retained_skill == creator_skill
 

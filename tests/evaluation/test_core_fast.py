@@ -119,7 +119,7 @@ def _observation(
     *,
     success: bool = False,
     assistant_model: str = "fake-model",
-    assistant_contract: str = "core-fast-deterministic-action-response-v1",
+    assistant_contract: str = "core-fast-deterministic-action-response-v4",
 ) -> dict[str, object]:
     components = {
         "route_acceptable": True,
@@ -487,6 +487,32 @@ def test_fresh_static_opt800_run_writes_model_bound_bootstrap(
     assert (engine.output_root / "static-opt800-bootstrap.json").is_file()
 
 
+def test_fixed_samples_allow_fresh_static_capabilities_with_only_anchors(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "all-anchor-samples",
+        adapter=FakeCoreFastAdapter(),
+    )
+    observations = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=True), strict=True
+        )
+        for query in queries
+        if query.split == "opt_pool"
+    }
+
+    samples = engine.fixed_samples_from_static(observations)
+
+    assert len(samples.canary12) == 12
+    assert len(samples.body48) == 48
+    assert all(item.role == "anchor" for item in samples.canary12)
+    assert all(item.role == "body_anchor" for item in samples.body48)
+
+
 @pytest.mark.parametrize(
     ("field", "loader", "message"),
     (
@@ -626,6 +652,55 @@ def test_s1_replay_gate_rejects_incomplete_oracle_coverage(
     assert metrics["oracle_coverage_failure_query_ids"] == [failed_id]
 
 
+def test_sparse_s1_gate_aliases_untreated_capabilities_to_parent(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    queries = tuple(query for query in fast_fixture[2] if query.split == "opt_pool")
+    document = next(
+        query
+        for query in queries
+        if query.canonical_capability == "utility.document_reading"
+    )
+    exact = next(
+        query
+        for query in queries
+        if query.canonical_capability == "product.exact_match"
+    )
+    parent = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=False), strict=True
+        )
+        for query in queries
+    }
+    candidate = dict(parent)
+    candidate[document.query_id] = AssistantObservation.model_validate(
+        _observation(document, success=True), strict=True
+    )
+    # This regression is execution noise: Exact bytes were inherited.
+    candidate[exact.query_id] = AssistantObservation.model_validate(
+        _observation(exact, success=False), strict=True
+    )
+    parent[exact.query_id] = AssistantObservation.model_validate(
+        _observation(exact, success=True), strict=True
+    )
+
+    _passed, _reasons, metrics = engine._s1_gate(
+        parent,
+        candidate,
+        queries,
+        phase="replay200",
+        treated_capabilities=frozenset({"utility.document_reading"}),
+    )
+
+    assert metrics["capability_delta_pp"]["product.exact_match"] == 0.0
+    assert metrics["capability_delta_pp"]["utility.document_reading"] > 0.0
+    assert metrics["treated_capabilities"] == ["utility.document_reading"]
+    assert metrics["untreated_rows_aliased_to_parent"] == len(queries) - sum(
+        query.canonical_capability == "utility.document_reading" for query in queries
+    )
+
+
 def test_fast_bootstrap_matches_frozen_s1_gate_byte_for_byte(
     fast_fixture, tmp_path: Path
 ) -> None:
@@ -731,7 +806,7 @@ class _S1ScreenAdapter(FakeCoreFastAdapter):
     def __init__(
         self,
         *,
-        patch_capabilities: frozenset[str] = frozenset({"product.exact_match"}),
+        patch_capabilities: frozenset[str] = frozenset({"utility.recipe_guidance"}),
         smoke_hard_query_id: str | None = None,
         raw_contract_failure_capabilities: frozenset[str] = frozenset(),
         raw_force_success_capabilities: frozenset[str] = frozenset(),
@@ -775,11 +850,16 @@ class _S1ScreenAdapter(FakeCoreFastAdapter):
                         "patch": {
                             "objective": template["objective"],
                             "steps": template["steps"],
-                            "fallback_instruction": (
-                                str(template["fallback_instruction"])
-                                + " Make the supported-evidence boundary explicit."
-                            ),
+                            "fallback_instruction": template["fallback_instruction"],
                             "citation_source_ids": template["citation_source_ids"],
+                            "semantic_policy": {
+                                "schema_version": 1,
+                                "policy_version": "core-fast-semantic-policy-v2",
+                                "ocr_extraction_plan": "all-lines",
+                                "evidence_terms": ["ingredient"],
+                                "require_all_terms": False,
+                                "abstain_when_no_evidence": True,
+                            },
                         },
                     }
                 generated.append(entry)
@@ -888,17 +968,18 @@ def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
     spec, spec_path, _ = fast_fixture
     focused = S1Settings(
         round_id="r3",
+        target_capabilities=("utility.recipe_guidance",),
         max_patched_capabilities=1,
         protected_capabilities=(
             "knowledge.visual_encyclopedia",
+            "product.exact_match",
             "product.multi_search",
             "product.style_recommendation",
             "utility.document_reading",
-            "utility.recipe_guidance",
         ),
         creator_directives=("Keep the literal fallback marker.",),
         required_patch_phrases={
-            "product.exact_match": ("no supported match",),
+            "utility.recipe_guidance": ("no supported recipe",),
         },
     )
     engine = CoreFastEngine(
@@ -928,8 +1009,43 @@ def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
     assert requirements["max_patched_capabilities"] == 1
     assert requirements["creator_directives"] == ["Keep the literal fallback marker."]
     assert requirements["required_patch_phrases"] == {
-        "product.exact_match": ["no supported match"]
+        "utility.recipe_guidance": ["no supported recipe"]
     }
+
+
+def test_required_phrase_may_bind_a_typed_semantic_policy_value(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, _ = fast_fixture
+    focused = S1Settings(
+        round_id="r3",
+        target_capabilities=("utility.recipe_guidance",),
+        max_patched_capabilities=1,
+        protected_capabilities=(
+            "knowledge.visual_encyclopedia",
+            "product.exact_match",
+            "product.multi_search",
+            "product.style_recommendation",
+            "utility.document_reading",
+        ),
+        creator_directives=("Use a literal evidence selector.",),
+        required_patch_phrases={
+            "utility.recipe_guidance": ("ingredient",),
+        },
+    )
+    engine = CoreFastEngine(
+        spec=spec.model_copy(update={"s1_settings": focused}),
+        spec_path=spec_path,
+        output_root=tmp_path / "typed-phrase",
+        adapter=FakeCoreFastAdapter(),
+    )
+
+    decision = engine.run_s1()
+
+    assert (
+        decision.metrics.get("creator_candidate_rejection_reason")
+        != "required_patch_phrase_missing"
+    )
 
 
 def test_feedback_canary_failure_stops_remaining_batch_and_creator(
@@ -947,6 +1063,30 @@ def test_feedback_canary_failure_stops_remaining_batch_and_creator(
     assert adapter.calls["creator"] == 0
     assert decision.metrics["feedback_success_count"] == 5
     assert decision.metrics["feedback_remaining_batch_called"] is False
+
+
+def test_feedback_remaining_schema_failure_stops_before_bundle_and_creator(
+    fast_fixture, tmp_path: Path
+) -> None:
+    probe = _engine(fast_fixture, tmp_path / "probe-full", FakeCoreFastAdapter())
+    prepared = probe.prepare_feedback_selection()
+    failed_id = prepared["selection_manifest"]["selected_query_ids"][6]
+    adapter = FakeCoreFastAdapter(feedback_schema_fail_ids=frozenset({failed_id}))
+    engine = _engine(fast_fixture, tmp_path / "run-full", adapter)
+    engine.initialize()
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    assert adapter.calls["feedback"] == 12
+    assert adapter.calls["creator"] == 0
+    assert decision.metrics["feedback_remaining_batch_called"] is True
+    assert decision.metrics["feedback_full_batch_gate"]["passed"] is False
+    assert decision.metrics["feedback_full_batch_gate"]["parse_failure_count"] == 1
+    assert decision.metrics["creator_called"] is False
+    assert not (
+        engine.output_root / "inputs" / "feedback-evidence-bundle.json"
+    ).exists()
 
 
 def test_s1_smoke_hard_error_on_inherited_capability_does_not_block_replay(
@@ -1034,10 +1174,10 @@ def test_s1_raw_replay_oracle_failure_stops_before_development_screen(
 def test_s1_replay_screen_reverts_only_document_and_reruns_composite(
     fast_fixture, tmp_path: Path
 ) -> None:
-    retained = frozenset({"product.exact_match", "product.multi_search"})
+    retained = frozenset({"product.style_recommendation"})
     adapter = _S1ScreenAdapter(
-        patch_capabilities=retained | {"utility.document_reading"},
-        raw_contract_failure_capabilities=frozenset({"utility.document_reading"}),
+        patch_capabilities=retained | {"utility.recipe_guidance"},
+        raw_contract_failure_capabilities=frozenset({"utility.recipe_guidance"}),
         raw_force_success_capabilities=retained,
     )
     engine = _engine(fast_fixture, tmp_path, adapter)
@@ -1047,7 +1187,7 @@ def test_s1_replay_screen_reverts_only_document_and_reruns_composite(
 
     assert decision.metrics["retained_patch_capabilities"] == sorted(retained)
     assert decision.metrics["reverted_patch_capabilities"] == [
-        "utility.document_reading"
+        "utility.recipe_guidance"
     ]
     assert decision.metrics["composite_replay_rerun"] is True
     screen = json.loads(
@@ -1058,7 +1198,7 @@ def test_s1_replay_screen_reverts_only_document_and_reruns_composite(
     screen_by_capability = {
         item["capability_id"]: item["decision"] for item in screen["decisions"]
     }
-    assert screen_by_capability["utility.document_reading"] == "inherit_parent"
+    assert screen_by_capability["utility.recipe_guidance"] == "inherit_parent"
     assert all(screen_by_capability[item] == "retain_patch" for item in retained)
 
     parent = StaticBankArtifact.model_validate_json(
@@ -1075,9 +1215,9 @@ def test_s1_replay_screen_reverts_only_document_and_reruns_composite(
     raw_by_capability = {item.capability_id: item for item in raw.skills}
     screened_by_capability = {item.capability_id: item for item in screened.skills}
     assert canonical_json_bytes(
-        screened_by_capability["utility.document_reading"].model_dump(mode="json")
+        screened_by_capability["utility.recipe_guidance"].model_dump(mode="json")
     ) == canonical_json_bytes(
-        parent_by_capability["utility.document_reading"].model_dump(mode="json")
+        parent_by_capability["utility.recipe_guidance"].model_dump(mode="json")
     )
     for capability in retained:
         assert canonical_json_bytes(
@@ -1093,7 +1233,7 @@ def test_s1_replay_screen_stops_when_all_patches_revert(
     fast_fixture, tmp_path: Path
 ) -> None:
     adapter = _S1ScreenAdapter(
-        raw_contract_failure_capabilities=frozenset({"product.exact_match"})
+        raw_contract_failure_capabilities=frozenset({"utility.recipe_guidance"})
     )
     engine = _engine(fast_fixture, tmp_path, adapter)
     engine.initialize()
@@ -1102,7 +1242,9 @@ def test_s1_replay_screen_stops_when_all_patches_revert(
 
     assert not decision.accepted
     assert decision.metrics["retained_patch_capabilities"] == []
-    assert decision.metrics["reverted_patch_capabilities"] == ["product.exact_match"]
+    assert decision.metrics["reverted_patch_capabilities"] == [
+        "utility.recipe_guidance"
+    ]
     assert "replay200 screen reverted all sparse patches" in decision.reasons
     assistant_calls = engine.output_root / "calls" / "assistant"
     assert not list(assistant_calls.glob("opt-replay200-composite-*.intent.json"))

@@ -32,6 +32,7 @@ from skillchain.evaluation.evaluator_outputs import (
     parse_visual_feedback_output,
     parse_visual_feedback_output_v2,
     parse_visual_feedback_output_v3,
+    parse_visual_feedback_output_v4,
     visual_feedback_parser_policy_v1,
     visual_feedback_parser_policy_v2,
     visual_feedback_parser_policy_v3,
@@ -937,6 +938,26 @@ def test_visual_feedback_v3_rejects_duplicates_and_schema_drift() -> None:
     drifted["unexpected"] = " value "
     with pytest.raises(EvaluatorOutputParseError):
         parse_visual_feedback_output_v3(json.dumps(drifted, separators=(",", ":")))
+
+
+@pytest.mark.parametrize("note", [None, "", "  \n"])
+def test_visual_feedback_v4_discards_only_empty_summary_note(note: object) -> None:
+    payload = _feedback_payload()
+    payload["summary_note"] = note
+
+    parsed = parse_visual_feedback_output_v4(json.dumps(payload, separators=(",", ":")))
+
+    assert parsed.summary == payload["summary"]
+
+
+@pytest.mark.parametrize("note", ["extra conclusion", 0, {}, []])
+def test_visual_feedback_v4_rejects_nonempty_or_nontext_summary_note(
+    note: object,
+) -> None:
+    payload = _feedback_payload()
+    payload["summary_note"] = note
+    with pytest.raises(EvaluatorOutputParseError):
+        parse_visual_feedback_output_v4(json.dumps(payload, separators=(",", ":")))
 
 
 def test_visual_feedback_v3_rejects_both_exact_terminal_v3_raw_responses() -> None:
