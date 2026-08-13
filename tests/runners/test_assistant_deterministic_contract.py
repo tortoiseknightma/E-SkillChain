@@ -23,10 +23,11 @@ def _success(tool_name: str, output: dict) -> DeterministicToolObservation:
 
 def test_contract_identity_is_versioned_and_canonical() -> None:
     payload = deterministic_contract_payload()
-    assert payload["policy_version"] == "core-fast-deterministic-action-response-v5"
+    assert payload["policy_version"] == "core-fast-deterministic-action-response-v6"
     assert len(DETERMINISTIC_ASSISTANT_CONTRACT_SHA256) == 64
     assert payload["tool_owner"] == "runner"
     assert payload["response_owner"] == "deterministic_public_dto_compiler"
+    assert payload["visible_card_owner"] == "compiler_referenced_handle_closure"
     assert deterministic_tool_names("utility.recipe_guidance") == (
         "object_detect",
         "recipe_lookup",

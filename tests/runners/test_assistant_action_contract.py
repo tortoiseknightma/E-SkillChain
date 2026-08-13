@@ -471,7 +471,7 @@ def test_core_fast_deterministic_contract_owns_tool_and_response(
     object.__setattr__(
         runner,
         "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v5",
+        "core-fast-deterministic-action-response-v6",
     )
 
     execution = runner.execute(request)
@@ -480,6 +480,7 @@ def test_core_fast_deterministic_contract_owns_tool_and_response(
     assert [item.tool_name for item in execution.response.tool_trace] == [
         "image_product_search"
     ]
+    assert len(execution.response.visible_cards) == 1
     assert execution.response.error_code is None
     assert execution.response.response_text == (
         "answer:\nThe tool returned eligible candidates listed below.\n"
@@ -586,7 +587,7 @@ def test_core_fast_deterministic_replay_reuses_trace_and_consumes_candidate_poli
     object.__setattr__(
         runner,
         "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v5",
+        "core-fast-deterministic-action-response-v6",
     )
     parent = runner.execute(parent_request)
     trace = parent.response.tool_trace[0]
@@ -625,6 +626,7 @@ def test_core_fast_deterministic_replay_reuses_trace_and_consumes_candidate_poli
 
     assert len(model_calls) == 1
     assert replay.response.response_text.startswith("answer:\nno supported match")
+    assert replay.response.visible_cards == ()
     assert replay.response.tool_trace == parent.response.tool_trace
     assert replay.scorer_calls == scorer_calls
     assert replay.receipt.model_calls == ()
@@ -633,6 +635,101 @@ def test_core_fast_deterministic_replay_reuses_trace_and_consumes_candidate_poli
         replay.receipt.deterministic_replay_source_receipt_sha256
         == parent.receipt.receipt_sha256
     )
+
+
+def test_core_fast_deterministic_replay_preserves_detector_only_fallback(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="core-fast-detector-only-replay")
+    skill = _Skill(
+        slug="encyclopedia-contract-skill",
+        capability_id="knowledge.visual_encyclopedia",
+        description="Explain a detected entity.",
+        body="# Objective\n\nUse supported encyclopedia evidence.",
+        operators=("object_detect", "encyclopedia_lookup"),
+    )
+    bank = _one_skill_bank(skill, "d")
+    query_id = "detector-only-replay-query"
+    scorer_query = _query_for_catalog(
+        fixture.asset_catalog,
+        query_id=query_id,
+    )
+    parent_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="llm_static",
+        bank_sha256=bank.bank_sha256,
+        query_id=query_id,
+    )
+    candidate_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=bank.bank_sha256,
+        query_id=query_id,
+    )
+
+    def fake_chat(provider, messages, **kwargs):
+        return _route_response(
+            request_id="detector-only-parent-route",
+            selected_capability="knowledge.visual_encyclopedia",
+            output_tokens=8,
+        )
+
+    def fake_invoke(_registry, name, arguments, _context):
+        assert name == "object_detect"
+        output = {"detections": []}
+        arguments_bytes = canonical_json_bytes(arguments)
+        output_bytes = canonical_json_bytes(output)
+        return ToolInvocationResult(
+            tool_name=name,
+            spec_sha256="1" * 64,
+            arguments=arguments,
+            arguments_bytes=arguments_bytes,
+            arguments_sha256=sha256_bytes(arguments_bytes),
+            output=output,
+            output_bytes=output_bytes,
+            output_sha256=sha256_bytes(output_bytes),
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
+    runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=CoreFastAssistantRunner,
+        banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
+    )
+    object.__setattr__(
+        runner,
+        "_deterministic_action_contract_version",
+        "core-fast-deterministic-action-response-v6",
+    )
+    parent = runner.execute(parent_request)
+    trace = parent.response.tool_trace[0]
+    scorer_payload = {"detections": []}
+    scorer_call = PublicScorerCallEvidenceV2(
+        call_index=1,
+        tool_name="object_detect",
+        arguments_sha256=trace.arguments_sha256,
+        result_sha256=trace.result_sha256,
+        argument_projection={"asset_handle": "query_asset"},
+        payload_kind="detections_v1",
+        payload=scorer_payload,
+        payload_sha256=sha256_bytes(canonical_json_bytes(scorer_payload)),
+    )
+    replay = runner.execute_deterministic_body_replay(
+        candidate_request,
+        parent_response=parent.response,
+        parent_receipt=parent.receipt,
+        parent_scorer_calls=(scorer_call,),
+        scorer_query=scorer_query,
+    )
+
+    assert replay.response.response_text == parent.response.response_text
+    assert replay.response.error_code is None
+    assert replay.receipt.outcome == "success"
 
 
 def _budget_context(tmp_path, request, *, name: str = "budget-ledger"):

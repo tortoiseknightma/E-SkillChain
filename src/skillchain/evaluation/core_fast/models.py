@@ -308,7 +308,8 @@ class RuntimeSettings(FrozenStrictModel):
     assistant_contract: Literal[
         "core-fast-deterministic-action-response-v4",
         "core-fast-deterministic-action-response-v5",
-    ] = "core-fast-deterministic-action-response-v5"
+        "core-fast-deterministic-action-response-v6",
+    ] = "core-fast-deterministic-action-response-v6"
 
     @model_validator(mode="after")
     def validate_adapter(self) -> Self:

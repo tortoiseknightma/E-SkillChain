@@ -7,7 +7,7 @@ provider/usage/latency/tool provenance consumed by the Phase 4 bundle writer.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -1515,6 +1515,26 @@ def _visible_projection(
         detections=tuple(detections),
     )
     return tuple(cards), evidence
+
+
+def _compiler_referenced_visible_cards(
+    cards: Sequence[VisibleCard], response_text: str
+) -> tuple[VisibleCard, ...]:
+    """Keep only cards whose public evidence and product handles were emitted."""
+
+    selected: list[VisibleCard] = []
+    for card in cards:
+        fields = dict(card.fields)
+        evidence = fields.get("evidence_reference")
+        product = fields.get("product_id")
+        if (
+            isinstance(evidence, str)
+            and isinstance(product, str)
+            and evidence in response_text
+            and product in response_text
+        ):
+            selected.append(card)
+    return tuple(selected)
 
 
 def _public_query(request: AssistantRequestSnapshot) -> dict[str, JSONValue]:
@@ -3519,6 +3539,15 @@ class ProductionAssistantRunner:
                 else "runtime_error"
             ),
         )
+        response_cards = tuple(visible_cards)
+        if (
+            final is not None
+            and getattr(self, "_deterministic_action_contract_version", None)
+            == "core-fast-deterministic-action-response-v6"
+        ):
+            response_cards = _compiler_referenced_visible_cards(
+                visible_cards, final.response_text
+            )
         response_model = AssistantBackendResponse(
             schema_version=2 if budget_context is not None else 1,
             request_sha256=request.request_sha256,
@@ -3530,7 +3559,7 @@ class ProductionAssistantRunner:
             registry_runtime_sha256=request.registry.registry_runtime_sha256,
             budget_sha256=request.budget.budget_sha256,
             response_text=(final.response_text if final is not None else ""),
-            visible_cards=tuple(visible_cards),
+            visible_cards=response_cards,
             visible_tool_evidence=tuple(visible_tool_evidence),
             tool_trace=tuple(tool_trace),
             selected_capability=selected_capability,
@@ -4170,9 +4199,24 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
                 parent_response.selected_capability
             ),
         )
-        if not validation.valid:
+        if (
+            not validation.valid
+            and self._deterministic_action_contract_version
+            != "core-fast-deterministic-action-response-v6"
+        ):
             raise AssistantBackendContractError(
                 "deterministic Body replay compiled an invalid response"
+            )
+        # V6 aligns replay with the normal deterministic path: an empty detector
+        # may yield compiler-owned terminal fallback even though the legacy
+        # model-response preflight labels that sequence incomplete.  GCS then
+        # records an ordinary tool/card failure instead of an oracle gap.
+        response_cards = parent_response.visible_cards
+        if self._deterministic_action_contract_version == (
+            "core-fast-deterministic-action-response-v6"
+        ):
+            response_cards = _compiler_referenced_visible_cards(
+                parent_response.visible_cards, response_text
             )
         response_model = AssistantBackendResponse(
             request_sha256=request.request_sha256,
@@ -4184,7 +4228,7 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
             registry_runtime_sha256=request.registry.registry_runtime_sha256,
             budget_sha256=request.budget.budget_sha256,
             response_text=response_text,
-            visible_cards=parent_response.visible_cards,
+            visible_cards=response_cards,
             visible_tool_evidence=parent_response.visible_tool_evidence,
             tool_trace=parent_response.tool_trace,
             selected_capability=parent_response.selected_capability,

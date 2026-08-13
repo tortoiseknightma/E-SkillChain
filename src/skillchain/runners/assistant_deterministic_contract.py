@@ -19,9 +19,10 @@ from skillchain.tools.contracts import JSONValue, validate_json_value
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
 
-DETERMINISTIC_ASSISTANT_CONTRACT_VERSION = "core-fast-deterministic-action-response-v5"
+DETERMINISTIC_ASSISTANT_CONTRACT_VERSION = "core-fast-deterministic-action-response-v6"
 SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS = (
     "core-fast-deterministic-action-response-v4",
+    "core-fast-deterministic-action-response-v5",
     DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
 )
 DETERMINISTIC_SEMANTIC_POLICY_VERSION = "core-fast-semantic-policy-v2"
@@ -269,6 +270,7 @@ def deterministic_contract_payload() -> dict[str, JSONValue]:
         "route_owner": "model_selected_capability_from_frozen_descriptions",
         "tool_owner": "runner",
         "response_owner": "deterministic_public_dto_compiler",
+        "visible_card_owner": "compiler_referenced_handle_closure",
         "semantic_policy_owner": "s1_typed_bank_surface",
         "semantic_policy_version": DETERMINISTIC_SEMANTIC_POLICY_VERSION,
         "semantic_policy_capabilities": list(SEMANTIC_POLICY_CAPABILITIES),
