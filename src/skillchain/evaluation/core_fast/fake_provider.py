@@ -121,7 +121,9 @@ class FakeCoreFastAdapter:
                 assert isinstance(requirements, dict)
                 targets = requirements["target_capabilities"]
                 assert isinstance(targets, list) and targets
-                fanout_targets = requirements.get("fanout_capabilities_must_patch")
+                fanout_targets = requirements.get(
+                    "fanout_capabilities_may_patch_or_inherit"
+                )
                 branch_target = requirements.get("branch_capability_must_patch")
                 selected_targets = (
                     {str(item) for item in fanout_targets}

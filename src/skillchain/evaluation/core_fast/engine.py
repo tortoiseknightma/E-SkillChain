@@ -2438,7 +2438,9 @@ class CoreFastEngine:
             requirements = {
                 **base_requirements,
                 "target_capabilities": list(creator_targets),
-                "fanout_capabilities_must_patch": list(creator_targets),
+                "fanout_capabilities_may_patch_or_inherit": list(creator_targets),
+                "max_patched_capabilities": len(creator_targets),
+                "one_typed_policy_patch_per_capability_branch": True,
                 "each_capability_is_an_independent_branch": True,
                 "cross_capability_tradeoffs_are_forbidden": True,
                 "required_patch_phrases": {
@@ -2473,7 +2475,6 @@ class CoreFastEngine:
                     parent=parent,
                     feedback_bundle_sha256=feedback_bundle_sha256,
                     feedback_patchable_capabilities=frozenset(creator_targets),
-                    s1_expected_patch_capabilities=frozenset(creator_targets),
                     s1_artifact_prefix="s1-fanout-master",
                 )
             except _S1CandidateRejected:
@@ -2531,6 +2532,22 @@ class CoreFastEngine:
             if not isinstance(raw_skills, list):
                 raise FastPathError("S1 fan-out Creator output lacks Skill branches")
             parent_by_capability = _bank_by_capability(parent)
+            raw_by_capability = {
+                str(item["capability_id"]): item
+                for item in raw_skills
+                if isinstance(item, dict) and isinstance(item.get("capability_id"), str)
+            }
+            target_raw = raw_by_capability.get(capability)
+            if not isinstance(target_raw, dict) or target_raw.get("action") != "patch":
+                record["status"] = "creator_inherit"
+                record["reason"] = "creator_selected_inherit"
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
             projected_skills = []
             for item in raw_skills:
                 if not isinstance(item, dict) or not isinstance(
