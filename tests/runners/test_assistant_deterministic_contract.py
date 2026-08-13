@@ -23,7 +23,7 @@ def _success(tool_name: str, output: dict) -> DeterministicToolObservation:
 
 def test_contract_identity_is_versioned_and_canonical() -> None:
     payload = deterministic_contract_payload()
-    assert payload["policy_version"] == "core-fast-deterministic-action-response-v4"
+    assert payload["policy_version"] == "core-fast-deterministic-action-response-v5"
     assert len(DETERMINISTIC_ASSISTANT_CONTRACT_SHA256) == 64
     assert payload["tool_owner"] == "runner"
     assert payload["response_owner"] == "deterministic_public_dto_compiler"
@@ -93,6 +93,92 @@ def test_multi_compiler_copies_every_item_and_deduplicates_cards() -> None:
     assert response.count("item-003") == 1
     assert response.count("tool-call-1-product-1") == 1
     assert "item-003 | bag | unresolved" in response
+
+
+def test_exact_semantic_selector_changes_candidates_but_preserves_card_closure() -> (
+    None
+):
+    observations = (
+        _success(
+            "image_product_search",
+            {
+                "candidates": [
+                    {
+                        "evidence_reference": "tool-call-1-evidence-1",
+                        "product_id": "tool-call-1-product-1",
+                        "title": "Red shoe",
+                    },
+                    {
+                        "evidence_reference": "tool-call-1-evidence-2",
+                        "product_id": "tool-call-1-product-2",
+                        "title": "Blue bag",
+                    },
+                ]
+            },
+        ),
+    )
+    parent = compile_deterministic_response("product.exact_match", observations)
+    candidate = compile_deterministic_response(
+        "product.exact_match",
+        observations,
+        semantic_policy=DeterministicSemanticPolicy(
+            capability_id="product.exact_match",
+            evidence_terms=("shoe",),
+        ),
+    )
+    assert parent is not None and candidate is not None
+    assert "Red shoe" in candidate
+    assert "Blue bag" in parent and "Blue bag" not in candidate
+    assert candidate.count("tool-call-1-evidence-1") == 1
+
+
+def test_multi_semantic_selector_preserves_every_item_and_referential_integrity() -> (
+    None
+):
+    observation = _success(
+        "multi_product_search",
+        {
+            "items": [
+                {
+                    "item_ref": "item-001",
+                    "label": "shoe",
+                    "status": "matched",
+                    "candidate_ordinal": 1,
+                    "candidate": {
+                        "evidence_reference": "tool-call-1-evidence-1",
+                        "product_id": "tool-call-1-product-1",
+                        "title": "Blue shoe",
+                    },
+                },
+                {
+                    "item_ref": "item-002",
+                    "label": "bag",
+                    "status": "matched",
+                    "candidate_ordinal": 2,
+                    "candidate": {
+                        "evidence_reference": "tool-call-1-evidence-2",
+                        "product_id": "tool-call-1-product-2",
+                        "title": "Black bag",
+                    },
+                },
+            ]
+        },
+    )
+    response = compile_deterministic_response(
+        "product.multi_search",
+        (observation,),
+        semantic_policy=DeterministicSemanticPolicy(
+            capability_id="product.multi_search",
+            evidence_terms=("shoe",),
+        ),
+    )
+    assert response is not None
+    assert response.count("item-001") == 1
+    assert response.count("item-002") == 1
+    assert "item-001 | shoe | matched | candidate-1" in response
+    assert "item-002 | bag | unresolved" in response
+    assert "tool-call-1-product-1" in response
+    assert "tool-call-1-product-2" not in response
 
 
 def test_supported_and_fallback_branches_are_mutually_exclusive() -> None:

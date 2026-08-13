@@ -121,14 +121,25 @@ class FakeCoreFastAdapter:
                 assert isinstance(requirements, dict)
                 targets = requirements["target_capabilities"]
                 assert isinstance(targets, list) and targets
-                target = next(
-                    capability
-                    for capability in (
-                        "utility.recipe_guidance",
-                        "product.style_recommendation",
-                        "utility.document_reading",
-                    )
-                    if capability in targets
+                fanout_targets = requirements.get("fanout_capabilities_must_patch")
+                branch_target = requirements.get("branch_capability_must_patch")
+                selected_targets = (
+                    {str(item) for item in fanout_targets}
+                    if isinstance(fanout_targets, list)
+                    else {
+                        str(branch_target)
+                        if branch_target in targets
+                        else next(
+                            capability
+                            for capability in (
+                                "knowledge.visual_encyclopedia",
+                                "utility.recipe_guidance",
+                                "product.style_recommendation",
+                                "utility.document_reading",
+                            )
+                            if capability in targets
+                        )
+                    }
                 )
                 generated = []
                 for capability in sorted(skill_by_capability):
@@ -138,7 +149,7 @@ class FakeCoreFastAdapter:
                         "action": "inherit",
                         "parent_skill_sha256": skill["skill_sha256"],
                     }
-                    if capability == target:
+                    if capability in selected_targets:
                         template = template_by_capability[capability]
                         entry = {
                             **entry,
@@ -153,10 +164,18 @@ class FakeCoreFastAdapter:
                                 "semantic_policy": {
                                     "schema_version": 1,
                                     "policy_version": "core-fast-semantic-policy-v2",
-                                    "evidence_terms": ["ingredient"],
+                                    "evidence_terms": (
+                                        []
+                                        if capability == "utility.document_reading"
+                                        else ["ingredient"]
+                                    ),
                                     "require_all_terms": False,
                                     "abstain_when_no_evidence": True,
-                                    "ocr_extraction_plan": "all-lines",
+                                    "ocr_extraction_plan": (
+                                        "literal-material-spans"
+                                        if capability == "utility.document_reading"
+                                        else "all-lines"
+                                    ),
                                 },
                             },
                         }

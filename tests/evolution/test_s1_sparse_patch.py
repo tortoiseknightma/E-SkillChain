@@ -150,7 +150,7 @@ def test_sparse_compile_is_deterministic_and_inherits_parent_bytes_exactly(
     )
 
 
-def test_sparse_compile_rejects_runtime_owned_dto_prose_even_when_safe(
+def test_sparse_compile_accepts_multi_typed_selector_but_freezes_runtime_prose(
     parent_materials,
 ) -> None:
     parent, semantic_input = parent_materials
@@ -194,15 +194,19 @@ def test_sparse_compile_rejects_runtime_owned_dto_prose_even_when_safe(
         },
     }
 
-    with pytest.raises(
-        S1SparsePatchError,
-        match="capability has no S1-consumed semantic policy|runtime-owned prose",
-    ):
-        bind_sparse_patch_draft(
-            canonical_json_bytes(payload),
+    # Runtime-owned prose is rejected at compilation, while the typed selector
+    # itself is now a valid Multi treatment surface.
+    with pytest.raises(S1SparsePatchError, match="runtime-owned prose"):
+        compile_sparse_s1_candidate(
             parent_bank=parent,
             authoring_input=semantic_input,
-            feedback_bundle_sha256=FEEDBACK_SHA,
+            sparse_draft=bind_sparse_patch_draft(
+                canonical_json_bytes(payload),
+                parent_bank=parent,
+                authoring_input=semantic_input,
+                feedback_bundle_sha256=FEEDBACK_SHA,
+            ),
+            tool_registry_runtime_sha256=parent.tool_registry_runtime_sha256,
         )
 
 
@@ -299,7 +303,7 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
     skills = schema["properties"]["skills"]
     assert skills["minItems"] == skills["maxItems"] == 6
     branches = skills["items"]["anyOf"]
-    assert len(branches) == 10
+    assert len(branches) == 12
     assert {
         branch["properties"]["capability_id"]["enum"][0] for branch in branches
     } == set(capabilities)
@@ -319,12 +323,7 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
         for branch in branches
         if branch["properties"]["action"]["enum"] == ["patch"]
     }
-    assert patch_capabilities == {
-        "knowledge.visual_encyclopedia",
-        "product.style_recommendation",
-        "utility.document_reading",
-        "utility.recipe_guidance",
-    }
+    assert patch_capabilities == set(capabilities)
 
     frozen_objectives = {item.capability_id: item.description for item in parent.skills}
     frozen_schema = sparse_patch_output_json_schema(
@@ -336,7 +335,7 @@ def test_sparse_output_schema_freezes_six_entries(parent_materials) -> None:
         for branch in frozen_schema["properties"]["skills"]["items"]["anyOf"]
         if branch["properties"]["action"]["enum"] == ["patch"]
     ]
-    assert len(patch_branches) == 4
+    assert len(patch_branches) == 6
     for branch in patch_branches:
         capability = branch["properties"]["capability_id"]["enum"][0]
         assert branch["properties"]["patch"]["properties"]["objective"] == {

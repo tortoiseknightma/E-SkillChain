@@ -182,7 +182,7 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
         spec=SimpleNamespace(
             concurrency=SimpleNamespace(assistant_requests_per_second=0.5),
             runtime=SimpleNamespace(
-                assistant_contract="core-fast-deterministic-action-response-v4"
+                assistant_contract="core-fast-deterministic-action-response-v5"
             ),
         ),
         cwd=tmp_path,
@@ -215,7 +215,7 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
     assert len(captured) == 1
     assert (
         captured[0]["deterministic_action_contract_version"]
-        == "core-fast-deterministic-action-response-v4"
+        == "core-fast-deterministic-action-response-v5"
     )
     waiter = captured[0]["qwen_call_start_waiter"]
     assert callable(waiter)

@@ -16,9 +16,11 @@ from pydantic import ValidationError
 from skillchain import config as project_config
 from skillchain.evolution.s1_gcs_gate import (
     S1GCSGateError,
+    S1_CONTRACT_REGRESSION_REASON_CODES,
     screen_s1_development_patches,
 )
 from skillchain.evolution.s1_sparse_patch import (
+    SparseCompilationReceiptV1,
     S1SparsePatchError,
     bind_sparse_patch_draft,
     compile_sparse_s1_candidate,
@@ -83,6 +85,14 @@ from .store import (
 
 class FastPathError(RuntimeError):
     pass
+
+
+_S1_BOUNDED_RISK_POLICY_VERSION = "s1-capability-bounded-risk-v1"
+_S1_CAPABILITY_MIN_GAINS = 1
+_S1_CAPABILITY_MIN_NET_GAIN = 1
+_S1_CAPABILITY_MAX_REGRESSIONS = 2
+_S1_CAPABILITY_MIN_GAIN_REGRESSION_RATIO = 4.0
+_S1_CAPABILITY_MAX_FAILURE_SEVERITY_ESCALATIONS = 0
 
 
 class _S1CandidateRejected(ValueError):
@@ -672,7 +682,7 @@ class CoreFastEngine:
         # route-only gaps, and one format retry for every Judge call.
         max_calls = {
             "feedback": self.spec.s1_settings.feedback_total_count,
-            "creator": 3,
+            "creator": self.spec.limits.max_creator_calls,
             "assistant": 624 + 224 + 296 + 200 + 1500,
             "judge": 2 * (48 + 1500),
             "route_only": 4500,
@@ -1105,6 +1115,8 @@ class CoreFastEngine:
         parent: StaticBankArtifact,
         feedback_bundle_sha256: str | None = None,
         feedback_patchable_capabilities: frozenset[str] = frozenset(),
+        s1_expected_patch_capabilities: frozenset[str] | None = None,
+        s1_artifact_prefix: str = "s1",
     ) -> StaticBankArtifact | None:
         if (
             result.status != "success"
@@ -1122,12 +1134,17 @@ class CoreFastEngine:
                 parent=parent,
                 feedback_bundle_sha256=feedback_bundle_sha256,
                 feedback_patchable_capabilities=feedback_patchable_capabilities,
+                expected_patch_capabilities=s1_expected_patch_capabilities,
+                artifact_prefix=s1_artifact_prefix,
             )
             if bank is None:
                 raise _S1CandidateRejected("invalid_sparse_compilation")
-            path = self.output_root / "banks" / "s1-candidate.json"
-            if not path.exists():
-                atomic_write_json(path, bank.model_dump(mode="json"))
+            path = self.output_root / "banks" / f"{s1_artifact_prefix}-candidate.json"
+            self._write_canonical_resume_artifact(
+                path,
+                bank.model_dump(mode="json"),
+                label=f"{s1_artifact_prefix} candidate Bank",
+            )
             return bank
         if isinstance(full_payload, dict):
             try:
@@ -1171,6 +1188,8 @@ class CoreFastEngine:
         parent: StaticBankArtifact,
         feedback_bundle_sha256: str,
         feedback_patchable_capabilities: frozenset[str],
+        expected_patch_capabilities: frozenset[str] | None = None,
+        artifact_prefix: str = "s1",
     ) -> StaticBankArtifact | None:
         try:
             authoring_input = self.s1_authoring_input()
@@ -1190,11 +1209,21 @@ class CoreFastEngine:
                 or not patched <= feedback_patchable_capabilities
             ):
                 raise _S1CandidateRejected("sparse_patch_scope_rejected")
+            if (
+                expected_patch_capabilities is not None
+                and patched != expected_patch_capabilities
+            ):
+                raise _S1CandidateRejected("sparse_patch_branch_scope_rejected")
             draft_by_capability = {item.capability_id: item for item in draft.skills}
             for (
                 capability,
                 phrases,
             ) in self.spec.s1_settings.required_patch_phrases.items():
+                if (
+                    expected_patch_capabilities is not None
+                    and capability not in expected_patch_capabilities
+                ):
+                    continue
                 item = draft_by_capability.get(capability)
                 if item is None or item.action != "patch" or item.patch is None:
                     raise _S1CandidateRejected("required_patch_target_missing")
@@ -1231,8 +1260,8 @@ class CoreFastEngine:
         except (ValidationError, ValueError) as error:
             raise _S1CandidateRejected("sparse_compilation_rejected") from error
         artifacts = {
-            "s1-sparse-draft.json": draft.model_dump(mode="json"),
-            "s1-sparse-compilation-receipt.json": compiled.receipt.model_dump(
+            f"{artifact_prefix}-sparse-draft.json": draft.model_dump(mode="json"),
+            f"{artifact_prefix}-sparse-compilation-receipt.json": compiled.receipt.model_dump(
                 mode="json"
             ),
         }
@@ -1445,6 +1474,165 @@ class CoreFastEngine:
             raise FastPathError("invalid S1 development screen score") from error
         return tuple(scores)
 
+    def _s1_capability_screen(
+        self,
+        *,
+        capability: str,
+        queries: Sequence[Query],
+        baseline: Mapping[str, AssistantObservation],
+        candidate: Mapping[str, AssistantObservation],
+    ) -> dict[str, object]:
+        """Screen one fan-out branch on its own common route/tool treatment.
+
+        Each branch reuses the frozen Static route and tool trace, so the only
+        changed execution surface is the branch's typed semantic policy.  The
+        forward-only risk policy admits a bounded number of parent-success
+        regressions only when gains dominate them by at least four to one.
+        Failure-reason migration remains diagnostic; an ordinary failure that
+        escalates into a hard/runtime failure is still rejected.
+        """
+
+        selected = tuple(
+            query for query in queries if query.canonical_capability == capability
+        )
+        query_ids = tuple(query.query_id for query in selected)
+        if (
+            not query_ids
+            or set(baseline) != set(query_ids)
+            or set(candidate) != set(query_ids)
+        ):
+            raise FastPathError("S1 fan-out branch population is not rectangular")
+        baseline_success = sum(int(baseline[item].gcs_score) for item in query_ids)
+        candidate_success = sum(int(candidate[item].gcs_score) for item in query_ids)
+        gain_query_ids = tuple(
+            item
+            for item in query_ids
+            if baseline[item].gcs_score == 0 and candidate[item].gcs_score == 1
+        )
+        regression_query_ids = tuple(
+            item
+            for item in query_ids
+            if baseline[item].gcs_score == 1 and candidate[item].gcs_score == 0
+        )
+        severity_escalation_query_ids = tuple(
+            item
+            for item in query_ids
+            if baseline[item].gcs_score == 0
+            and not baseline[item].hard_error
+            and candidate[item].gcs_score == 0
+            and candidate[item].hard_error
+        )
+        gains = len(gain_query_ids)
+        paired_regressions = len(regression_query_ids)
+        net_gain = gains - paired_regressions
+        failure_reason_migrations = []
+        for item in query_ids:
+            if baseline[item].gcs_score != 0 or candidate[item].gcs_score != 0:
+                continue
+            baseline_reasons = set(baseline[item].gcs_reason_codes)
+            candidate_reasons = set(candidate[item].gcs_reason_codes)
+            if baseline_reasons == candidate_reasons and (
+                item not in severity_escalation_query_ids
+            ):
+                continue
+            failure_reason_migrations.append(
+                {
+                    "query_id": item,
+                    "baseline_reason_codes": sorted(baseline_reasons),
+                    "candidate_reason_codes": sorted(candidate_reasons),
+                    "introduced_reason_codes": sorted(
+                        candidate_reasons - baseline_reasons
+                    ),
+                    "resolved_reason_codes": sorted(
+                        baseline_reasons - candidate_reasons
+                    ),
+                    "severity_escalated": item in severity_escalation_query_ids,
+                }
+            )
+        contract_reasons = []
+        for reason in S1_CONTRACT_REGRESSION_REASON_CODES:
+            baseline_count = sum(
+                reason in baseline[item].gcs_reason_codes for item in query_ids
+            )
+            candidate_count = sum(
+                reason in candidate[item].gcs_reason_codes for item in query_ids
+            )
+            contract_reasons.append(
+                {
+                    "reason_code": reason,
+                    "baseline_count": baseline_count,
+                    "candidate_count": candidate_count,
+                    "new_occurrence_count": sum(
+                        reason not in baseline[item].gcs_reason_codes
+                        and reason in candidate[item].gcs_reason_codes
+                        for item in query_ids
+                    ),
+                }
+            )
+        trace_mismatches = sorted(
+            item
+            for item in query_ids
+            if (
+                candidate[item].selected_capability
+                != baseline[item].selected_capability
+                or candidate[item].route_trace_key != baseline[item].route_trace_key
+                or candidate[item].tool_trace_key != baseline[item].tool_trace_key
+                or candidate[item].tool_trace != baseline[item].tool_trace
+            )
+        )
+        reason_codes: set[str] = set()
+        if gains < _S1_CAPABILITY_MIN_GAINS:
+            reason_codes.add("gains_below_minimum")
+        if net_gain < _S1_CAPABILITY_MIN_NET_GAIN:
+            reason_codes.add("net_gain_below_minimum")
+        if paired_regressions > _S1_CAPABILITY_MAX_REGRESSIONS:
+            reason_codes.add("regressions_exceed_limit")
+        if paired_regressions and gains < (
+            _S1_CAPABILITY_MIN_GAIN_REGRESSION_RATIO * paired_regressions
+        ):
+            reason_codes.add("gain_regression_ratio_below_four")
+        if len(severity_escalation_query_ids) > (
+            _S1_CAPABILITY_MAX_FAILURE_SEVERITY_ESCALATIONS
+        ):
+            reason_codes.add("failure_severity_escalated")
+        if trace_mismatches:
+            reason_codes.add("common_route_or_tool_trace_changed")
+        return {
+            "capability_id": capability,
+            "decision": "inherit_parent" if reason_codes else "retain_patch",
+            "baseline_success_count": baseline_success,
+            "candidate_success_count": candidate_success,
+            "gain_count": gains,
+            "gain_query_ids": list(gain_query_ids),
+            "static_success_to_candidate_failure_count": paired_regressions,
+            "regression_query_ids": list(regression_query_ids),
+            "net_gain": net_gain,
+            "gain_to_regression_ratio": (
+                None if paired_regressions == 0 else gains / paired_regressions
+            ),
+            "bounded_risk_policy_version": _S1_BOUNDED_RISK_POLICY_VERSION,
+            "bounded_risk_thresholds": {
+                "minimum_gains": _S1_CAPABILITY_MIN_GAINS,
+                "minimum_net_gain": _S1_CAPABILITY_MIN_NET_GAIN,
+                "maximum_regressions": _S1_CAPABILITY_MAX_REGRESSIONS,
+                "minimum_gain_to_regression_ratio": (
+                    _S1_CAPABILITY_MIN_GAIN_REGRESSION_RATIO
+                ),
+                "maximum_failure_severity_escalations": (
+                    _S1_CAPABILITY_MAX_FAILURE_SEVERITY_ESCALATIONS
+                ),
+            },
+            "failure_reason_migration_count": len(failure_reason_migrations),
+            "failure_reason_migrations": failure_reason_migrations,
+            "failure_severity_escalation_count": len(severity_escalation_query_ids),
+            "failure_severity_escalation_query_ids": list(
+                severity_escalation_query_ids
+            ),
+            "contract_reasons": contract_reasons,
+            "common_trace_mismatch_query_ids": trace_mismatches,
+            "reason_codes": sorted(reason_codes),
+        }
+
     def _paired_component_bootstrap(
         self,
         parent: Mapping[str, AssistantObservation],
@@ -1601,7 +1789,7 @@ class CoreFastEngine:
             )
             capability_delta_pp[capability] = delta_pp
             if delta_pp < -floor_pp - 1e-12:
-                reasons.append(f"{capability} declined by more than 3pp")
+                reasons.append(f"{capability} declined by more than {floor_pp:g}pp")
         bootstrap: dict[str, object] | None = None
         if phase == "body_gate75":
             bootstrap = self._paired_component_bootstrap(
@@ -1698,6 +1886,7 @@ class CoreFastEngine:
         stage: str,
         *,
         parent: StaticBankArtifact | None = None,
+        s1_patch_capabilities: tuple[str, ...] | None = None,
     ) -> dict[str, object]:
         capability_enum = list(CAPABILITIES)
         if stage == "s1":
@@ -1735,7 +1924,11 @@ class CoreFastEngine:
                     }
                     for capability in CAPABILITIES
                 },
-                patch_capabilities=self.spec.s1_settings.target_capabilities,
+                patch_capabilities=(
+                    self.spec.s1_settings.target_capabilities
+                    if s1_patch_capabilities is None
+                    else s1_patch_capabilities
+                ),
             )
         field = "description" if stage == "s2" else "body"
         return {
@@ -2134,6 +2327,543 @@ class CoreFastEngine:
             "bundle_sha256": sha256_bytes(canonical_json_bytes(unsigned)),
         }
 
+    @staticmethod
+    def _fanout_creator_payload(
+        *,
+        capabilities: Sequence[str],
+        parent: StaticBankArtifact,
+        templates: Sequence[object],
+        feedback_bundle: Mapping[str, object],
+        feedback_bundle_sha256: str,
+        requirements: Mapping[str, object],
+        output_schema: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Build one structured Creator request containing six isolated branches."""
+
+        grouped = feedback_bundle["feedback_by_capability"]
+        assert isinstance(grouped, dict)
+        suggestions = feedback_bundle["policy_compatible_suggestions"]
+        assert isinstance(suggestions, list)
+        selected = tuple(capabilities)
+        return {
+            "operation": "s1_creator",
+            "fanout_policy": "six-capability-fanout-fanin-v2",
+            "fanout_capabilities": list(selected),
+            "parent_bank": parent.model_dump(mode="json"),
+            "parent_authoring_content": [
+                item.model_dump(mode="json") for item in templates
+            ],
+            "feedback_evidence_bundle": {
+                "bundle_sha256": feedback_bundle_sha256,
+                "feedback_by_capability": {
+                    capability: grouped.get(capability, []) for capability in selected
+                },
+            },
+            "discovery_summary": feedback_bundle["discovery_summary"],
+            "selection_manifest_sha256": feedback_bundle["selection_manifest_sha256"],
+            "policy_compatible_suggestions_by_capability": {
+                capability: [
+                    item
+                    for item in suggestions
+                    if isinstance(item, dict) and item.get("capability") == capability
+                ]
+                for capability in selected
+            },
+            "feedback_bundle_sha256": feedback_bundle_sha256,
+            "frozen_parent_content": {
+                item.capability_id: {
+                    "objective": item.objective,
+                    "steps": [step.model_dump(mode="json") for step in item.steps],
+                    "fallback_instruction": item.fallback_instruction,
+                    "citation_source_ids": list(item.citation_source_ids),
+                }
+                for item in templates
+            },
+            "requirements": dict(requirements),
+            "output_schema": dict(output_schema),
+        }
+
+    def _run_s1_fanout_fanin(
+        self,
+        *,
+        parent: StaticBankArtifact,
+        opt: Mapping[str, AssistantObservation],
+        query_by_id: Mapping[str, Query],
+        feedback_bundle: Mapping[str, object],
+        feedback_bundle_sha256: str,
+        patchable_capabilities: frozenset[str],
+        metrics: dict[str, object],
+    ) -> StageDecision:
+        """Run isolated capability branches, then combine only passed patches."""
+
+        settings = self.spec.s1_settings
+        fold_roles = self.opt_fold_roles()
+        replay_queries = tuple(
+            query
+            for query in self.queries()
+            if query.split == "opt_pool" and fold_roles[query.query_id] == "replay"
+        )
+        static_replay = {
+            query.query_id: opt[query.query_id] for query in replay_queries
+        }
+        templates = decode_sparse_parent_content(parent, self.s1_authoring_input())
+        base_requirements = {
+            "round_id": settings.round_id,
+            "typed_semantic_policy_only": True,
+            "semantic_policy_version": "core-fast-semantic-policy-v2",
+            "complete_six_capability_actions": True,
+            "default_action": "inherit",
+            "freeze_all_descriptions": True,
+            "max_patched_capabilities": 1,
+            "creator_directives": list(settings.creator_directives),
+            "author_content_lexical_guard": sparse_author_content_lexical_guard(),
+            "single_candidate": True,
+        }
+        branch_records: list[dict[str, object]] = []
+        passed: list[
+            tuple[str, StaticBankArtifact, SparseCompilationReceiptV1, str]
+        ] = []
+        metrics["fanout_policy"] = "six-capability-fanout-fanin-v2"
+        metrics["replay_accessed"] = False
+
+        creator_targets = tuple(
+            capability
+            for capability in CAPABILITIES
+            if capability in settings.target_capabilities
+            and capability in patchable_capabilities
+        )
+        creator: CallResult | None = None
+        creator_master: StaticBankArtifact | None = None
+        if creator_targets:
+            requirements = {
+                **base_requirements,
+                "target_capabilities": list(creator_targets),
+                "fanout_capabilities_must_patch": list(creator_targets),
+                "each_capability_is_an_independent_branch": True,
+                "cross_capability_tradeoffs_are_forbidden": True,
+                "required_patch_phrases": {
+                    capability: list(
+                        settings.required_patch_phrases.get(capability, ())
+                    )
+                    for capability in creator_targets
+                },
+            }
+            creator = self._call(
+                role="creator",
+                call_id="s1-creator-fanout",
+                purpose="S1 six-capability typed-policy fan-out Creator",
+                payload=self._fanout_creator_payload(
+                    capabilities=creator_targets,
+                    parent=parent,
+                    templates=templates,
+                    feedback_bundle=feedback_bundle,
+                    feedback_bundle_sha256=feedback_bundle_sha256,
+                    requirements=requirements,
+                    output_schema=self._creator_schema(
+                        "s1",
+                        parent=parent,
+                        s1_patch_capabilities=creator_targets,
+                    ),
+                ),
+            )
+            try:
+                creator_master = self._candidate_bank(
+                    creator,
+                    stage="s1",
+                    parent=parent,
+                    feedback_bundle_sha256=feedback_bundle_sha256,
+                    feedback_patchable_capabilities=frozenset(creator_targets),
+                    s1_expected_patch_capabilities=frozenset(creator_targets),
+                    s1_artifact_prefix="s1-fanout-master",
+                )
+            except _S1CandidateRejected:
+                creator_master = None
+        metrics["fanout_creator_call_count"] = int(creator is not None)
+        metrics["fanout_creator_targets"] = list(creator_targets)
+
+        for capability in CAPABILITIES:
+            branch_id = _safe_id(capability)
+            prefix = f"s1-branch-{branch_id}"
+            record: dict[str, object] = {
+                "capability": capability,
+                "status": "not_patchable",
+                "creator_called": False,
+                "smoke_accessed": False,
+                "replay_accessed": False,
+                "retained": False,
+            }
+            if capability not in settings.target_capabilities:
+                record["reason"] = "runtime_has_no_typed_semantic_policy_surface"
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+            if capability not in patchable_capabilities:
+                record["status"] = "no_policy_compatible_feedback"
+                record["reason"] = "no_policy_compatible_feedback"
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+
+            record["creator_called"] = creator is not None
+            record["creator_call_id"] = None if creator is None else creator.call_id
+            record["creator_input_tokens"] = (
+                0 if creator is None else creator.input_tokens
+            )
+            if creator_master is None or creator is None or creator.output is None:
+                record["status"] = "candidate_rejected"
+                record["reason"] = "fanout_creator_candidate_invalid"
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+            raw_skills = creator.output.get("skills")
+            if not isinstance(raw_skills, list):
+                raise FastPathError("S1 fan-out Creator output lacks Skill branches")
+            parent_by_capability = _bank_by_capability(parent)
+            projected_skills = []
+            for item in raw_skills:
+                if not isinstance(item, dict) or not isinstance(
+                    item.get("capability_id"), str
+                ):
+                    raise FastPathError("S1 fan-out Creator branch is malformed")
+                item_capability = str(item["capability_id"])
+                if item_capability == capability:
+                    projected_skills.append(item)
+                else:
+                    projected_skills.append(
+                        {
+                            "capability_id": item_capability,
+                            "action": "inherit",
+                            "parent_skill_sha256": parent_by_capability[
+                                item_capability
+                            ].skill_sha256,
+                        }
+                    )
+            branch_result = creator.model_copy(
+                update={
+                    "call_id": f"{creator.call_id}:{branch_id}",
+                    "output": {"schema_version": 1, "skills": projected_skills},
+                }
+            )
+            try:
+                branch = self._candidate_bank(
+                    branch_result,
+                    stage="s1",
+                    parent=parent,
+                    feedback_bundle_sha256=feedback_bundle_sha256,
+                    feedback_patchable_capabilities=frozenset({capability}),
+                    s1_expected_patch_capabilities=frozenset({capability}),
+                    s1_artifact_prefix=prefix,
+                )
+            except _S1CandidateRejected as error:
+                branch = None
+                record["reason"] = error.reason_code
+            if branch is None:
+                record["status"] = "candidate_rejected"
+                record.setdefault("reason", "provider_or_schema_invalid")
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+
+            # Every branch sees the same smoke24.  The other five Skills are
+            # byte-exact inherited, so a candidate-induced cross-capability
+            # failure is still visible while fan-out evidence remains local.
+            smoke_queries = tuple(
+                query_by_id[item.query_id]
+                for item in self.spec.fixed_samples.dev_smoke24
+            )
+            smoke = self._assistant_many(
+                split=f"dev-smoke24-{branch_id}",
+                config=f"s1-branch-{branch_id}",
+                queries=smoke_queries,
+                bank=branch,
+            )
+            record["smoke_accessed"] = True
+            oracle_failures = sorted(
+                query_id for query_id, row in smoke.items() if not row.oracle_available
+            )
+            record["smoke_oracle_coverage_failure_query_ids"] = oracle_failures
+            if oracle_failures:
+                record["status"] = "smoke_failed"
+                record["reason"] = "smoke_oracle_coverage_incomplete"
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+
+            target_queries = tuple(
+                query
+                for query in replay_queries
+                if query.canonical_capability == capability
+            )
+            target_parent = {
+                query.query_id: static_replay[query.query_id]
+                for query in target_queries
+            }
+            target_candidate = self._assistant_many(
+                split=f"opt-replay-{branch_id}",
+                config=f"s1-branch-{branch_id}",
+                queries=target_queries,
+                bank=branch,
+                reuse_parent=target_parent,
+            )
+            metrics["replay_accessed"] = True
+            record["replay_accessed"] = True
+            oracle_failures = sorted(
+                query_id
+                for rows in (target_parent, target_candidate)
+                for query_id, row in rows.items()
+                if not row.oracle_available
+            )
+            if oracle_failures:
+                record["status"] = "replay_failed"
+                record["reason"] = "replay_oracle_coverage_incomplete"
+                record["replay_oracle_coverage_failure_query_ids"] = oracle_failures
+                branch_records.append(record)
+                self._write_canonical_resume_artifact(
+                    self.output_root / "banks" / f"{prefix}-decision.json",
+                    record,
+                    label=f"S1 fan-out {capability} decision",
+                )
+                continue
+            screen = self._s1_capability_screen(
+                capability=capability,
+                queries=target_queries,
+                baseline=target_parent,
+                candidate=target_candidate,
+            )
+            record["screen"] = screen
+            record["status"] = (
+                "passed" if screen["decision"] == "retain_patch" else "screen_rejected"
+            )
+            record["retained"] = screen["decision"] == "retain_patch"
+            if record["retained"]:
+                receipt_path = (
+                    self.output_root
+                    / "banks"
+                    / f"{prefix}-sparse-compilation-receipt.json"
+                )
+                try:
+                    receipt = load_sparse_compilation_receipt(
+                        receipt_path,
+                        expected_file_sha256=_file_sha(receipt_path),
+                    )
+                except (OSError, S1SparsePatchError) as error:
+                    raise FastPathError(
+                        f"S1 fan-out {capability} compilation receipt is invalid"
+                    ) from error
+                screen_sha = sha256_bytes(canonical_json_bytes(screen))
+                passed.append((capability, branch, receipt, screen_sha))
+            branch_records.append(record)
+            self._write_canonical_resume_artifact(
+                self.output_root / "banks" / f"{prefix}-decision.json",
+                record,
+                label=f"S1 fan-out {capability} decision",
+            )
+
+        metrics["fanout_branches"] = branch_records
+        retained = tuple(sorted(item[0] for item in passed))
+        metrics["retained_patch_capabilities"] = list(retained)
+        metrics["reverted_patch_capabilities"] = [
+            item for item in settings.target_capabilities if item not in set(retained)
+        ]
+        if not passed:
+            reasons = ("fan-out screening retained no capability branch",)
+            self._write_selected_bank("s1", parent)
+            return self._save_decision(
+                StageDecision(
+                    stage="s1",
+                    accepted=False,
+                    alias_of="llm_static",
+                    parent_bank=parent.bank_sha256,
+                    candidate_bank=None,
+                    selected_bank=parent.bank_sha256,
+                    reasons=reasons,
+                    metrics=metrics,
+                )
+            )
+
+        combined, fanin_steps = self._compose_fanout_banks(parent=parent, passed=passed)
+        self._write_canonical_resume_artifact(
+            self.output_root / "banks" / "s1-fanin-candidate.json",
+            combined.model_dump(mode="json"),
+            label="S1 fan-in candidate Bank",
+        )
+        self._write_canonical_resume_artifact(
+            self.output_root / "banks" / "s1-fanin-receipt.json",
+            {
+                "schema_version": 1,
+                "policy_version": "six-capability-fanout-fanin-v2",
+                "parent_bank_sha256": parent.bank_sha256,
+                "retained_capabilities": list(retained),
+                "steps": fanin_steps,
+                "combined_bank_sha256": combined.bank_sha256,
+            },
+            label="S1 fan-in receipt",
+        )
+        metrics["fanin_steps"] = fanin_steps
+        metrics["screened_candidate_bank"] = combined.bank_sha256
+
+        composite_replay = self._assistant_many(
+            split="opt-replay200-fanin",
+            config="s1-candidate",
+            queries=replay_queries,
+            bank=combined,
+            reuse_parent=static_replay,
+        )
+        replay_ok, replay_reasons, replay_metrics = self._s1_gate(
+            static_replay,
+            composite_replay,
+            replay_queries,
+            phase="replay200",
+            treated_capabilities=frozenset(retained),
+        )
+        metrics["replay_gate"] = replay_metrics
+        reasons = [f"replay200: {item}" for item in replay_reasons]
+        accepted = False
+        if replay_ok:
+            gate_queries = self._queries_for_val_gate("body_gate")
+            metrics["body_accessed"] = True
+            static_rows = self._assistant_many(
+                split="body-gate75",
+                config="llm_static",
+                queries=gate_queries,
+                bank=parent,
+            )
+            candidate_rows = self._assistant_many(
+                split="body-gate75",
+                config="s1-candidate",
+                queries=gate_queries,
+                bank=combined,
+                reuse_parent=static_rows,
+            )
+            accepted, gate_reasons, gate_metrics = self._s1_gate(
+                static_rows,
+                candidate_rows,
+                gate_queries,
+                phase="body_gate75",
+                treated_capabilities=frozenset(retained),
+            )
+            reasons.extend(gate_reasons)
+            metrics["gate"] = gate_metrics
+        selected = combined if accepted else parent
+        self._write_selected_bank("s1", selected)
+        return self._save_decision(
+            StageDecision(
+                stage="s1",
+                accepted=accepted,
+                alias_of=None if accepted else "llm_static",
+                parent_bank=parent.bank_sha256,
+                candidate_bank=combined.bank_sha256,
+                selected_bank=selected.bank_sha256,
+                reasons=tuple(reasons),
+                metrics=metrics,
+            )
+        )
+
+    @staticmethod
+    def _compose_fanout_banks(
+        *,
+        parent: StaticBankArtifact,
+        passed: Sequence[
+            tuple[str, StaticBankArtifact, SparseCompilationReceiptV1, str]
+        ],
+    ) -> tuple[StaticBankArtifact, list[dict[str, object]]]:
+        """Compose independently parent-bound branches into one Bank."""
+
+        parent_by_capability = _bank_by_capability(parent)
+        selected = dict(parent_by_capability)
+        steps: list[dict[str, object]] = []
+        immutable_parent = parent.model_dump(
+            mode="json",
+            exclude={"construction_identity_sha256", "skills", "bank_sha256"},
+        )
+        for capability, branch, receipt, screen_sha in sorted(
+            passed, key=lambda item: item[0]
+        ):
+            branch_by_capability = _bank_by_capability(branch)
+            immutable_branch = branch.model_dump(
+                mode="json",
+                exclude={"construction_identity_sha256", "skills", "bank_sha256"},
+            )
+            binding_by_capability = {
+                item.capability_id: item for item in receipt.bindings
+            }
+            if (
+                immutable_branch != immutable_parent
+                or receipt.parent_bank_sha256 != parent.bank_sha256
+                or receipt.candidate_bank_sha256 != branch.bank_sha256
+                or set(branch_by_capability) != set(parent_by_capability)
+                or set(binding_by_capability) != set(parent_by_capability)
+                or binding_by_capability[capability].action != "patch"
+            ):
+                raise FastPathError(
+                    f"S1 fan-out branch lineage differs at {capability}"
+                )
+            for other in CAPABILITIES:
+                parent_bytes = canonical_json_bytes(
+                    parent_by_capability[other].model_dump(mode="json")
+                )
+                branch_bytes = canonical_json_bytes(
+                    branch_by_capability[other].model_dump(mode="json")
+                )
+                if other != capability and branch_bytes != parent_bytes:
+                    raise FastPathError(
+                        f"S1 fan-out branch changed another capability: {capability}"
+                    )
+            selected[capability] = branch_by_capability[capability]
+            steps.append(
+                {
+                    "capability": capability,
+                    "branch_bank_sha256": branch.bank_sha256,
+                    "compilation_receipt_sha256": receipt.receipt_sha256,
+                    "screen_sha256": screen_sha,
+                    "selected_skill_sha256": branch_by_capability[
+                        capability
+                    ].skill_sha256,
+                }
+            )
+        construction_identity = sha256_bytes(
+            canonical_json_bytes(
+                {
+                    "policy_version": "six-capability-fanout-fanin-v2",
+                    "parent_bank_sha256": parent.bank_sha256,
+                    "steps": steps,
+                }
+            )
+        )
+        payload = parent.model_dump(mode="json")
+        payload["construction_identity_sha256"] = construction_identity
+        payload["skills"] = [
+            selected[item.capability_id].model_dump(mode="json")
+            for item in parent.skills
+        ]
+        payload.pop("bank_sha256", None)
+        payload["bank_sha256"] = sha256_bytes(canonical_json_bytes(payload))
+        try:
+            bank = StaticBankArtifact.model_validate(payload, strict=True)
+        except ValidationError as error:
+            raise FastPathError("S1 fan-in Bank is invalid") from error
+        return bank, steps
+
     def run_s1(self) -> StageDecision:
         existing = self._existing_decision("s1")
         if existing is not None:
@@ -2271,6 +3001,46 @@ class CoreFastEngine:
                 for row in rows
             )
         )
+        base_metrics: dict[str, object] = {
+            "feedback_success_count": sum(
+                item["feedback"] is not None for item in feedback.values()
+            ),
+            "round_id": self.spec.s1_settings.round_id,
+            "feedback_mode": self.spec.s1_settings.feedback_mode,
+            "feedback_requested_count": self.spec.s1_settings.feedback_total_count,
+            "feedback_canary_count": canary_count,
+            "feedback_failure_count": sum(
+                item["feedback"] is None for item in feedback.values()
+            ),
+            "feedback_provider_calls_this_round": provider_calls,
+            "feedback_resume_cache_hits": resume_hits,
+            "feedback_remaining_batch_called": True,
+            "feedback_canary_gate": canary_gate,
+            "feedback_full_batch_gate": full_gate,
+            "feedback_selection_policy": (
+                self.spec.s1_settings.feedback_selection_policy
+            ),
+            "feedback_allocation": self.spec.s1_settings.feedback_allocation,
+            "selection_manifest_sha256": manifest["manifest_sha256"],
+            "discovery_summary_sha256": prepared["discovery_summary"]["summary_sha256"],
+            "feedback_bundle_sha256": feedback_bundle_sha256,
+            "feedback_bundle_byte_size": len(canonical_json_bytes(feedback_bundle)),
+            "feedback_cluster_coverage": manifest["cluster_coverage"],
+            "feedback_capability_coverage": manifest["capability_quotas"],
+            "feedback_truncated_field_count": 0,
+            "replay_accessed": False,
+            "body_accessed": False,
+        }
+        if self.spec.s1_settings.proposal_mode == "six-capability-fanout-fanin-v2":
+            return self._run_s1_fanout_fanin(
+                parent=parent,
+                opt=opt,
+                query_by_id=query_by_id,
+                feedback_bundle=feedback_bundle,
+                feedback_bundle_sha256=feedback_bundle_sha256,
+                patchable_capabilities=patchable_capabilities,
+                metrics=base_metrics,
+            )
         templates = decode_sparse_parent_content(parent, self.s1_authoring_input())
         creator = self._call(
             role="creator",
@@ -2350,35 +3120,8 @@ class CoreFastEngine:
             candidate_rejection_reason = error.reason_code
         reasons: list[str] = []
         metrics: dict[str, object] = {
-            "feedback_success_count": sum(
-                item["feedback"] is not None for item in feedback.values()
-            ),
-            "round_id": self.spec.s1_settings.round_id,
-            "feedback_mode": self.spec.s1_settings.feedback_mode,
-            "feedback_requested_count": self.spec.s1_settings.feedback_total_count,
-            "feedback_canary_count": canary_count,
-            "feedback_failure_count": sum(
-                item["feedback"] is None for item in feedback.values()
-            ),
-            "feedback_provider_calls_this_round": provider_calls,
-            "feedback_resume_cache_hits": resume_hits,
-            "feedback_remaining_batch_called": True,
-            "feedback_canary_gate": canary_gate,
-            "feedback_full_batch_gate": full_gate,
-            "feedback_selection_policy": (
-                self.spec.s1_settings.feedback_selection_policy
-            ),
-            "feedback_allocation": self.spec.s1_settings.feedback_allocation,
-            "selection_manifest_sha256": manifest["manifest_sha256"],
-            "discovery_summary_sha256": prepared["discovery_summary"]["summary_sha256"],
-            "feedback_bundle_sha256": feedback_bundle_sha256,
-            "feedback_bundle_byte_size": len(canonical_json_bytes(feedback_bundle)),
-            "feedback_cluster_coverage": manifest["cluster_coverage"],
-            "feedback_capability_coverage": manifest["capability_quotas"],
-            "feedback_truncated_field_count": 0,
+            **base_metrics,
             "creator_input_tokens": creator.input_tokens,
-            "replay_accessed": False,
-            "body_accessed": False,
         }
         accepted = False
         if candidate is None:

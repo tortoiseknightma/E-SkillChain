@@ -38,6 +38,7 @@ from skillchain.tools.serialization import (  # noqa: E402
     ArtifactFormatError,
     canonical_json_bytes,
     parse_canonical_json,
+    parse_strict_json,
     parse_canonical_jsonl,
     read_stable_regular_file,
     sha256_bytes,
@@ -68,6 +69,16 @@ def _load_canonical_object(path: Path, *, label: str) -> dict[str, Any]:
     value = parse_canonical_json(content, label=label)
     if not isinstance(value, dict):
         raise LineagePreparationError(f"{label} must be a JSON object")
+    return value
+
+
+def _load_tracked_spec_object(path: Path) -> dict[str, Any]:
+    """Load the human-formatted tracked spec without weakening artifacts."""
+
+    content = read_stable_regular_file(path, label="base Core Fast spec")
+    value = parse_strict_json(content, label="base Core Fast spec")
+    if not isinstance(value, dict):
+        raise LineagePreparationError("base Core Fast spec must be a JSON object")
     return value
 
 
@@ -125,11 +136,15 @@ def prepare_static_bootstrap_spec(
     # lineage, whose Literal no longer validates after a contract version
     # bump.  Upgrade only the runtime identity before validating; all other
     # fields still come from the canonical tracked spec.
-    base_payload = _load_canonical_object(base_spec_path, label="base Core Fast spec")
+    base_payload = _load_tracked_spec_object(base_spec_path)
     runtime = base_payload.get("runtime")
     if not isinstance(runtime, dict):
         raise LineagePreparationError("base Core Fast spec lacks runtime settings")
     runtime["assistant_contract"] = DETERMINISTIC_ASSISTANT_CONTRACT_VERSION
+    gates = base_payload.get("gates")
+    if not isinstance(gates, dict):
+        raise LineagePreparationError("base Core Fast spec lacks gate settings")
+    gates["s1_max_capability_drop_pp"] = 5.0
     base = _validated_spec(base_payload)
     _assert_qwen37(base)
     destination = opt_destination.resolve()
@@ -149,16 +164,15 @@ def prepare_static_bootstrap_spec(
         "feedback_total_count": 48,
         "feedback_canary_count": 6,
         "feedback_selection_policy": "discovery-stratified-v1",
-        "feedback_allocation": "target-focused",
-        "target_capabilities": ["utility.recipe_guidance"],
-        "proposal_mode": "sparse-parent-patch-v1",
-        "max_patched_capabilities": 1,
-        "protected_capabilities": sorted(
-            set(CAPABILITIES) - {"utility.recipe_guidance"}
-        ),
+        "feedback_allocation": "balanced-six-capability",
+        "target_capabilities": list(S1_SEMANTIC_POLICY_TARGETS),
+        "proposal_mode": "six-capability-fanout-fanin-v2",
+        "max_patched_capabilities": len(S1_SEMANTIC_POLICY_TARGETS),
+        "protected_capabilities": [],
         "creator_directives": [],
         "required_patch_phrases": {},
     }
+    payload["limits"]["max_creator_calls"] = 8
     disclosures = _clean_disclosures(base.disclosures)
     disclosures.append(
         "bootstrap-only spec: opt_static_results_sha256 is a placeholder and "
@@ -177,16 +191,21 @@ def freeze_r1_spec(
     bootstrap_result_path: Path,
     output_spec_path: Path,
     experiment_id: str,
-    target_capability: str,
+    target_capability: str | None,
     creator_directives: Sequence[str],
     required_patch_phrases: Sequence[str] = (),
+    fanout: bool = False,
 ) -> CoreFastSpec:
-    """Bind the fresh Static result and one capability to an immutable R1 spec."""
+    """Bind fresh Static to either one capability or six isolated branches."""
 
     bootstrap_spec_path = bootstrap_spec_path.resolve()
     source = load_core_fast_spec(bootstrap_spec_path)
     _assert_qwen37(source)
-    if target_capability not in S1_SEMANTIC_POLICY_TARGETS:
+    if fanout and (target_capability is not None or required_patch_phrases):
+        raise LineagePreparationError(
+            "fan-out R1 uses all typed capabilities and no shared required phrases"
+        )
+    if not fanout and target_capability not in S1_SEMANTIC_POLICY_TARGETS:
         raise LineagePreparationError(
             "R1 target must expose a deterministic-runtime semantic policy"
         )
@@ -231,22 +250,45 @@ def freeze_r1_spec(
     payload["experiment_id"] = experiment_id
     payload["opt_static_results_sha256"] = observed_sha256
     payload["fixed_samples"] = fixed_samples
-    protected = sorted(set(CAPABILITIES) - {target_capability})
     phrases = sorted(set(required_patch_phrases))
-    payload["s1_settings"] = {
+    s1_settings = {
         "round_id": "r1",
         "feedback_mode": "fresh-per-round",
         "feedback_total_count": 48,
         "feedback_canary_count": 6,
         "feedback_selection_policy": "discovery-stratified-v1",
-        "feedback_allocation": "target-focused",
-        "target_capabilities": [target_capability],
-        "proposal_mode": "sparse-parent-patch-v1",
-        "max_patched_capabilities": 1,
-        "protected_capabilities": protected,
         "creator_directives": list(dict.fromkeys(creator_directives)),
-        "required_patch_phrases": ({target_capability: phrases} if phrases else {}),
+        "required_patch_phrases": (
+            {target_capability: phrases}
+            if not fanout and target_capability is not None and phrases
+            else {}
+        ),
     }
+    if fanout:
+        s1_settings.update(
+            {
+                "feedback_allocation": "balanced-six-capability",
+                "target_capabilities": list(S1_SEMANTIC_POLICY_TARGETS),
+                "proposal_mode": "six-capability-fanout-fanin-v2",
+                "max_patched_capabilities": len(S1_SEMANTIC_POLICY_TARGETS),
+                "protected_capabilities": [],
+            }
+        )
+        payload["limits"]["max_creator_calls"] = 8
+    else:
+        assert target_capability is not None
+        s1_settings.update(
+            {
+                "feedback_allocation": "target-focused",
+                "target_capabilities": [target_capability],
+                "proposal_mode": "sparse-parent-patch-v1",
+                "max_patched_capabilities": 1,
+                "protected_capabilities": sorted(
+                    set(CAPABILITIES) - {target_capability}
+                ),
+            }
+        )
+    payload["s1_settings"] = s1_settings
     disclosures = _clean_disclosures(source.disclosures)
     disclosures.extend(
         (
@@ -663,6 +705,13 @@ def build_parser() -> argparse.ArgumentParser:
     r1.add_argument("--creator-directive", action="append", required=True)
     r1.add_argument("--required-patch-phrase", action="append", default=[])
 
+    fanout_r1 = commands.add_parser("freeze-fanout-r1")
+    fanout_r1.add_argument("--bootstrap-spec", type=Path, required=True)
+    fanout_r1.add_argument("--bootstrap-result", type=Path, required=True)
+    fanout_r1.add_argument("--output-spec", type=Path, required=True)
+    fanout_r1.add_argument("--experiment-id", required=True)
+    fanout_r1.add_argument("--creator-directive", action="append", required=True)
+
     export = commands.add_parser("export-feedback")
     export.add_argument("--source-root", type=Path, required=True)
     export.add_argument("--bundle-dir", type=Path, required=True)
@@ -701,6 +750,21 @@ def main(argv: list[str] | None = None) -> int:
                 target_capability=args.target_capability,
                 creator_directives=args.creator_directive,
                 required_patch_phrases=args.required_patch_phrase,
+            )
+            result = {
+                "status": "created",
+                "spec": str(args.output_spec),
+                "experiment_id": spec.experiment_id,
+            }
+        elif args.command == "freeze-fanout-r1":
+            spec = freeze_r1_spec(
+                bootstrap_spec_path=args.bootstrap_spec,
+                bootstrap_result_path=args.bootstrap_result,
+                output_spec_path=args.output_spec,
+                experiment_id=args.experiment_id,
+                target_capability=None,
+                creator_directives=args.creator_directive,
+                fanout=True,
             )
             result = {
                 "status": "created",

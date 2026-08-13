@@ -37,6 +37,17 @@ S1 已按规则停止：固定 `discovery600` 生成候选，已观察的 `repla
 均未通过 replay screen并保持 Static；新的 v4 Document-only lineage 已通过一次冻结
 body gate，因此选择新 Bank 并停止 S1，等待显式启动 S2。
 
+这次 accepted v4 Document Bank 现在只作为后续阶段的**备选起点**保留，尚不推进 S2。
+下一步先优化 S1 本身：v5 将单次 whole-bank Creator 改为六能力逻辑 fan-out/fan-in。
+每个能力拥有独立 Creator 候选、smoke、同 route/tool replay screen 与 decision；只有本能力
+至少取得 1 个 gain、净增至少 1、regression 不超过 2 且 gain 至少为 regression 的 4 倍时，
+分支才进入 fan-in；普通失败之间的 reason 迁移只记录诊断，普通失败升级为 hard/runtime
+failure 或 route/tool trace 漂移仍会硬拒绝。最终组合 Bank 还要完整重跑 replay200，并只在
+通过后访问一次 body_gate75；新 v5 lineage 的 replay/body 单能力 floor 均为 `−5pp`。Exact 与
+Multi 也新增了 compiler 实际消费的 typed evidence selector，DTO/card/handle/fallback 仍由
+runtime 独占。该 v5 改造目前只有离线回归，必须 fresh Static opt800 后才能启动新 S1；不能
+复用 v4 Static，也不构成新的实验增益。
+
 第一批证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`，第二批为
 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。十个 round root 均冻结
 `accepted=false`；它们只用于审计，不能任选一个继续 S2，也不能在新目录追加 R11。

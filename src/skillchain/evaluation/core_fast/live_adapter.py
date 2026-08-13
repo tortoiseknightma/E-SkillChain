@@ -287,6 +287,8 @@ class LiveCoreFastAdapter:
 
     @staticmethod
     def _canonical_config(label: str) -> str:
+        if label.startswith("s1-branch-"):
+            return "s1"
         return {
             "noskill": "noskill",
             "llm_static": "llm_static",

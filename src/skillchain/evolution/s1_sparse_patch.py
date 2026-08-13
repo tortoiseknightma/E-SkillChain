@@ -1141,10 +1141,10 @@ def _validate_patch_contract(
     if capability_id == ENCYCLOPEDIA_CAPABILITY:
         if sequence != ENCYCLOPEDIA_TOOL_SEQUENCE:
             raise S1SparsePatchError("Encyclopedia tool sequence is not fail-closed")
-        if ENCYCLOPEDIA_FALLBACK_MARKER not in patch.fallback_instruction.lower():
-            raise S1SparsePatchError(
-                "Encyclopedia patch lacks the exact fallback evidence marker"
-            )
+        # The deterministic response compiler, not authored prose, owns the
+        # exact fallback marker.  Sparse S1 freezes the parent prose byte for
+        # byte, so requiring a legacy marker here would make an otherwise
+        # valid typed semantic-policy branch impossible to compile.
 
 
 def _semantic_policy_for_patch(

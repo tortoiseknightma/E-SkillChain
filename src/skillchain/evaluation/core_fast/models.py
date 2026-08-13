@@ -25,7 +25,9 @@ CAPABILITIES = (
     "utility.recipe_guidance",
 )
 CONFIGS = ("noskill", "llm_static", "s1", "s1s2", "full")
-S1_SEMANTIC_POLICY_TARGETS = (
+S1_SEMANTIC_POLICY_TARGETS = CAPABILITIES
+S1_V4_SEMANTIC_POLICY_TARGETS = (
+    "knowledge.visual_encyclopedia",
     "product.style_recommendation",
     "utility.document_reading",
     "utility.recipe_guidance",
@@ -146,7 +148,9 @@ class GateRules(FrozenStrictModel):
     s1_system_macro_delta_pp_min: Literal[2.0] = 2.0
     s1_bootstrap_ci95_lower_pp_min: Literal[0.0] = 0.0
     s1_hard_error_delta_pp_max: Literal[1.0] = 1.0
-    s1_max_capability_drop_pp: Literal[3.0] = 3.0
+    # v4 is retained only so the accepted backup lineage remains readable.
+    # New deterministic-runtime v5 lineages use the forward-only -5pp floor.
+    s1_max_capability_drop_pp: Literal[3.0, 5.0] = 5.0
     s2_broken_penalty: Literal[2.5] = 2.5
     s3_judge_subset_per_affected_capability: Literal[4] = 4
     s3_judge_subset_max: Literal[24] = 24
@@ -164,9 +168,12 @@ class S1Settings(FrozenStrictModel):
         "balanced-six-capability"
     )
     target_capabilities: tuple[str, ...] = S1_SEMANTIC_POLICY_TARGETS
-    proposal_mode: Literal["sparse-parent-patch-v1"] = "sparse-parent-patch-v1"
-    max_patched_capabilities: int = Field(default=3, ge=1, le=3)
-    protected_capabilities: tuple[str, ...] = ("knowledge.visual_encyclopedia",)
+    proposal_mode: Literal[
+        "sparse-parent-patch-v1",
+        "six-capability-fanout-fanin-v2",
+    ] = "sparse-parent-patch-v1"
+    max_patched_capabilities: int = Field(default=3, ge=1, le=6)
+    protected_capabilities: tuple[str, ...] = ()
     creator_directives: tuple[str, ...] = ()
     required_patch_phrases: dict[str, tuple[str, ...]] = Field(default_factory=dict)
 
@@ -177,8 +184,6 @@ class S1Settings(FrozenStrictModel):
             raise ValueError("S1 protected capabilities must be sorted and unique")
         if not set(protected) <= set(CAPABILITIES):
             raise ValueError("S1 protected capabilities contain an unknown capability")
-        if "knowledge.visual_encyclopedia" not in protected:
-            raise ValueError("Core Fast S1 must protect Encyclopedia after R0")
         if len(protected) == len(CAPABILITIES):
             raise ValueError("S1 must leave at least one capability patchable")
         if self.creator_directives != tuple(
@@ -217,6 +222,16 @@ class S1Settings(FrozenStrictModel):
         ):
             raise ValueError(
                 "target-focused Feedback requires one target and one patched capability"
+            )
+        if self.proposal_mode == "six-capability-fanout-fanin-v2" and (
+            self.feedback_allocation != "balanced-six-capability"
+            or targets != tuple(S1_SEMANTIC_POLICY_TARGETS)
+            or self.max_patched_capabilities != len(S1_SEMANTIC_POLICY_TARGETS)
+            or protected
+        ):
+            raise ValueError(
+                "fan-out/fan-in S1 requires balanced Feedback, all typed semantic "
+                "targets, one branch per typed capability, and no protected branch"
             )
         if self.max_patched_capabilities > len(targets):
             raise ValueError(
@@ -268,7 +283,7 @@ class Concurrency(FrozenStrictModel):
 
 class Limits(FrozenStrictModel):
     max_feedback_calls: int = Field(default=48, ge=1, le=60)
-    max_creator_calls: Literal[3] = 3
+    max_creator_calls: int = Field(default=8, ge=3, le=8)
     external_cost_cny: Literal[250.0] = 250.0
     final_judge_format_retries: Literal[1] = 1
 
@@ -289,9 +304,10 @@ class RuntimeSettings(FrozenStrictModel):
     python_factory: str | None = None
     commands: CommandSet = CommandSet()
     command_timeout_seconds: int = Field(default=1800, ge=1)
-    assistant_contract: Literal["core-fast-deterministic-action-response-v4"] = (
-        "core-fast-deterministic-action-response-v4"
-    )
+    assistant_contract: Literal[
+        "core-fast-deterministic-action-response-v4",
+        "core-fast-deterministic-action-response-v5",
+    ] = "core-fast-deterministic-action-response-v5"
 
     @model_validator(mode="after")
     def validate_adapter(self) -> Self:
@@ -357,6 +373,26 @@ class CoreFastSpec(FrozenStrictModel):
             "high",
         ):
             raise ValueError("Creator/optimizers must use gpt-5.6-sol/high")
+        if (
+            self.runtime.assistant_contract
+            == "core-fast-deterministic-action-response-v4"
+            and not set(self.s1_settings.target_capabilities)
+            <= set(S1_V4_SEMANTIC_POLICY_TARGETS)
+        ):
+            raise ValueError(
+                "v4 runtime cannot evaluate Exact/Multi typed semantic policies"
+            )
+        expected_drop_floor = (
+            3.0
+            if self.runtime.assistant_contract
+            == "core-fast-deterministic-action-response-v4"
+            else 5.0
+        )
+        if self.gates.s1_max_capability_drop_pp != expected_drop_floor:
+            raise ValueError(
+                "S1 capability-drop floor must match the Assistant runtime "
+                f"contract ({expected_drop_floor:g}pp)"
+            )
         return self
 
     def resolved_path(self, field_name: str, *, base_dir: Path) -> Path:

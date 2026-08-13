@@ -45,9 +45,12 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
     assert bootstrap.s1_settings.feedback_total_count == 48
     assert bootstrap.s1_settings.creator_directives == ()
     assert bootstrap.s1_settings.required_patch_phrases == {}
-    assert bootstrap.s1_settings.protected_capabilities == tuple(
-        sorted(set(lineage.CAPABILITIES) - {"utility.recipe_guidance"})
-    )
+    assert bootstrap.s1_settings.proposal_mode == "six-capability-fanout-fanin-v2"
+    assert bootstrap.s1_settings.target_capabilities == lineage.CAPABILITIES
+    assert bootstrap.s1_settings.max_patched_capabilities == 6
+    assert bootstrap.s1_settings.protected_capabilities == ()
+    assert bootstrap.limits.max_creator_calls == 8
+    assert bootstrap.gates.s1_max_capability_drop_pp == 5.0
     assert Path(bootstrap.paths.queries).is_absolute()
 
     rows = [{"query_id": f"opt-{index:04d}"} for index in range(800)]
@@ -89,6 +92,22 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
         sorted(set(lineage.CAPABILITIES) - {"utility.recipe_guidance"})
     )
     assert r1.s1_settings.required_patch_phrases == {}
+
+    fanout_path = tmp_path / "specs" / "fanout-r1.json"
+    fanout = lineage.freeze_r1_spec(
+        bootstrap_spec_path=bootstrap_spec_path,
+        bootstrap_result_path=bootstrap_result_path,
+        output_spec_path=fanout_path,
+        experiment_id="qwen37-s1-fanout-r1-test",
+        target_capability=None,
+        creator_directives=("Generate one isolated typed policy per branch.",),
+        fanout=True,
+    )
+    assert fanout.s1_settings.proposal_mode == "six-capability-fanout-fanin-v2"
+    assert fanout.s1_settings.target_capabilities == lineage.CAPABILITIES
+    assert fanout.s1_settings.max_patched_capabilities == 6
+    assert fanout.s1_settings.protected_capabilities == ()
+    assert fanout.limits.max_creator_calls == 8
     with pytest.raises(FileExistsError):
         lineage.freeze_r1_spec(
             bootstrap_spec_path=bootstrap_spec_path,

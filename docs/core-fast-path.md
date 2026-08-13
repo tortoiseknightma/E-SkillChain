@@ -47,6 +47,9 @@ Creator 必须逐字复制 parent objective、tool steps、fallback instruction 
 `ocr_extraction_plan=literal-material-spans`，用于从公开 OCR 行选择 literal material span；
 Description 与其余五项 Skill 均冻结。空 policy 或对 Multi/Exact 等无消费面的 patch 会 fail closed。
 
+以上是 accepted v4 lineage 的历史边界；v5 fan-out 已为 Multi/Exact 增加 typed selector，
+但必须在新的 fresh Static lineage 中评估，不能回写或重判 v4。
+
 默认 Static SHA 为
 `fb88a2145b6671de054229117f3b0bd2121d675fa26a6233d8c31471b5987502`，来自独立 create-only
 root `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\static-opt-run`。该 qualification
@@ -70,11 +73,42 @@ S1 Gate 对 sparse treatment 采用能力局部的因果口径：实际 patch ca
 `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\specs\s1-r1-document-literal-span.json`；
 tracked default spec 内容虽已同步，但重新格式化后的文件 SHA 不同，会按预期拒绝旧 root resume。
 
+### 下一版 S1：六能力 fan-out / fan-in（仅机制，未启动）
+
+accepted v4 Document Bank 保持只读，作为显式启动 S2 时的备选 parent；本阶段不继续 S2。
+新的 `core-fast-deterministic-action-response-v5` 把 typed semantic-policy treatment surface
+扩到全部六个 capability，并采用以下逻辑 fan-out/fan-in：
+
+```text
+balanced discovery Feedback
+→ 6 个 capability branch（各自 parent-bound Creator）
+→ 各分支 smoke24（相同固定集合；本能力候选 + 其余五项 byte-exact inherit）
+→ 各分支只在本 capability 的 replay 子集上复用 Static route/tool trace
+→ 独立 screen：gains≥1；gains−regressions≥1；regressions≤2；gains≥4×regressions
+→ failure reason 迁移只记诊断；普通失败→hard/runtime failure 或 trace drift 仍硬拒绝
+→ 只组合通过分支，另外能力 byte-exact inherit
+→ 组合 Bank 重跑完整 replay200
+→ 通过后才访问一次 body_gate75
+→ accepted fan-in Bank 或整体回滚到同一 parent
+```
+
+这里的“并行”是独立的算法分支与证据账本；调度器仍可按共享 provider 并发/限速串并行执行，
+不能让六个分支分别绕过全局容量。Creator 不再输出 whole-bank 自由重写：每次调用只能 patch
+其分支的 typed policy，另外五项必须绑定同一 parent 且保持 byte-exact。fan-in 会复核 branch
+Bank、编译 receipt、screen hash 与 parent identity，拒绝携带其他能力变化的分支。
+
+v5 对 Exact/Multi 新开放的是公开 DTO 上的 evidence-term selector：它可以把不满足语义条件的
+candidate 降为 unresolved/剔除，但不能改变 item coverage、card 字段、handle、工具顺序或
+fallback。空 selector 与 v4 行为等价。由于 runtime contract identity 已变化，新一轮必须使用
+`prepare_core_fast_qwen37_lineage.py bootstrap-spec` 生成 create-only fresh Static opt800，再用
+`freeze-fanout-r1` 绑定 SHA/fixed samples；目前没有 provider 调用，也没有新的 S1 result。
+
 `replay200` 的结果已经在历史 R0 中被观察，因此它只承担 development/过拟合筛查，
-不能再被称为独立验证。其门为 capability-macro GCS delta `≥0pp`、hard-error delta
-`≤+1pp`、每 capability delta `≥−3pp`。`body_gate75` 才是 S1 接受门：macro delta
+不能再被称为独立验证。新 v5 lineage 的门为 capability-macro GCS delta `≥0pp`、hard-error delta
+`≤+1pp`、每 capability delta `≥−5pp`。`body_gate75` 才是 S1 接受门：macro delta
 `≥+2pp`、leakage-component bootstrap 95% CI 下界 `≥0pp`、hard-error delta `≤+1pp`、
-每 capability delta `≥−3pp`。R0 未通过 replay，所以历史上没有访问 body gate。
+每 capability delta `≥−5pp`。已冻结的 R0–R10 与 accepted v4 decision 仍按当时的
+`−3pp`/零回退策略解释，不追溯重判；R0 未通过 replay，所以历史上没有访问 body gate。
 
 ### R0 诊断与 R1 保护
 
@@ -94,10 +128,10 @@ tracked default spec 内容虽已同步，但重新格式化后的文件 SHA 不
   parent Skill SHA，继承项保持 byte-exact。
 - 只把 `[policy_compatible]` suggestion 交给 Creator；`requires_new_evidence` 和
   `rejected` 只留作诊断，不能触发 patch。
-- 所有 Description/objective 冻结，R1 只允许受信编译器规定的 sparse authored fields；
-  最多 patch 3 个 capability。
-- Encyclopedia 是 R1 protected capability，必须继承 parent，不能因其他能力的高频失败
-  再次被顺带改写。
+- 在该历史 R1 中所有 Description/objective 冻结，受信编译器最多允许 3 个 sparse patch；
+  新 fan-out 每个 branch 仍只允许 1 个 patch。
+- Encyclopedia 在该历史 R1 中受保护；新 fan-out 取消 whole-bank 联动，改为 Encyclopedia
+  独立分支、独立筛查，失败只回滚本能力。
 - Creator 输出、Feedback bundle、parent Bank 和 AuthoringInput 都以 SHA 绑定；非法字段、
   工具序列漂移、缺少安全证据或 resume artifact 漂移均拒绝候选。
 

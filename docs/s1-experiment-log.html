@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>deterministic v4 Document semantic-policy S1 已接受；按规则停在 S2 前</span>
+        <span>v4 Document S1 已接受并作为备选起点冻结；当前只推进 v5 fan-out/fan-in 机制</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -557,6 +557,11 @@
             消除冻结 Description 的独立采样噪声，Gate 数值阈值未降低。
           </p>
         </div>
+      </div>
+
+      <div class="callout" style="margin-top: 1rem;">
+        <strong>当前工程状态</strong>
+        v5 已把六能力拆成独立 Creator / smoke24 / target replay screen，并只组合通过分支；Exact/Multi 也拥有 compiler 消费的 typed selector。离线回归通过，但 fresh Static 与新的 S1 尚未运行，因此本页不增加 experiment result，也不把机制完成写成效果提升。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -1280,8 +1285,32 @@
           </div>
           <div>
             <h3>Sparse S1 Gate 使用 treatment-reached observation</h3>
-            <p>仅对实际 patch capability 且 parent/candidate 都路由到该 capability 的行评估 candidate；byte-exact inherit 能力与目标路由不一致行 alias parent。保持 +2pp、CI、hard-error 与 −3pp 数值门不变。</p>
+            <p>仅对实际 patch capability 且 parent/candidate 都路由到该 capability 的行评估 candidate；byte-exact inherit 能力与目标路由不一致行 alias parent。该 v4 decision 保持当时的 +2pp、CI、hard-error 与 −3pp 数值门，后续政策不追溯重判。</p>
             <div class="decision-meta"><span class="tag">证据：v4 R1</span><span class="tag">消除冻结 Description 采样噪声</span><span class="tag">验证：accepted body gate</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-fanout-fanin-s1">
+          <div>
+            <div class="decision-id">DEC-20260813-06</div>
+            <span class="state pending">已实现，待 fresh qualification</span>
+          </div>
+          <div>
+            <h3>六能力 fan-out / 独立筛查 / fan-in</h3>
+            <p>保留 accepted v4 Document Bank 作为后续 S2 备选，不在本阶段推进。S1 v5 不恢复 whole-bank 自由重写，而是为六个能力建立独立 parent-bound Creator、smoke、目标 replay screen 与 decision；fan-in 只组合满足有界风险标准的分支：gains ≥ 1、net gain ≥ 1、regressions ≤ 2、gains ≥ 4 × regressions。普通失败之间的 reason 迁移只记录诊断；普通失败升级为 hard/runtime failure 或 route/tool trace 漂移仍硬拒绝。</p>
+            <div class="decision-meta"><span class="tag">范围：机制实现</span><span class="tag">runtime：v5</span><span class="tag">provider calls：0</span><span class="tag">算法增益：未声明</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-bounded-s1-risk">
+          <div>
+            <div class="decision-id">DEC-20260813-07</div>
+            <span class="state pending">前向策略，待 fresh experiment</span>
+          </div>
+          <div>
+            <h3>S1 局部 screen 改用有界收益 / 风险标准</h3>
+            <p>新 v5 分支不再因普通失败 A→普通失败 B 或任意新 contract reason 自动回滚；这类迁移进入逐 query 诊断。Static success→candidate failure 计 regression，普通失败→hard/runtime failure 计严重度升级并硬拒绝，普通失败→success 计 gain。replay200 与 body_gate75 的每能力净跌幅 floor 同步由 −3pp 放宽到 −5pp。</p>
+            <div class="decision-meta"><span class="tag">生效：v5 fresh lineage</span><span class="tag">历史 R0–R10/v4：不重判</span><span class="tag">provider calls：0</span><span class="tag">效果：待验证</span></div>
           </div>
         </article>
       </div>
@@ -1296,8 +1325,15 @@
 
       <div class="callout">
         <strong>统一停止条件</strong>
-        新 lineage 仍按词典序接受：目标 capability 的 paired hard regression = 0；new hard contract occurrence = 0；
-        target success 净增至少 1。只有 development finalist 通过，才访问一次冻结 body gate；不得用 body/val/test 反向选题。
+        新 v5 lineage 的 capability branch 只有在 gains ≥ 1、net gain ≥ 1、regressions ≤ 2、
+        gains ≥ 4 × regressions，且没有普通失败→hard/runtime failure 或 route/tool trace 漂移时才保留。
+        普通失败 reason 迁移只记录、不自动否决；组合 replay 和 body gate 的单能力 floor 为 −5pp。
+        只有 development finalist 通过，才访问一次冻结 body gate；不得用 body/val/test 反向选题。
+      </div>
+
+      <div class="callout warn" style="margin-top: 1rem;">
+        <strong>当前启动边界</strong>
+        v4 accepted Bank 仅是后续阶段备选起点；v5 fan-out/fan-in 尚未运行。因为 Exact/Multi 的 typed selector 与 contract identity 新增，下一批必须 fresh Static opt800，不能复用 v4 baseline 或把离线回归写成 S1 增益。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">
@@ -1356,7 +1392,7 @@
           <dl class="future-fields">
             <div><dt>前置</dt><dd>tool sequence completion、typed args、fallback marker 和 evidence handle 已由 runtime 保证。</dd></div>
             <div><dt>Patch IR</dt><dd>source span selector + allowed ingredient/preparation claims + unsupported abstention；不修改工具顺序。</dd></div>
-            <div><dt>可证伪预测</dt><dd>source-supported line ratio = 100%，target 净增 ≥1，0 regression / 0 new hard occurrence。</dd></div>
+            <div><dt>可证伪预测</dt><dd>source-supported line ratio = 100%，并满足 v5 有界风险四条件；普通失败不得升级为 hard/runtime failure。</dd></div>
             <div><dt>取消条件</dt><dd>fresh baseline 上没有剩余 semantic cluster，或 compiler 已确定性闭合全部相关 claims。</dd></div>
           </dl>
         </article>
@@ -1489,7 +1525,7 @@
   <footer>
     <div class="wrap">
       <strong>ECommerceSkillChain S1 Experiment Ledger</strong><br>
-      最后更新：2026-08-12 · 本页为可读索引，不替代 canonical experiment artifacts。
+      最后更新：2026-08-13 · 本页为可读索引，不替代 canonical experiment artifacts。
     </div>
   </footer>
 

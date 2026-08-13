@@ -93,7 +93,7 @@ from skillchain.runners.assistant_response_contract import (
     validate_assistant_response_contract,
 )
 from skillchain.runners.assistant_deterministic_contract import (
-    DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+    SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
     DeterministicToolObservation,
     compile_deterministic_response,
     deterministic_tool_names,
@@ -3005,7 +3005,7 @@ class ProductionAssistantRunner:
             for action_call_index in range(1, action_turn_budget + 1):
                 deterministic_contract = (
                     getattr(self, "_deterministic_action_contract_version", None)
-                    == DETERMINISTIC_ASSISTANT_CONTRACT_VERSION
+                    in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
                     and request.config != "noskill"
                     and selected_capability is not None
                 )
@@ -3844,7 +3844,7 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         self._qwen_call_start_waiter = qwen_call_start_waiter
         if deterministic_action_contract_version not in {
             None,
-            DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+            *SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
         }:
             raise ValueError("unknown Core Fast deterministic action contract")
         self._deterministic_action_contract_version = (

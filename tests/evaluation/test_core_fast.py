@@ -14,6 +14,7 @@ from skillchain.evaluation.core_fast.models import (
     AssistantObservation,
     CallIntent,
     CoreFastSpec,
+    S1_SEMANTIC_POLICY_TARGETS,
     S1Settings,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
@@ -119,7 +120,7 @@ def _observation(
     *,
     success: bool = False,
     assistant_model: str = "fake-model",
-    assistant_contract: str = "core-fast-deterministic-action-response-v4",
+    assistant_contract: str = "core-fast-deterministic-action-response-v5",
 ) -> dict[str, object]:
     components = {
         "route_acceptable": True,
@@ -652,6 +653,65 @@ def test_s1_replay_gate_rejects_incomplete_oracle_coverage(
     assert metrics["oracle_coverage_failure_query_ids"] == [failed_id]
 
 
+@pytest.mark.parametrize("phase", ("replay200", "body_gate75"))
+@pytest.mark.parametrize(
+    ("capability_delta_pp", "accepted"),
+    ((-5.0, True), (-5.0001, False)),
+)
+def test_s1_gate_uses_forward_five_point_capability_floor(
+    fast_fixture,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    capability_delta_pp: float,
+    accepted: bool,
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    queries = [query for query in fast_fixture[2] if query.split == "val"][:75]
+    parent_caps = {capability: 0.50 for capability in CAPABILITIES}
+    candidate_caps = dict(parent_caps)
+    candidate_caps["utility.recipe_guidance"] = 0.50 + capability_delta_pp / 100.0
+
+    def summary(*, candidate: bool) -> dict[str, object]:
+        return {
+            "query_count": len(queries),
+            "capability_macro_gcs": 0.50 if not candidate else 0.52,
+            "query_micro_gcs": 0.50 if not candidate else 0.52,
+            "capability_gcs": candidate_caps if candidate else parent_caps,
+            "hard_errors": 0,
+            "card_violations": 0,
+            "evidence_violations": 0,
+            "tool_violations": 0,
+        }
+
+    summaries = iter((summary(candidate=False), summary(candidate=True)))
+    monkeypatch.setattr(engine, "_summary", lambda *_args: next(summaries))
+    if phase == "body_gate75":
+        monkeypatch.setattr(
+            engine,
+            "_paired_component_bootstrap",
+            lambda *_args, **_kwargs: {
+                "component_count": 1,
+                "replicates_requested": 10_000,
+                "replicates_available": 10_000,
+                "ci95_low_pp": 0.0,
+                "ci95_high_pp": 3.0,
+                "derived_seed": 1,
+                "draw_stream_sha256": "0" * 64,
+            },
+        )
+
+    passed, reasons, metrics = engine._s1_gate({}, {}, queries, phase=phase)
+
+    assert passed is accepted
+    assert metrics["capability_delta_pp"]["utility.recipe_guidance"] == pytest.approx(
+        capability_delta_pp
+    )
+    assert ("utility.recipe_guidance declined by more than 5pp" in reasons) is (
+        not accepted
+    )
+
+
 def test_sparse_s1_gate_aliases_untreated_capabilities_to_parent(
     fast_fixture, tmp_path: Path
 ) -> None:
@@ -928,6 +988,325 @@ class _S1ScreenAdapter(FakeCoreFastAdapter):
             )
         output["observation"] = observation
         return result.model_copy(update={"output": output})
+
+
+class _FanoutScreenAdapter(FakeCoreFastAdapter):
+    """Make only one isolated branch improve over the frozen replay rows."""
+
+    def __init__(self, *, gain_query_ids: frozenset[str]) -> None:
+        super().__init__()
+        self.gain_query_ids = gain_query_ids
+
+    def invoke(self, intent: CallIntent):
+        result = super().invoke(intent)
+        if (
+            intent.role != "assistant"
+            or result.status != "success"
+            or not str(intent.payload.get("split", "")).startswith("opt-replay")
+            or not isinstance(result.output, dict)
+            or not isinstance(result.output.get("observation"), dict)
+        ):
+            return result
+        query = intent.payload["query"]
+        assert isinstance(query, dict)
+        success = str(query["query_id"]) in self.gain_query_ids
+        output = dict(result.output)
+        observation = dict(output["observation"])
+        observation.update(
+            {
+                "gcs_components": {
+                    "route_acceptable": True,
+                    "no_hard_error": True,
+                    "tool_contract_pass": True,
+                    "evidence_grounded": success,
+                    "output_contract_pass": success,
+                },
+                "gcs_score": float(success),
+                "gcs_reason_codes": [],
+                "hard_error": False,
+                "answer_mode": "supported" if success else "unresolved",
+                "repair": "none",
+                "card_violation": False,
+                "evidence_violation": not success,
+                "tool_violation": False,
+            }
+        )
+        output["observation"] = observation
+        return result.model_copy(update={"output": output})
+
+
+def test_s1_fanout_screens_capabilities_independently_and_combines_only_passes(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    settings = S1Settings(
+        round_id="r2",
+        feedback_mode="fresh-per-round",
+        feedback_total_count=12,
+        feedback_canary_count=6,
+        feedback_selection_policy="discovery-stratified-v1",
+        feedback_allocation="balanced-six-capability",
+        target_capabilities=S1_SEMANTIC_POLICY_TARGETS,
+        proposal_mode="six-capability-fanout-fanin-v2",
+        max_patched_capabilities=len(S1_SEMANTIC_POLICY_TARGETS),
+        protected_capabilities=(),
+    )
+    run_spec = spec.model_copy(
+        update={
+            "s1_settings": settings,
+            "limits": spec.limits.model_copy(update={"max_creator_calls": 8}),
+        }
+    )
+    replay_queries = tuple(item for item in queries if item.split == "opt_pool")[600:]
+    gain_ids = frozenset(
+        next(
+            query.query_id
+            for query in replay_queries
+            if query.canonical_capability == capability
+        )
+        for capability in (
+            "product.style_recommendation",
+            "utility.document_reading",
+        )
+    )
+    engine = CoreFastEngine(
+        spec=run_spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "fanout",
+        adapter=_FanoutScreenAdapter(gain_query_ids=gain_ids),
+    )
+    engine._feedback_start_pacer.wait = lambda: None
+    engine._s1_gate = lambda *_args, **_kwargs: (  # type: ignore[method-assign]
+        False,
+        ("focused test stops before body gate",),
+        {"focused_test": True},
+    )
+
+    decision = engine.run_s1()
+
+    assert not decision.accepted
+    records = {
+        str(item["capability"]): item for item in decision.metrics["fanout_branches"]
+    }
+    assert set(records) == set(CAPABILITIES)
+    assert records["utility.document_reading"]["status"] == "passed"
+    assert records["utility.document_reading"]["retained"] is True
+    assert records["product.style_recommendation"]["status"] == "passed"
+    assert records["product.style_recommendation"]["retained"] is True
+    for capability in (
+        "knowledge.visual_encyclopedia",
+        "product.exact_match",
+        "product.multi_search",
+        "utility.recipe_guidance",
+    ):
+        assert records[capability]["status"] == "screen_rejected"
+        assert records[capability]["screen"]["reason_codes"] == [
+            "gains_below_minimum",
+            "net_gain_below_minimum",
+        ]
+    assert decision.metrics["retained_patch_capabilities"] == [
+        "product.style_recommendation",
+        "utility.document_reading",
+    ]
+
+    parent = engine.static_bank()
+    combined = StaticBankArtifact.model_validate_json(
+        (engine.output_root / "banks" / "s1-fanin-candidate.json").read_bytes(),
+        strict=True,
+    )
+    parent_by_capability = {
+        item.capability_id: item.model_dump(mode="json") for item in parent.skills
+    }
+    combined_by_capability = {
+        item.capability_id: item.model_dump(mode="json") for item in combined.skills
+    }
+    retained = {"product.style_recommendation", "utility.document_reading"}
+    for capability in retained:
+        assert combined_by_capability[capability] != parent_by_capability[capability]
+    for capability in set(CAPABILITIES) - retained:
+        assert combined_by_capability[capability] == parent_by_capability[capability]
+
+    creator_calls = sorted(
+        (engine.output_root / "calls" / "creator").glob("*.intent.json")
+    )
+    assert len(creator_calls) == 1
+    assert creator_calls[0].name == "s1-creator-fanout.intent.json"
+    assert not (
+        engine.output_root / "calls" / "creator" / "s1-creator-once.intent.json"
+    ).exists()
+
+
+@pytest.mark.parametrize(
+    ("gains", "regressions", "accepted", "reason"),
+    (
+        (1, 0, True, None),
+        (4, 1, True, None),
+        (3, 1, False, "gain_regression_ratio_below_four"),
+        (8, 2, True, None),
+        (12, 3, False, "regressions_exceed_limit"),
+    ),
+)
+def test_s1_fanout_capability_screen_uses_bounded_risk_policy(
+    fast_fixture,
+    tmp_path: Path,
+    gains: int,
+    regressions: int,
+    accepted: bool,
+    reason: str | None,
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    selected = tuple(
+        query
+        for query in _queries()
+        if query.split == "opt_pool"
+        and query.canonical_capability == "product.multi_search"
+    )[-34:]
+    baseline = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=False), strict=True
+        )
+        for query in selected
+    }
+    candidate = dict(baseline)
+    for query in selected[:regressions]:
+        baseline[query.query_id] = AssistantObservation.model_validate(
+            _observation(query, success=True), strict=True
+        )
+    for query in selected[regressions : regressions + gains]:
+        candidate[query.query_id] = AssistantObservation.model_validate(
+            _observation(query, success=True), strict=True
+        )
+
+    screen = engine._s1_capability_screen(
+        capability="product.multi_search",
+        queries=selected,
+        baseline=baseline,
+        candidate=candidate,
+    )
+
+    assert screen["decision"] == ("retain_patch" if accepted else "inherit_parent")
+    assert screen["gain_count"] == gains
+    assert screen["static_success_to_candidate_failure_count"] == regressions
+    assert screen["net_gain"] == gains - regressions
+    if reason is None:
+        assert screen["reason_codes"] == []
+    else:
+        assert reason in screen["reason_codes"]
+
+
+def test_s1_fanout_records_reason_migration_without_rejecting_it(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    selected = tuple(
+        query
+        for query in _queries()
+        if query.split == "opt_pool"
+        and query.canonical_capability == "utility.recipe_guidance"
+    )[-34:]
+    baseline = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=False), strict=True
+        )
+        for query in selected
+    }
+    candidate = dict(baseline)
+    gain_id = selected[0].query_id
+    migration_id = selected[1].query_id
+    candidate[gain_id] = AssistantObservation.model_validate(
+        _observation(selected[0], success=True), strict=True
+    )
+    baseline[migration_id] = baseline[migration_id].model_copy(
+        update={"gcs_reason_codes": ("fallback_contract_failed",)}
+    )
+    candidate[migration_id] = candidate[migration_id].model_copy(
+        update={"gcs_reason_codes": ("tool_contract_failed",)}
+    )
+
+    screen = engine._s1_capability_screen(
+        capability="utility.recipe_guidance",
+        queries=selected,
+        baseline=baseline,
+        candidate=candidate,
+    )
+
+    assert screen["decision"] == "retain_patch"
+    assert screen["reason_codes"] == []
+    assert screen["failure_reason_migration_count"] == 1
+    assert screen["failure_reason_migrations"] == [
+        {
+            "query_id": migration_id,
+            "baseline_reason_codes": ["fallback_contract_failed"],
+            "candidate_reason_codes": ["tool_contract_failed"],
+            "introduced_reason_codes": ["tool_contract_failed"],
+            "resolved_reason_codes": ["fallback_contract_failed"],
+            "severity_escalated": False,
+        }
+    ]
+
+
+def test_s1_fanout_rejects_ordinary_failure_escalating_to_hard_failure(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    selected = tuple(
+        query
+        for query in _queries()
+        if query.split == "opt_pool"
+        and query.canonical_capability == "utility.recipe_guidance"
+    )[-34:]
+    baseline = {
+        query.query_id: AssistantObservation.model_validate(
+            _observation(query, success=False), strict=True
+        )
+        for query in selected
+    }
+    candidate = dict(baseline)
+    candidate[selected[0].query_id] = AssistantObservation.model_validate(
+        _observation(selected[0], success=True), strict=True
+    )
+    escalated_id = selected[1].query_id
+    components = dict(candidate[escalated_id].gcs_components)
+    components["no_hard_error"] = False
+    candidate[escalated_id] = candidate[escalated_id].model_copy(
+        update={
+            "hard_error": True,
+            "gcs_components": components,
+            "gcs_reason_codes": ("assistant_hard_error",),
+        }
+    )
+
+    screen = engine._s1_capability_screen(
+        capability="utility.recipe_guidance",
+        queries=selected,
+        baseline=baseline,
+        candidate=candidate,
+    )
+
+    assert screen["decision"] == "inherit_parent"
+    assert "failure_severity_escalated" in screen["reason_codes"]
+    assert screen["failure_severity_escalation_query_ids"] == [escalated_id]
+
+
+def test_s1_fanout_requires_all_six_typed_branches() -> None:
+    settings = S1Settings(
+        feedback_allocation="balanced-six-capability",
+        target_capabilities=S1_SEMANTIC_POLICY_TARGETS,
+        proposal_mode="six-capability-fanout-fanin-v2",
+        max_patched_capabilities=6,
+        protected_capabilities=(),
+    )
+    assert settings.target_capabilities == CAPABILITIES
+    with pytest.raises(ValueError, match="fan-out/fan-in S1 requires"):
+        S1Settings(
+            feedback_allocation="balanced-six-capability",
+            target_capabilities=tuple(
+                item for item in CAPABILITIES if item != "product.exact_match"
+            ),
+            proposal_mode="six-capability-fanout-fanin-v2",
+            max_patched_capabilities=5,
+            protected_capabilities=("product.exact_match",),
+        )
 
 
 def test_creator_projection_keeps_only_policy_compatible_feedback(
@@ -1433,6 +1812,14 @@ def test_accepted_three_stage_path_enforces_common_trace(
 ) -> None:
     adapter = FakeCoreFastAdapter()
     engine = _engine(fast_fixture, tmp_path, adapter)
+    engine._s1_gate = lambda *_args, **_kwargs: (  # type: ignore[method-assign]
+        True,
+        (),
+        {
+            "common_trace_violation_query_ids": [],
+            "paired_component_bootstrap": {"ci95_low_pp": 0.0},
+        },
+    )
     engine.run(through="full")
     assert engine._existing_decision("s1").accepted  # type: ignore[union-attr]
     assert engine._existing_decision("s2").accepted  # type: ignore[union-attr]

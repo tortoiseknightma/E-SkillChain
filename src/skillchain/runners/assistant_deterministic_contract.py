@@ -19,7 +19,11 @@ from skillchain.tools.contracts import JSONValue, validate_json_value
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
 
-DETERMINISTIC_ASSISTANT_CONTRACT_VERSION = "core-fast-deterministic-action-response-v4"
+DETERMINISTIC_ASSISTANT_CONTRACT_VERSION = "core-fast-deterministic-action-response-v5"
+SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS = (
+    "core-fast-deterministic-action-response-v4",
+    DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
+)
 DETERMINISTIC_SEMANTIC_POLICY_VERSION = "core-fast-semantic-policy-v2"
 
 SEMANTIC_POLICY_BEGIN = "<!-- skillchain-semantic-policy-v2"
@@ -36,6 +40,8 @@ CapabilityId = Literal[
 
 SEMANTIC_POLICY_CAPABILITIES: tuple[CapabilityId, ...] = (
     "knowledge.visual_encyclopedia",
+    "product.exact_match",
+    "product.multi_search",
     "product.style_recommendation",
     "utility.document_reading",
     "utility.recipe_guidance",
@@ -188,6 +194,7 @@ def deterministic_contract_payload() -> dict[str, JSONValue]:
         "response_owner": "deterministic_public_dto_compiler",
         "semantic_policy_owner": "s1_typed_bank_surface",
         "semantic_policy_version": DETERMINISTIC_SEMANTIC_POLICY_VERSION,
+        "semantic_policy_capabilities": list(SEMANTIC_POLICY_CAPABILITIES),
         "private_or_scorer_inputs": "forbidden",
         "contracts": {
             "knowledge.visual_encyclopedia": {
@@ -357,12 +364,23 @@ def _candidate_card(candidate: Mapping[str, object]) -> str | None:
     return f"{evidence} | {product} | {title}"
 
 
-def _compile_product(output: Mapping[str, object] | None) -> str:
+def _compile_product(
+    output: Mapping[str, object] | None,
+    policy: DeterministicSemanticPolicy,
+) -> str:
     candidates = _sequence(None if output is None else output.get("candidates"))
     cards = [
         rendered
         for item in candidates
         if isinstance(item, Mapping)
+        if _policy_matches(
+            " ".join(
+                value
+                for key in ("title", "product_id")
+                if (value := _text(item.get(key))) is not None
+            ),
+            policy,
+        )
         if (rendered := _candidate_card(item)) is not None
     ]
     if not cards:
@@ -378,7 +396,10 @@ def _compile_product(output: Mapping[str, object] | None) -> str:
     )
 
 
-def _compile_multi(output: Mapping[str, object] | None) -> str:
+def _compile_multi(
+    output: Mapping[str, object] | None,
+    policy: DeterministicSemanticPolicy,
+) -> str:
     raw_items = _sequence(None if output is None else output.get("items"))
     mapping_lines: list[str] = []
     cards_by_ordinal: dict[int, str] = {}
@@ -392,10 +413,18 @@ def _compile_multi(output: Mapping[str, object] | None) -> str:
         ordinal = raw.get("candidate_ordinal")
         if item_ref is None or status not in {"matched", "unresolved"}:
             continue
-        line = f"{item_ref} | {label} | {status}"
-        if status == "matched" and isinstance(ordinal, int) and ordinal > 0:
+        candidate = raw.get("candidate")
+        candidate_title = (
+            _text(candidate.get("title")) if isinstance(candidate, Mapping) else None
+        )
+        selected = status == "matched" and _policy_matches(
+            " ".join(value for value in (label, candidate_title) if value is not None),
+            policy,
+        )
+        rendered_status = "matched" if selected else "unresolved"
+        line = f"{item_ref} | {label} | {rendered_status}"
+        if selected and isinstance(ordinal, int) and ordinal > 0:
             line += f" | candidate-{ordinal}"
-            candidate = raw.get("candidate")
             if isinstance(candidate, Mapping):
                 rendered = _candidate_card(candidate)
                 if rendered is not None:
@@ -571,9 +600,9 @@ def compile_deterministic_response(
     ) and capability_id not in SEMANTIC_POLICY_CAPABILITIES:
         raise ValueError("routed capability does not consume a semantic policy")
     if capability_id == "product.exact_match":
-        return _compile_product(_output(observations, "image_product_search"))
+        return _compile_product(_output(observations, "image_product_search"), policy)
     if capability_id == "product.multi_search":
-        return _compile_multi(_output(observations, "multi_product_search"))
+        return _compile_multi(_output(observations, "multi_product_search"), policy)
     if capability_id == "product.style_recommendation":
         return _compile_style(_output(observations, "style_similar_search"), policy)
     if capability_id == "utility.document_reading":
@@ -600,6 +629,7 @@ __all__ = [
     "DETERMINISTIC_ASSISTANT_CONTRACT_VERSION",
     "DETERMINISTIC_SEMANTIC_POLICY_VERSION",
     "SEMANTIC_POLICY_CAPABILITIES",
+    "SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS",
     "DeterministicSemanticPolicy",
     "DeterministicToolDecision",
     "DeterministicToolObservation",
