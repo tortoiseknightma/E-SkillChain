@@ -638,6 +638,21 @@ def parse_visual_feedback_output_v4(text: str) -> VisualFeedbackOutput:
                 raise EvaluatorOutputParseError(
                     "Feedback note annotations must be absent, null, or blank"
                 )
+    # Strict-schema Qwen3.8 has returned JSON string spellings for this one
+    # boolean leaf. The mapping is lossless and closed; no free text, labels,
+    # evidence, severity, or suggestion content is changed.
+    for collection_name in ("rule_violations", "ideal_response_gaps"):
+        collection = decoded.get(collection_name)
+        if type(collection) is not list:
+            continue
+        for finding in collection:
+            if type(finding) is not dict:
+                continue
+            grounded = finding.get("grounded_in_image")
+            if grounded == "true":
+                finding["grounded_in_image"] = True
+            elif grounded == "false":
+                finding["grounded_in_image"] = False
     normalized = _trim_visual_feedback_free_text_v3(decoded)
     try:
         return VisualFeedbackOutput.model_validate_json(

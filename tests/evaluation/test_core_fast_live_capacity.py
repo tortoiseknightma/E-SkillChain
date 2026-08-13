@@ -320,6 +320,33 @@ def test_feedback_parser_accepts_only_empty_top_level_note_annotations() -> None
         parse_visual_feedback_output_v4(json.dumps(payload))
 
 
+def test_feedback_parser_normalizes_only_exact_boolean_string_leaves() -> None:
+    from skillchain.evaluation.evaluator_outputs import (
+        EvaluatorOutputParseError,
+        parse_visual_feedback_output_v4,
+    )
+
+    finding = {
+        "dimension": "CQ",
+        "severity": "low",
+        "grounded_in_image": "true",
+        "description": "bounded observation",
+        "evidence": ["visible evidence"],
+    }
+    payload = {
+        "schema_version": 1,
+        "summary": "grounded summary",
+        "rule_violations": [finding],
+        "ideal_response_gaps": [],
+        "skill_suggestions": ["[policy_compatible] keep the typed policy bounded"],
+    }
+    parsed = parse_visual_feedback_output_v4(json.dumps(payload))
+    assert parsed.rule_violations[0].grounded_in_image is True
+    finding["grounded_in_image"] = "yes"
+    with pytest.raises(EvaluatorOutputParseError):
+        parse_visual_feedback_output_v4(json.dumps(payload))
+
+
 def _query() -> Query:
     return Query(
         schema_version=2,
