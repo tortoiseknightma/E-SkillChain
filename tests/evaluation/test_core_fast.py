@@ -1129,8 +1129,11 @@ def test_s1_fanout_screens_capabilities_independently_and_combines_only_passes(
     creator_calls = sorted(
         (engine.output_root / "calls" / "creator").glob("*.intent.json")
     )
-    assert len(creator_calls) == 1
-    assert creator_calls[0].name == "s1-creator-fanout.intent.json"
+    assert len(creator_calls) == 6
+    assert {item.name for item in creator_calls} == {
+        f"s1-creator-{capability}.intent.json" for capability in CAPABILITIES
+    }
+    assert decision.metrics["fanout_creator_call_count"] == 6
     assert not (
         engine.output_root / "calls" / "creator" / "s1-creator-once.intent.json"
     ).exists()

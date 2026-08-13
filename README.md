@@ -38,7 +38,7 @@ S1 已按规则停止：固定 `discovery600` 生成候选，已观察的 `repla
 body gate，因此选择新 Bank 并停止 S1，等待显式启动 S2。
 
 这次 accepted v4 Document Bank 现在只作为后续阶段的**备选起点**保留，尚不推进 S2。
-下一步先优化 S1 本身：v5 将单次 whole-bank Creator 改为六能力逻辑 fan-out/fan-in。
+下一步先优化 S1 本身：v5 将单次 whole-bank Creator 改为六个独立能力 Creator 会话的 fan-out/fan-in；每个分支只可改自己的 typed semantic policy，独立筛查后才组合。
 每个能力拥有独立 Creator 候选、smoke、同 route/tool replay screen 与 decision；只有本能力
 至少取得 1 个 gain、净增至少 1、regression 不超过 2 且 gain 至少为 regression 的 4 倍时，
 分支才进入 fan-in；普通失败之间的 reason 迁移只记录诊断，普通失败升级为 hard/runtime

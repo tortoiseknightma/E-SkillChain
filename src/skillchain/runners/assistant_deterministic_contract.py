@@ -61,6 +61,83 @@ class DeterministicToolDecision:
     arguments: dict[str, JSONValue]
 
 
+def observation_from_public_scorer_payload(
+    *,
+    tool_name: str,
+    payload_kind: str,
+    payload: Mapping[str, object],
+) -> DeterministicToolObservation:
+    """Rebuild the compiler-visible DTO from one public GCS projection.
+
+    Common-trace S1 replay deliberately reuses the parent's exact public tool
+    evidence.  This adapter never reads private runtime output or query labels;
+    it only reverses the small representational difference between the public
+    scorer DTO and the DTO consumed by the deterministic compiler.
+    """
+
+    public_output: dict[str, object]
+    if payload_kind == "product_candidates_v1":
+        public_output = {
+            "result_kind": "product_candidates",
+            "candidates": list(_sequence(payload.get("candidates"))),
+        }
+    elif payload_kind == "multi_mapping_v1":
+        candidates = {
+            item.get("candidate_ordinal"): item
+            for item in _sequence(payload.get("candidates"))
+            if isinstance(item, Mapping)
+            and isinstance(item.get("candidate_ordinal"), int)
+        }
+        items: list[dict[str, object]] = []
+        for item in _sequence(payload.get("items")):
+            if not isinstance(item, Mapping):
+                continue
+            copied = dict(item)
+            ordinal = copied.get("candidate_ordinal")
+            copied["candidate"] = (
+                dict(candidates[ordinal]) if ordinal in candidates else None
+            )
+            items.append(copied)
+        public_output = {
+            "result_kind": "multi_product_candidates",
+            "items": items,
+        }
+    elif payload_kind == "style_candidates_v2":
+        support_status = payload.get("support_status")
+        public_output = {
+            "result_kind": "style_candidates",
+            "support_status": (
+                "supported" if support_status == "candidates" else "unsupported"
+            ),
+            "candidates": list(_sequence(payload.get("candidates"))),
+        }
+        if payload.get("style_submode") is not None:
+            public_output["style_submode"] = payload["style_submode"]
+    elif payload_kind == "knowledge_sources_v1":
+        public_output = {
+            "result_kind": "knowledge_sources",
+            "sources": list(_sequence(payload.get("sources"))),
+        }
+    elif payload_kind == "ocr_lines_v1":
+        public_output = {
+            "result_kind": "ocr_lines",
+            "lines": list(_sequence(payload.get("lines"))),
+        }
+    elif payload_kind == "detections_v1":
+        public_output = {
+            "result_kind": "detections",
+            "detections": list(_sequence(payload.get("detections"))),
+        }
+    else:
+        raise ValueError("unsupported public scorer payload for deterministic replay")
+    validate_json_value(public_output)
+    return DeterministicToolObservation(
+        tool_name=tool_name,
+        status="success",
+        public_output=public_output,
+    )
+
+
 @dataclass(frozen=True)
 class DeterministicSemanticPolicy:
     """The only S1-authored surface consumed by the deterministic compiler.
@@ -637,6 +714,7 @@ __all__ = [
     "deterministic_contract_payload",
     "deterministic_tool_names",
     "next_deterministic_tool",
+    "observation_from_public_scorer_payload",
     "parse_deterministic_semantic_policy",
     "render_deterministic_semantic_policy",
 ]

@@ -2432,54 +2432,7 @@ class CoreFastEngine:
             if capability in settings.target_capabilities
             and capability in patchable_capabilities
         )
-        creator: CallResult | None = None
-        creator_master: StaticBankArtifact | None = None
-        if creator_targets:
-            requirements = {
-                **base_requirements,
-                "target_capabilities": list(creator_targets),
-                "fanout_capabilities_may_patch_or_inherit": list(creator_targets),
-                "max_patched_capabilities": len(creator_targets),
-                "one_typed_policy_patch_per_capability_branch": True,
-                "each_capability_is_an_independent_branch": True,
-                "cross_capability_tradeoffs_are_forbidden": True,
-                "required_patch_phrases": {
-                    capability: list(
-                        settings.required_patch_phrases.get(capability, ())
-                    )
-                    for capability in creator_targets
-                },
-            }
-            creator = self._call(
-                role="creator",
-                call_id="s1-creator-fanout",
-                purpose="S1 six-capability typed-policy fan-out Creator",
-                payload=self._fanout_creator_payload(
-                    capabilities=creator_targets,
-                    parent=parent,
-                    templates=templates,
-                    feedback_bundle=feedback_bundle,
-                    feedback_bundle_sha256=feedback_bundle_sha256,
-                    requirements=requirements,
-                    output_schema=self._creator_schema(
-                        "s1",
-                        parent=parent,
-                        s1_patch_capabilities=creator_targets,
-                    ),
-                ),
-            )
-            try:
-                creator_master = self._candidate_bank(
-                    creator,
-                    stage="s1",
-                    parent=parent,
-                    feedback_bundle_sha256=feedback_bundle_sha256,
-                    feedback_patchable_capabilities=frozenset(creator_targets),
-                    s1_artifact_prefix="s1-fanout-master",
-                )
-            except _S1CandidateRejected:
-                creator_master = None
-        metrics["fanout_creator_call_count"] = int(creator is not None)
+        creator_call_count = 0
         metrics["fanout_creator_targets"] = list(creator_targets)
 
         for capability in CAPABILITIES:
@@ -2513,69 +2466,43 @@ class CoreFastEngine:
                 )
                 continue
 
-            record["creator_called"] = creator is not None
-            record["creator_call_id"] = None if creator is None else creator.call_id
-            record["creator_input_tokens"] = (
-                0 if creator is None else creator.input_tokens
-            )
-            if creator_master is None or creator is None or creator.output is None:
-                record["status"] = "candidate_rejected"
-                record["reason"] = "fanout_creator_candidate_invalid"
-                branch_records.append(record)
-                self._write_canonical_resume_artifact(
-                    self.output_root / "banks" / f"{prefix}-decision.json",
-                    record,
-                    label=f"S1 fan-out {capability} decision",
-                )
-                continue
-            raw_skills = creator.output.get("skills")
-            if not isinstance(raw_skills, list):
-                raise FastPathError("S1 fan-out Creator output lacks Skill branches")
-            parent_by_capability = _bank_by_capability(parent)
-            raw_by_capability = {
-                str(item["capability_id"]): item
-                for item in raw_skills
-                if isinstance(item, dict) and isinstance(item.get("capability_id"), str)
-            }
-            target_raw = raw_by_capability.get(capability)
-            if not isinstance(target_raw, dict) or target_raw.get("action") != "patch":
-                record["status"] = "creator_inherit"
-                record["reason"] = "creator_selected_inherit"
-                branch_records.append(record)
-                self._write_canonical_resume_artifact(
-                    self.output_root / "banks" / f"{prefix}-decision.json",
-                    record,
-                    label=f"S1 fan-out {capability} decision",
-                )
-                continue
-            projected_skills = []
-            for item in raw_skills:
-                if not isinstance(item, dict) or not isinstance(
-                    item.get("capability_id"), str
-                ):
-                    raise FastPathError("S1 fan-out Creator branch is malformed")
-                item_capability = str(item["capability_id"])
-                if item_capability == capability:
-                    projected_skills.append(item)
-                else:
-                    projected_skills.append(
-                        {
-                            "capability_id": item_capability,
-                            "action": "inherit",
-                            "parent_skill_sha256": parent_by_capability[
-                                item_capability
-                            ].skill_sha256,
-                        }
+            requirements = {
+                **base_requirements,
+                "target_capabilities": [capability],
+                "branch_capability_must_patch": capability,
+                "each_capability_is_an_independent_creator_session": True,
+                "cross_capability_tradeoffs_are_forbidden": True,
+                "required_patch_phrases": {
+                    capability: list(
+                        settings.required_patch_phrases.get(capability, ())
                     )
-            branch_result = creator.model_copy(
-                update={
-                    "call_id": f"{creator.call_id}:{branch_id}",
-                    "output": {"schema_version": 1, "skills": projected_skills},
-                }
+                },
+            }
+            creator = self._call(
+                role="creator",
+                call_id=f"s1-creator-{branch_id}",
+                purpose=f"S1 isolated typed-policy Creator for {capability}",
+                payload=self._fanout_creator_payload(
+                    capabilities=(capability,),
+                    parent=parent,
+                    templates=templates,
+                    feedback_bundle=feedback_bundle,
+                    feedback_bundle_sha256=feedback_bundle_sha256,
+                    requirements=requirements,
+                    output_schema=self._creator_schema(
+                        "s1",
+                        parent=parent,
+                        s1_patch_capabilities=(capability,),
+                    ),
+                ),
             )
+            creator_call_count += 1
+            record["creator_called"] = True
+            record["creator_call_id"] = creator.call_id
+            record["creator_input_tokens"] = creator.input_tokens
             try:
                 branch = self._candidate_bank(
-                    branch_result,
+                    creator,
                     stage="s1",
                     parent=parent,
                     feedback_bundle_sha256=feedback_bundle_sha256,
@@ -2696,6 +2623,7 @@ class CoreFastEngine:
                 label=f"S1 fan-out {capability} decision",
             )
 
+        metrics["fanout_creator_call_count"] = creator_call_count
         metrics["fanout_branches"] = branch_records
         retained = tuple(sorted(item[0] for item in passed))
         metrics["retained_patch_capabilities"] = list(retained)

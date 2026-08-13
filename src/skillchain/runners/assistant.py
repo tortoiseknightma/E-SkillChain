@@ -98,6 +98,7 @@ from skillchain.runners.assistant_deterministic_contract import (
     compile_deterministic_response,
     deterministic_tool_names,
     next_deterministic_tool,
+    observation_from_public_scorer_payload,
     parse_deterministic_semantic_policy,
 )
 
@@ -4029,6 +4030,194 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
             "outcome": "success",
             "response_sha256": sha256_bytes(
                 canonical_json_bytes(response_model.model_dump(mode="json"))
+            ),
+        }
+        receipt_payload = {
+            key: (
+                value.model_dump(mode="json")
+                if isinstance(value, BaseModel)
+                else [
+                    item.model_dump(mode="json")
+                    if isinstance(item, BaseModel)
+                    else item
+                    for item in value
+                ]
+                if isinstance(value, tuple)
+                else value
+            )
+            for key, value in unsigned_receipt.items()
+        }
+        receipt = AssistantExecutionReceipt.model_validate(
+            {
+                **unsigned_receipt,
+                "receipt_sha256": sha256_bytes(canonical_json_bytes(receipt_payload)),
+            },
+            strict=True,
+        )
+        return _issue_runner_owned_assistant_execution(
+            response_model,
+            receipt,
+            scorer_calls=parent_scorer_calls,
+            scorer_capture_policy_version=GCS_SCORER_EVIDENCE_V2_POLICY_VERSION,
+        )
+
+    def execute_deterministic_body_replay(
+        self,
+        request: AssistantRequestSnapshot,
+        *,
+        parent_response: AssistantBackendResponse,
+        parent_receipt: AssistantExecutionReceipt,
+        parent_scorer_calls: tuple[PublicScorerCallEvidenceV2, ...],
+        scorer_query: Query,
+    ) -> RunnerOwnedAssistantExecution:
+        """Recompile one candidate policy over an exact parent route/tool trace."""
+
+        if (
+            self._deterministic_action_contract_version
+            not in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
+            or request.config == "noskill"
+        ):
+            raise AssistantBackendContractError(
+                "deterministic Body replay requires an active routed contract"
+            )
+        if scorer_query.query_id != request.query.query_id:
+            raise AssistantBackendContractError(
+                "deterministic Body replay query binding differs"
+            )
+        if (
+            parent_response.error_code is not None
+            or parent_response.selected_capability is None
+            or parent_response.skill_slug is None
+            or parent_response.route_trace_sha256 is None
+            or parent_receipt.outcome != "success"
+            or parent_receipt.tool_trace != parent_response.tool_trace
+            or parent_receipt.route_attempt is None
+            or parent_receipt.route_attempt.status != "selected"
+        ):
+            raise AssistantBackendContractError(
+                "deterministic Body replay requires one successful routed parent"
+            )
+        successful_parent = tuple(
+            (
+                item.call_index,
+                item.tool_name,
+                item.arguments_sha256,
+                item.result_sha256,
+            )
+            for item in parent_response.tool_trace
+            if item.status == "success"
+        )
+        scorer_parent = tuple(
+            (
+                item.call_index,
+                item.tool_name,
+                item.arguments_sha256,
+                item.result_sha256,
+            )
+            for item in parent_scorer_calls
+        )
+        if successful_parent != scorer_parent:
+            raise AssistantBackendContractError(
+                "deterministic Body replay scorer calls differ from parent tool trace"
+            )
+        bank = self._validate_prompt_and_bank(request)
+        assert bank is not None
+        selected = next(
+            (
+                item
+                for item in bank.skills
+                if item.capability_id == parent_response.selected_capability
+            ),
+            None,
+        )
+        if selected is None or selected.slug != parent_response.skill_slug:
+            raise AssistantBackendContractError(
+                "deterministic Body replay candidate changed selected Skill identity"
+            )
+        observations = tuple(
+            observation_from_public_scorer_payload(
+                tool_name=item.tool_name,
+                payload_kind=item.payload_kind,
+                payload=item.payload,
+            )
+            for item in parent_scorer_calls
+        )
+        response_text = compile_deterministic_response(
+            parent_response.selected_capability,
+            observations,
+            semantic_policy=parse_deterministic_semantic_policy(
+                selected.body,
+                capability_id=parent_response.selected_capability,
+            ),
+        )
+        if response_text is None:
+            raise AssistantBackendContractError(
+                "deterministic Body replay parent trace is not terminal"
+            )
+        contract_observations = tuple(
+            AssistantResponseToolObservation(
+                tool_name=item.tool_name,
+                status=item.status,
+                public_output=item.public_output,
+            )
+            for item in observations
+        )
+        validation = validate_assistant_response_contract(
+            response_text,
+            observations=contract_observations,
+            selected_capability=parent_response.selected_capability,
+            contract=_gcs_v2_model_response_contract_for_capability(
+                parent_response.selected_capability
+            ),
+        )
+        if not validation.valid:
+            raise AssistantBackendContractError(
+                "deterministic Body replay compiled an invalid response"
+            )
+        response_model = AssistantBackendResponse(
+            request_sha256=request.request_sha256,
+            backbone_provider=request.backbone.provider,
+            backbone_model=request.backbone.model,
+            backbone_endpoint=request.backbone.endpoint,
+            backbone_identity_sha256=request.backbone.identity_sha256,
+            registry_sha256=request.registry.registry_sha256,
+            registry_runtime_sha256=request.registry.registry_runtime_sha256,
+            budget_sha256=request.budget.budget_sha256,
+            response_text=response_text,
+            visible_cards=parent_response.visible_cards,
+            visible_tool_evidence=parent_response.visible_tool_evidence,
+            tool_trace=parent_response.tool_trace,
+            selected_capability=parent_response.selected_capability,
+            skill_slug=parent_response.skill_slug,
+            route_trace_sha256=parent_response.route_trace_sha256,
+            usage=LLMUsage(input_tokens=0, output_tokens=0),
+            turn_count=1,
+            latency_ms=0,
+        )
+        route_attempt = make_assistant_route_attempt(
+            status="selected",
+            selected_capability=parent_response.selected_capability,
+            skill_slug=parent_response.skill_slug,
+            route_trace_sha256=parent_response.route_trace_sha256,
+        )
+        unsigned_receipt = {
+            "schema_version": 1,
+            "policy_version": ASSISTANT_EXECUTION_RECEIPT_POLICY_VERSION,
+            "request_sha256": request.request_sha256,
+            "asset_catalog_sha256": parent_receipt.asset_catalog_sha256,
+            "query_asset_id": parent_receipt.query_asset_id,
+            "query_asset_sha256": parent_receipt.query_asset_sha256,
+            "model_calls": (),
+            "tool_trace": parent_response.tool_trace,
+            "route_attempt": route_attempt,
+            "aggregate_usage": LLMUsage(input_tokens=0, output_tokens=0),
+            "runner_latency_ms": 0,
+            "outcome": "success",
+            "response_sha256": sha256_bytes(
+                canonical_json_bytes(response_model.model_dump(mode="json"))
+            ),
+            "deterministic_replay_source_receipt_sha256": (
+                parent_receipt.receipt_sha256
             ),
         }
         receipt_payload = {

@@ -1799,6 +1799,10 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    deterministic_replay_source_receipt_sha256: Sha256 | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     aggregate_usage: LLMUsage
     runner_latency_ms: int = Field(ge=0)
     outcome: Literal["success", "timeout", "runtime_error"]
@@ -1821,6 +1825,8 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             payload.pop("route_call_evidence", None)
         if self.response_contract_repair is None:
             payload.pop("response_contract_repair", None)
+        if self.deterministic_replay_source_receipt_sha256 is None:
+            payload.pop("deterministic_replay_source_receipt_sha256", None)
         return payload
 
     @model_validator(mode="after")
@@ -1834,7 +1840,14 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             output_tokens=sum(item.output_tokens for item in self.model_calls),
         ):
             raise ValueError("runner aggregate usage differs from model-call receipts")
-        if self.outcome == "success" and not self.model_calls:
+        deterministic_replay = (
+            self.deterministic_replay_source_receipt_sha256 is not None
+        )
+        if (
+            self.outcome == "success"
+            and not self.model_calls
+            and not deterministic_replay
+        ):
             raise ValueError("successful runner receipt requires a real model call")
         asset_identity = (
             self.asset_catalog_sha256,
@@ -1848,8 +1861,18 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
         ):
             raise ValueError("runner asset provenance must be complete or absent")
         if self.route_attempt is not None and self.route_attempt.status == "selected":
-            if not self.model_calls:
+            if not self.model_calls and not deterministic_replay:
                 raise ValueError("selected route attempt requires a model-call receipt")
+        if deterministic_replay and (
+            self.outcome != "success"
+            or self.model_calls
+            or self.aggregate_usage != LLMUsage(input_tokens=0, output_tokens=0)
+            or self.route_attempt is None
+            or self.route_attempt.status != "selected"
+        ):
+            raise ValueError(
+                "deterministic replay must be a zero-call successful selected route"
+            )
         route_evidence = self.route_call_evidence
         if route_evidence is not None:
             if (

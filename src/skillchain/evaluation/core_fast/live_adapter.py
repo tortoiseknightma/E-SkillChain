@@ -65,6 +65,9 @@ from skillchain.runners.assistant import (
     CoreFastAssistantRunner,
     require_core_fast_assistant_runner,
 )
+from skillchain.runners.assistant_deterministic_contract import (
+    SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
+)
 from skillchain.schemas import Query
 from skillchain.static_authoring import StaticBankArtifact
 from skillchain.task_spec import load_mvp_task_specification_v1
@@ -511,13 +514,25 @@ class LiveCoreFastAdapter:
                 )
                 for item in context["scorer_calls"]
             )
-            execution = runner.execute_body_replay(
-                request,
-                parent_response=parent_response,
-                parent_receipt=parent_receipt,
-                parent_scorer_calls=scorer_calls,
-                scorer_query=query,
-            )
+            if (
+                self.spec.runtime.assistant_contract
+                in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
+            ):
+                execution = runner.execute_deterministic_body_replay(
+                    request,
+                    parent_response=parent_response,
+                    parent_receipt=parent_receipt,
+                    parent_scorer_calls=scorer_calls,
+                    scorer_query=query,
+                )
+            else:
+                execution = runner.execute_body_replay(
+                    request,
+                    parent_response=parent_response,
+                    parent_receipt=parent_receipt,
+                    parent_scorer_calls=scorer_calls,
+                    scorer_query=query,
+                )
         else:
             execution = runner.execute(request, scorer_query=query)
         result, score = self._assistant_result(

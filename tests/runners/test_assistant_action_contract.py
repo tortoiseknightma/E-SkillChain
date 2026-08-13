@@ -29,6 +29,7 @@ from skillchain.evaluation.portfolio_execution import (
     load_portfolio_budget_ledger,
 )
 from skillchain.evaluation.portfolio_gcs_evidence import (
+    PublicScorerCallEvidenceV2,
     PublicScorerEvidenceIntegrityError,
 )
 from skillchain.evolution.s1_gcs_gate import (
@@ -52,6 +53,10 @@ from skillchain.runners.assistant import (
     assistant_router_contract_payload,
     evolution_bank_boundary_violations,
     noskill_execution_contract_payload,
+)
+from skillchain.runners.assistant_deterministic_contract import (
+    DeterministicSemanticPolicy,
+    render_deterministic_semantic_policy,
 )
 from skillchain.schemas import ConversationTurn, LabelDecision, Query
 from skillchain.tools.registry import ToolInvocationResult
@@ -481,6 +486,152 @@ def test_core_fast_deterministic_contract_owns_tool_and_response(
         "product_cards:\ntool-call-1-evidence-1 | "
         "tool-call-1-product-1 | Deterministic shoe\n"
         "uncertainty:\nOnly the returned public candidate evidence is shown."
+    )
+
+
+def test_core_fast_deterministic_replay_reuses_trace_and_consumes_candidate_policy(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="core-fast-deterministic-replay")
+    parent_skill = _Skill(
+        slug="exact-contract-skill",
+        capability_id="product.exact_match",
+        description="Find the exact visible product.",
+        body="# Objective\n\nFind the exact product with image search.",
+        operators=("image_product_search",),
+    )
+    candidate_skill = _Skill(
+        **{
+            **parent_skill.__dict__,
+            "body": parent_skill.body
+            + "\n"
+            + render_deterministic_semantic_policy(
+                DeterministicSemanticPolicy(
+                    capability_id="product.exact_match",
+                    evidence_terms=("bag",),
+                )
+            ),
+        }
+    )
+    parent_bank = _one_skill_bank(parent_skill, "e")
+    candidate_bank = _one_skill_bank(candidate_skill, "f")
+    query_id = "deterministic-replay-query"
+    scorer_query = _query_for_catalog(fixture.asset_catalog, query_id=query_id)
+    parent_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="llm_static",
+        bank_sha256=parent_bank.bank_sha256,
+        query_id=query_id,
+    )
+    candidate_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=candidate_bank.bank_sha256,
+        query_id=query_id,
+    )
+    model_calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        model_calls.append((provider, messages, kwargs))
+        return _route_response(
+            request_id="deterministic-replay-parent-route",
+            selected_capability="product.exact_match",
+            output_tokens=8,
+        )
+
+    def fake_invoke(_registry, name, arguments, _context):
+        output = {
+            "hits": [
+                {
+                    "score": 1.0,
+                    "product": {
+                        "product_id": "private-product",
+                        "title": "Deterministic shoe",
+                        "category_l1": "Shoes",
+                        "image_path": "private.jpg",
+                        "source": "fixture",
+                    },
+                }
+            ]
+        }
+        arguments_bytes = canonical_json_bytes(arguments)
+        output_bytes = canonical_json_bytes(output)
+        return ToolInvocationResult(
+            tool_name=name,
+            spec_sha256="1" * 64,
+            arguments=arguments,
+            arguments_bytes=arguments_bytes,
+            arguments_sha256=sha256_bytes(arguments_bytes),
+            output=output,
+            output_bytes=output_bytes,
+            output_sha256=sha256_bytes(output_bytes),
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
+    runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=CoreFastAssistantRunner,
+        banks={
+            "llm_static": parent_bank,
+            "s1": candidate_bank,
+            "s1s2": candidate_bank,
+            "full": candidate_bank,
+        },
+    )
+    object.__setattr__(
+        runner,
+        "_deterministic_action_contract_version",
+        "core-fast-deterministic-action-response-v5",
+    )
+    parent = runner.execute(parent_request)
+    trace = parent.response.tool_trace[0]
+    scorer_payload = {
+        "candidates": [
+            {
+                "candidate_ordinal": 1,
+                "eligible": True,
+                "evidence_reference": "tool-call-1-evidence-1",
+                "product_id": "tool-call-1-product-1",
+                "public_attributes": [["category", "catalog_product"]],
+                "title": "Deterministic shoe",
+            }
+        ]
+    }
+    scorer_calls = (
+        PublicScorerCallEvidenceV2(
+            call_index=1,
+            tool_name="image_product_search",
+            arguments_sha256=trace.arguments_sha256,
+            result_sha256=trace.result_sha256,
+            argument_projection={"asset_handle": "query_asset"},
+            payload_kind="product_candidates_v1",
+            payload=scorer_payload,
+            payload_sha256=sha256_bytes(canonical_json_bytes(scorer_payload)),
+        ),
+    )
+
+    replay = runner.execute_deterministic_body_replay(
+        candidate_request,
+        parent_response=parent.response,
+        parent_receipt=parent.receipt,
+        parent_scorer_calls=scorer_calls,
+        scorer_query=scorer_query,
+    )
+
+    assert len(model_calls) == 1
+    assert replay.response.response_text.startswith("answer:\nno supported match")
+    assert replay.response.tool_trace == parent.response.tool_trace
+    assert replay.scorer_calls == scorer_calls
+    assert replay.receipt.model_calls == ()
+    assert replay.receipt.aggregate_usage == LLMUsage(input_tokens=0, output_tokens=0)
+    assert (
+        replay.receipt.deterministic_replay_source_receipt_sha256
+        == parent.receipt.receipt_sha256
     )
 
 
