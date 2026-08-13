@@ -161,9 +161,10 @@ class S1Settings(FrozenStrictModel):
     feedback_mode: Literal["fresh-per-round"] = "fresh-per-round"
     feedback_total_count: int = Field(default=48, ge=1, le=60)
     feedback_canary_count: int = Field(default=6, ge=1, le=60)
-    feedback_selection_policy: Literal["discovery-stratified-v1"] = (
-        "discovery-stratified-v1"
-    )
+    feedback_selection_policy: Literal[
+        "discovery-stratified-v1",
+        "discovery-contrastive-v2",
+    ] = "discovery-stratified-v1"
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
     )

@@ -24,12 +24,17 @@ _fixture_spec.loader.exec_module(_fixture_module)
 fast_fixture = _fixture_module.fast_fixture
 
 
-def _settings(*, count: int, allocation: str = "balanced-six-capability") -> S1Settings:
+def _settings(
+    *,
+    count: int,
+    allocation: str = "balanced-six-capability",
+    policy: str = "discovery-stratified-v1",
+) -> S1Settings:
     payload: dict[str, object] = {
         "feedback_mode": "fresh-per-round",
         "feedback_total_count": count,
         "feedback_canary_count": min(6, count),
-        "feedback_selection_policy": "discovery-stratified-v1",
+        "feedback_selection_policy": policy,
         "feedback_allocation": allocation,
     }
     if allocation == "target-focused":
@@ -111,6 +116,35 @@ def test_balanced_and_target_focused_allocations(fast_fixture) -> None:
         for row in population
     )
     assert classes.count("success_anchor") >= 1
+
+
+def test_contrastive_selection_balances_failures_and_success_anchors(
+    fast_fixture,
+) -> None:
+    population = _population(fast_fixture)
+    selected = select_feedback_samples(
+        population,
+        _settings(count=60, policy="discovery-contrastive-v2"),
+    )
+    for capability in CAPABILITIES:
+        rows = [row for row in selected if row["capability"] == capability]
+        assert len(rows) == 10
+        available_failures = sum(
+            row["capability"] == capability and row["role"] == "failure"
+            for row in population
+        )
+        available_anchors = sum(
+            row["capability"] == capability and row["role"] == "anchor"
+            for row in population
+        )
+        observed_anchors = sum(row["role"] == "anchor" for row in rows)
+        observed_failures = sum(row["role"] == "failure" for row in rows)
+        if available_anchors >= 5:
+            assert observed_anchors >= 5
+        else:
+            assert observed_anchors <= available_anchors
+        assert observed_failures + observed_anchors == 10
+        assert observed_failures <= available_failures
 
 
 def test_prepare_is_byte_exact_and_manifest_drift_fails_closed(

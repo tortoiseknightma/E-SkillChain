@@ -312,6 +312,7 @@ def _select_capability_rows(
     count: int,
     *,
     target_focused: bool,
+    contrastive: bool = False,
     excluded_query_ids: frozenset[object] = frozenset(),
     excluded_asset_ids: frozenset[object] = frozenset(),
     excluded_leakage_ids: frozenset[object] = frozenset(),
@@ -334,7 +335,18 @@ def _select_capability_rows(
         key=lambda row: (int(row["query_ordinal"]), str(row["query_id"])),
     )
     selected: list[Mapping[str, object]] = []
-    if target_focused:
+    if contrastive:
+        failure_goal = count // 2
+        anchor_goal = count - failure_goal
+        # Reserve protected successes first. Failure-dense selection can
+        # otherwise consume their leakage groups and silently collapse the
+        # contrast set back into another mostly-failure packet.
+        _unique_take(anchors, anchor_goal, selected=selected)
+        _unique_take(body, anchor_goal + failure_goal, selected=selected)
+        _unique_take(boundary, anchor_goal + failure_goal, selected=selected)
+        if len(selected) < count:
+            _unique_take(anchors, count, selected=selected)
+    elif target_focused:
         body_goal = round(count * 0.7)
         boundary_goal = round(count * 0.2)
         anchor_goal = count - body_goal - boundary_goal
@@ -371,6 +383,9 @@ def select_feedback_samples(
             [row for row in population if row["capability"] == target],
             total,
             target_focused=True,
+            contrastive=(
+                settings.feedback_selection_policy == "discovery-contrastive-v2"
+            ),
         )
         if len(selected) < total:
             fallback = sorted(
@@ -387,6 +402,99 @@ def select_feedback_samples(
                 ),
             )
             _unique_take(fallback, total, selected=selected)
+    elif settings.feedback_selection_policy == "discovery-contrastive-v2":
+        quotient, remainder = divmod(total, len(CAPABILITIES))
+        quotas = {
+            capability: quotient + int(index < remainder)
+            for index, capability in enumerate(CAPABILITIES)
+        }
+        by_capability: dict[str, list[Mapping[str, object]]] = {
+            capability: [] for capability in CAPABILITIES
+        }
+        selected_query_ids: set[object] = set()
+        selected_asset_ids: set[object] = set()
+        selected_leakage_ids: set[object] = set()
+
+        def take(
+            capability: str,
+            candidates: Iterable[Mapping[str, object]],
+            target_count: int,
+        ) -> None:
+            for row in candidates:
+                if len(by_capability[capability]) >= target_count:
+                    return
+                if (
+                    row["query_id"] in selected_query_ids
+                    or row["asset_id"] in selected_asset_ids
+                    or row["leakage_group_id"] in selected_leakage_ids
+                ):
+                    continue
+                by_capability[capability].append(row)
+                selected_query_ids.add(row["query_id"])
+                selected_asset_ids.add(row["asset_id"])
+                selected_leakage_ids.add(row["leakage_group_id"])
+
+        populations = {
+            capability: [row for row in population if row["capability"] == capability]
+            for capability in CAPABILITIES
+        }
+        desired_failures = {
+            capability: min(
+                quotas[capability] // 2,
+                sum(row["role"] == "failure" for row in populations[capability]),
+            )
+            for capability in CAPABILITIES
+        }
+        # Capabilities with few anchors choose first; this deterministic
+        # rare-first pass prevents another capability in the same leakage
+        # group from consuming every protected success.
+        anchor_order = sorted(
+            CAPABILITIES,
+            key=lambda capability: (
+                sum(row["role"] == "anchor" for row in populations[capability]),
+                CAPABILITIES.index(capability),
+            ),
+        )
+        for capability in anchor_order:
+            anchor_goal = quotas[capability] - desired_failures[capability]
+            anchors = sorted(
+                (row for row in populations[capability] if row["role"] == "anchor"),
+                key=lambda row: (int(row["query_ordinal"]), str(row["query_id"])),
+            )
+            take(capability, anchors, anchor_goal)
+        for capability in CAPABILITIES:
+            failure_goal = min(
+                quotas[capability],
+                len(by_capability[capability]) + desired_failures[capability],
+            )
+            body = _round_robin(
+                row
+                for row in populations[capability]
+                if row["selection_class"] == "body_fixable_failure"
+            )
+            boundary = _round_robin(
+                row
+                for row in populations[capability]
+                if row["selection_class"] == "boundary_failure"
+            )
+            take(capability, body, failure_goal)
+            take(capability, boundary, failure_goal)
+            fallback = sorted(
+                populations[capability],
+                key=lambda row: (
+                    {
+                        "body_fixable_failure": 0,
+                        "boundary_failure": 1,
+                        "success_anchor": 2,
+                    }[str(row["selection_class"])],
+                    int(row["query_ordinal"]),
+                    str(row["query_id"]),
+                ),
+            )
+            take(capability, fallback, quotas[capability])
+        selected = [
+            row for capability in CAPABILITIES for row in by_capability[capability]
+        ]
     else:
         quotient, remainder = divmod(total, len(CAPABILITIES))
         for index, capability in enumerate(CAPABILITIES):
@@ -395,6 +503,9 @@ def select_feedback_samples(
                 [row for row in population if row["capability"] == capability],
                 quota,
                 target_focused=False,
+                contrastive=(
+                    settings.feedback_selection_policy == "discovery-contrastive-v2"
+                ),
                 excluded_query_ids=frozenset(row["query_id"] for row in selected),
                 excluded_asset_ids=frozenset(row["asset_id"] for row in selected),
                 excluded_leakage_ids=frozenset(

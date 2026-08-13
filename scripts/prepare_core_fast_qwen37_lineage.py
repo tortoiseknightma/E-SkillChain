@@ -195,6 +195,9 @@ def freeze_r1_spec(
     creator_directives: Sequence[str],
     required_patch_phrases: Sequence[str] = (),
     fanout: bool = False,
+    round_id: str = "r1",
+    feedback_total_count: int = 48,
+    feedback_selection_policy: str = "discovery-stratified-v1",
 ) -> CoreFastSpec:
     """Bind fresh Static to either one capability or six isolated branches."""
 
@@ -252,11 +255,11 @@ def freeze_r1_spec(
     payload["fixed_samples"] = fixed_samples
     phrases = sorted(set(required_patch_phrases))
     s1_settings = {
-        "round_id": "r1",
+        "round_id": round_id,
         "feedback_mode": "fresh-per-round",
-        "feedback_total_count": 48,
+        "feedback_total_count": feedback_total_count,
         "feedback_canary_count": 6,
-        "feedback_selection_policy": "discovery-stratified-v1",
+        "feedback_selection_policy": feedback_selection_policy,
         "creator_directives": list(dict.fromkeys(creator_directives)),
         "required_patch_phrases": (
             {target_capability: phrases}
@@ -289,6 +292,7 @@ def freeze_r1_spec(
             }
         )
     payload["s1_settings"] = s1_settings
+    payload["limits"]["max_feedback_calls"] = feedback_total_count
     disclosures = _clean_disclosures(source.disclosures)
     disclosures.extend(
         (
@@ -710,6 +714,15 @@ def build_parser() -> argparse.ArgumentParser:
     fanout_r1.add_argument("--bootstrap-result", type=Path, required=True)
     fanout_r1.add_argument("--output-spec", type=Path, required=True)
     fanout_r1.add_argument("--experiment-id", required=True)
+    fanout_r1.add_argument("--round-id", default="r1")
+    fanout_r1.add_argument(
+        "--feedback-total-count", type=int, choices=(48, 60), default=48
+    )
+    fanout_r1.add_argument(
+        "--feedback-selection-policy",
+        choices=("discovery-stratified-v1", "discovery-contrastive-v2"),
+        default="discovery-stratified-v1",
+    )
     fanout_r1.add_argument("--creator-directive", action="append", required=True)
 
     export = commands.add_parser("export-feedback")
@@ -765,6 +778,9 @@ def main(argv: list[str] | None = None) -> int:
                 target_capability=None,
                 creator_directives=args.creator_directive,
                 fanout=True,
+                round_id=args.round_id,
+                feedback_total_count=args.feedback_total_count,
+                feedback_selection_policy=args.feedback_selection_policy,
             )
             result = {
                 "status": "created",

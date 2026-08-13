@@ -102,11 +102,18 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
         target_capability=None,
         creator_directives=("Generate one isolated typed policy per branch.",),
         fanout=True,
+        round_id="r2",
+        feedback_total_count=60,
+        feedback_selection_policy="discovery-contrastive-v2",
     )
     assert fanout.s1_settings.proposal_mode == "six-capability-fanout-fanin-v2"
     assert fanout.s1_settings.target_capabilities == lineage.CAPABILITIES
     assert fanout.s1_settings.max_patched_capabilities == 6
     assert fanout.s1_settings.protected_capabilities == ()
+    assert fanout.s1_settings.round_id == "r2"
+    assert fanout.s1_settings.feedback_total_count == 60
+    assert fanout.s1_settings.feedback_selection_policy == "discovery-contrastive-v2"
+    assert fanout.limits.max_feedback_calls == 60
     assert fanout.limits.max_creator_calls == 8
     with pytest.raises(FileExistsError):
         lineage.freeze_r1_spec(
