@@ -18,8 +18,8 @@ parent 的精确 alias，不产生新的 Assistant、工具或 Judge 调用。�
 `LLMStaticSkill / S1 / S1+S2` 的 route-only 结果，不执行 `1,500×5` 端到端矩阵。
 
 冻结配置位于 [`specs/core-experiment-fast-v1.json`](../specs/core-experiment-fast-v1.json)。
-其中包含字面 canary12、smoke24、body48 ID，固定模型角色、Gate、并发度和 CNY 250
-总费用上限。默认 spec 已绑定 deterministic action-response v4 下 fresh Qwen3.7 Static 的 800 条
+其中包含字面 canary6、smoke24、body48 ID，固定模型角色、Gate、并发度和 CNY 250
+总费用上限。默认 spec 已绑定 deterministic action-response v6 下 fresh Qwen3.7 Static 的 800 条
 `AssistantObservation` 及其 SHA；旧 `export_core_fast_opt_static.py` 只用于迁移历史 Qwen-VL
 artifact，不能生成或替代当前 Qwen3.7 基线。重新生成新 Static 必须使用独立 bootstrap spec、
 fresh output root 与 `static-opt800` 命令，且会产生 provider 费用。
@@ -40,22 +40,22 @@ Static opt800
 
 ### Deterministic runtime 与 S1 treatment surface
 
-`core-fast-deterministic-action-response-v4` 在路由后由 runner 固定工具序列和参数，并由纯函数
+当前 `core-fast-deterministic-action-response-v6` 在路由后由 runner 固定工具序列和参数，并由纯函数
 从 public DTO 编译 cards、evidence、section 与 fallback。机械 closure 不再属于 S1。
 Creator 必须逐字复制 parent objective、tool steps、fallback instruction 与 citations；唯一可变且
-被 runtime 消费的字段是 `core-fast-semantic-policy-v2`。已接受 R1 只开放 Document 的
+被 runtime 消费的字段是 `core-fast-semantic-policy-v2`。最终 R10 只开放 Document 的
 `ocr_extraction_plan=literal-material-spans`，用于从公开 OCR 行选择 literal material span；
 Description 与其余五项 Skill 均冻结。空 policy 或对 Multi/Exact 等无消费面的 patch 会 fail closed。
 
-以上是 accepted v4 lineage 的历史边界；v5 fan-out 已为 Multi/Exact 增加 typed selector，
-但必须在新的 fresh Static lineage 中评估，不能回写或重判 v4。
+v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
+使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 
-默认 Static SHA 为
+以下 v4 Static SHA 只属于历史 qualification：
 `fb88a2145b6671de054229117f3b0bd2121d675fa26a6233d8c31471b5987502`，来自独立 create-only
 root `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\static-opt-run`。该 qualification
 为 800/800 outer success、0 hard error、676/800 GCS success。
 
-### Accepted typed semantic-policy R1（2026-08-13）
+### 历史 accepted typed semantic-policy R1（v4，2026-08-13）
 
 唯一变量是 Document 的 `ocr_extraction_plan=literal-material-spans`。完整 48 Feedback 在 Creator
 前通过 terminal Gate；Creator 产出 parent-bound 单能力 patch。replay200 中 Document 从 `7/8`
@@ -73,11 +73,10 @@ S1 Gate 对 sparse treatment 采用能力局部的因果口径：实际 patch ca
 `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\specs\s1-r1-document-literal-span.json`；
 tracked default spec 内容虽已同步，但重新格式化后的文件 SHA 不同，会按预期拒绝旧 root resume。
 
-### 下一版 S1：六能力 fan-out / fan-in（仅机制，未启动）
+### 六能力 fan-out / fan-in：10 轮结果（2026-08-13）
 
-accepted v4 Document Bank 保持只读，作为显式启动 S2 时的备选 parent；本阶段不继续 S2。
-新的 `core-fast-deterministic-action-response-v5` 把 typed semantic-policy treatment surface
-扩到全部六个 capability，并采用以下逻辑 fan-out/fan-in：
+accepted v4 Document Bank 保持只读；本阶段没有继续 S2。新的 v5/v6 lineage 把 typed
+semantic-policy treatment surface 扩到全部六个 capability，并真实运行了以下 fan-out/fan-in：
 
 ```text
 balanced discovery Feedback
@@ -101,13 +100,38 @@ v5 对 Exact/Multi 新开放的是公开 DTO 上的 evidence-term selector：它
 candidate 降为 unresolved/剔除，但不能改变 item coverage、card 字段、handle、工具顺序或
 fallback。空 selector 与 v4 行为等价。由于 runtime contract identity 已变化，新一轮必须使用
 `prepare_core_fast_qwen37_lineage.py bootstrap-spec` 生成 create-only fresh Static opt800，再用
-`freeze-fanout-r1` 绑定 SHA/fixed samples；目前没有 provider 调用，也没有新的 S1 result。
+`freeze-fanout-r1` 绑定 SHA/fixed samples。实际 fresh Static 如下：v5 为 800/800、GCS
+675/800、SHA `d335c076…d345`；v6 为 800/800、GCS 675/800、SHA `f2cd96ad…3c97`。
+v6 进一步只暴露 compiler 最终引用的 cards，并在 common-trace replay 中把空检测 fallback
+保留为普通 GCS failure，而不是伪造 provider/oracle gap。
+
+10 轮终态：
+
+| Round | 机制变量 | 最深阶段 | 终态 |
+|---|---|---|---|
+| R1 | 48-row stratified Feedback | full Feedback gate：46/48，4.17% parse | 停止，Creator 0-call |
+| R2 | 60-row stratified Feedback | full gate：55/60，8.33% parse、1.67% service | 停止，Creator 0-call |
+| R3 | 60-row contrastive Feedback | full gate：58/60，3.33% parse | 停止，Creator 0-call |
+| R4 | contrastive + one fan-out Creator | Document replay primitive 误产生 8/8 oracle gap | 机制失败，回滚 |
+| R5 | 六个独立 Creator + common-trace replay | Document replay +2.0833pp；body +4.1667pp | accepted；备份 |
+| R6 | v6 card closure + narrow selectors | replay +2.0833pp；body 0pp | 整 Bank 回滚 |
+| R7 | selector regularization | full gate：58/60，3.33% parse | 停止，Creator 0-call |
+| R8 | 空 selector + Document literal spans | replay +2.0833pp；body +4.1667pp | accepted |
+| R9 | failure-heavy Feedback | canary：5/6，16.67% parse | 停止，Creator 0-call |
+| R10 | compact 48-row contrastive packet | 48/48；replay +2.0833pp；body +4.1667pp | accepted；最终选择 |
+
+R8 与 R10 的有效 Document Skill 字节相同，Skill SHA 为 `ec6ae462…6fdf`。R10 的 selected
+Bank 为 `51ae438e9ef9b4bad5d2809a7d0333e2627ff5ebd6ddd4aad6daeffbd53ac6cf`；相较 R8，
+它用 48 而不是 60 条 Feedback，且 48/48 schema-valid，因此作为后续 S2 的备选起点。
+R10 其余五个 Creator 返回 no-op typed policy，由 sparse compiler 在 replay 前拒绝；这不是
+五能力的负效果，也不构成虚假的覆盖。R10 的 replay/body 只有 Document 改变，其他能力 delta
+均为 0，hard-error delta 为 0，body component-bootstrap 95% CI 下界为 0。
 
 `replay200` 的结果已经在历史 R0 中被观察，因此它只承担 development/过拟合筛查，
-不能再被称为独立验证。新 v5 lineage 的门为 capability-macro GCS delta `≥0pp`、hard-error delta
+不能再被称为独立验证。新 lineage 的门为 capability-macro GCS delta `≥0pp`、hard-error delta
 `≤+1pp`、每 capability delta `≥−5pp`。`body_gate75` 才是 S1 接受门：macro delta
 `≥+2pp`、leakage-component bootstrap 95% CI 下界 `≥0pp`、hard-error delta `≤+1pp`、
-每 capability delta `≥−5pp`。已冻结的 R0–R10 与 accepted v4 decision 仍按当时的
+每 capability delta `≥−5pp`。已冻结的旧 prompt-only R0–R10 与 accepted v4 decision 仍按当时的
 `−3pp`/零回退策略解释，不追溯重判；R0 未通过 replay，所以历史上没有访问 body gate。
 
 ### R0 诊断与 R1 保护
@@ -137,7 +161,7 @@ fallback。空 selector 与 v4 行为等价。由于 runtime contract identity �
 
 R0 的候选与 replay/rollback receipt 永久保留为历史诊断，R1 不修改或重解释这些字节。
 
-### Qwen3.7 R1–R5 execution ledger 与最终 S1 disposition
+### 历史 prompt-only Qwen3.7 R1–R5 execution ledger
 
 Static opt800 已用 `qwen3.7-flash-2026-07-15` fresh 重跑；成功产物 800/800、SHA
 `ced36fb3050612be9a45a9fcb0d0d835b0f7a40ef422009066b6680df7368fc0`。R1 使用
@@ -167,7 +191,7 @@ cost basis 不可得。`body_gate75`、Final Judge、S2、val 与 `test300` 均�
 R1–R5 五次 Creator 额度已经耗尽，不追加第六轮，不放宽门槛，也不启动 S2。证据根为
 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`。
 
-### 授权后的 R6–R10 execution ledger
+### 历史 prompt-only R6–R10 execution ledger
 
 用户随后明确授权第二批最多五轮。运行前修复了 R3 的词法 guard 假阳性：路径禁词与路径
 marker 现在必须局部关联，安全的业务文本不再被跨句拼接误杀；真实 `results/...` 等路径和
@@ -209,7 +233,8 @@ R11。证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`�
 [`qwen37-flash-assistant-concurrency-benchmark-20260812.md`](qwen37-flash-assistant-concurrency-benchmark-20260812.md)。
 
 Qwen3.8 Feedback 的 60-call 实测使用 60 workers、8 requests/s，59/60 通过、服务错误为
-0；60 是本次验证值，不是服务上限。当前 S1 只有固定 canary12，所以不会人为制造 60 个
+0；60 是本次验证值，不是服务上限。当前 S1 先执行固定 canary6，再按 selection policy 补齐
+48 或 60 条完整 Feedback 集合，所以不会人为制造 60 个
 调用来占满 worker。详见
 [`qwen38-feedback-concurrency-benchmark-20260812.md`](qwen38-feedback-concurrency-benchmark-20260812.md)。
 
@@ -225,8 +250,8 @@ PowerShell：
 uv run python scripts/run_core_experiment.py validate
 ```
 
-当前只推荐上述零调用验证命令。以下付费/下游命令是编排接口示例，不代表任一已执行 lineage 仍有
-执行授权；只有另行批准新 S1 lineage，且 S1 真实接受后才能按顺序使用：
+当前只推荐上述零调用验证命令。以下付费/下游命令是编排接口示例，不代表 tracked template 可以
+resume 任一已执行 lineage；fan-out R1–R10 已终结，本阶段不再运行新的 S1：
 
 ```powershell
 uv run python scripts/run_core_experiment.py run --through s1
@@ -236,9 +261,10 @@ uv run python scripts/run_core_experiment.py run --through test
 uv run python scripts/run_core_experiment.py report
 ```
 
-默认 spec 已绑定新 Qwen3.7 Static v2，并明确标成 fresh R1 模板；`validate` 不产生调用，
-但 `run --through s1` 会创建新的 Feedback/Creator/Assistant 调用。第二批五轮额度也已耗尽，
-因此除非另行授权新的 lineage，不应执行该付费命令，更不能对任一失败 round 执行 S2。
+默认 spec 是最终 R10 的 v6 Static + compact-contrastive fan-out **新运行模板**；`validate` 不产生
+调用，但 `run --through s1` 会创建新的 Feedback/Creator/Assistant 调用，不能据此重放或追认
+已完成的 R10。若后续选择推进 S2，必须显式使用 R10 canonical artifact spec 与同一 run root；
+tracked spec 的字节 SHA 不同，会按预期拒绝旧 root resume。
 
 `run --through full` 在冻结 S1/S2/S3 后立即补齐 NoSkill val200，并写出五配置
 `val-results.jsonl` 的 1,000 条逻辑结果；`run --through test` 再生成 test300、Final
@@ -258,7 +284,7 @@ split、样本 ID、Static Bank、opt800 结果和 route attribution。正式 `v
 默认 spec 使用
 `skillchain.evaluation.core_fast.live_adapter:create_adapter`：Assistant 直接使用
 `CoreFastAssistantRunner` 与现有真实工具/GCS，Feedback 使用现有严格 Schema/parser，
-Creator 启动一次临时 Codex CLI session，Judge 使用现有 packet、prompt 和 parser；所有
+Creator 为 fan-out 的每个 capability 启动一个相互隔离的 Codex CLI session，Judge 使用现有 packet、prompt 和 parser；所有
 SDK 自动重试关闭。若要替换 provider，可改为
 [`scripts/core_fast_call.py`](../scripts/core_fast_call.py) 这个极薄的 JSON stdin/stdout
 bridge，并设置 `CORE_FAST_CALL_FACTORY=module:function`。工厂返回对象必须实现：

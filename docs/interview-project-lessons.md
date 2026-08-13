@@ -5466,6 +5466,113 @@ floor。最终 replay macro +2.08pp，body gate macro +4.17pp，CI 下界为 0�
 
 ---
 
+## 53. 六能力 fan-out 不是“六次自由搜索”：隔离 Creator、common-trace replay 和 fan-in 才能保住归因
+
+**状态：已验证；10 轮终结，R10 Document Bank 被选为后续阶段备选起点**
+
+### 一句话问题
+
+要在一轮 S1 覆盖六项能力，又不恢复 whole-bank 负迁移，必须给每项能力独立 Creator 与局部筛查，
+并且只组合通过分支；为了“覆盖广度”保留没有 gain 的 patch 会破坏实验含义。
+
+### 背景与影响
+
+单能力 sparse S1 可归因，但一轮只能覆盖一个方向；whole-bank Creator 覆盖广，却在历史 R0 中让
+Encyclopedia 下降 5pp。deterministic runtime 又把工具顺序、DTO/card/evidence closure 与 fallback
+收为机械合同，S1 实际可改面只剩 typed semantic policy。新机制需要同时解决能力隔离、路由噪声、
+公共工具证据复用、局部风险与最终组合，而不能靠六段 prompt 假装并行。
+
+### 观察到的证据
+
+- R1–R3 先验证了 full Feedback terminal gate：46/48、55/60、58/60 均因超过 2% parse/service
+  上限停止，Creator 0-call。R4 通过 gate 后暴露旧 replay primitive 会把 common trace 变成 8/8
+  oracle gap，因此不能作为算法结果。
+- 修成六个独立 Creator 与零 provider common-trace compilation 后，R5 首次接受 Document：replay
+  macro +2.0833pp，body75 +4.1667pp。其他五项的宽泛 evidence terms 导致 21–33 条回退，均局部拒绝。
+- v6 把 visible cards 收敛到 compiler 实际引用的 handle。R6 的 Total/Cash/Change selector 在 replay
+  有 1 gain，却在 body 上变成 0pp，说明字段词过拟合。R8 删除字段词、只保留 literal span 后再次接受。
+- R9 failure-heavy Feedback 在 canary6 就有 1 个 schema error；R10 改为 compact 48-row contrastive，
+  48/48 schema-valid，并复现 R8：Document 7/8→8/8，body 3/4→4/4，0 regression、0 hard delta。
+- R8/R10 的 Document Skill SHA 同为 `ec6ae46242434d1a5d9c53f3bba58b5307f5f46177160998b37ae43558026fdf`。
+  R10 的另外五个 Creator 返回 no-op typed policy，compiler 在 Assistant 前拒绝，因此没有虚假的
+  “五能力已优化”声明。
+
+### 根因
+
+一是 evidence selector 只有删除能力：当 baseline 已接近满分时，随意选词几乎必然减少正确证据。
+二是 cards 若继续暴露 parent 全集，会与已过滤 response 冲突。三是工具/路由重新采样会把非 treatment
+波动归给 Skill；common-trace replay 必须复用 parent 的公开 scorer DTO。四是 Feedback 数量增加并不
+自动提高结构稳定性，60-row packet 多次超过冻结 parse 门，而 48-row compact packet可以完整通过。
+
+### 考虑过的方案与取舍
+
+1. 恢复 whole-bank Creator：能力覆盖高但无法局部回滚，拒绝。
+2. 一个 Creator 一次输出六项：成本低，但上下文干扰且单个会话失败会吞掉整轮，R4 后弃用。
+3. 六个独立 Creator、每项一 patch、独立 smoke/replay、通过后 fan-in：采用；Codex 预算提高到 100 后
+   不再受原 5-session 上限约束。
+4. 为提高覆盖广度保留 no-op 或无 gain 分支：会把“生成过”伪装成“优化过”，拒绝。
+5. 选择 R5（最早 accepted）、R8（更干净 policy）或 R10（同字节、较小 packet）：选择 R10，效果相同
+   但 Feedback 48/48、调用更少、解释更简洁。
+
+### 最终方案
+
+每轮创建六个独立 parent-bound Creator session；每个 schema 只允许目标 capability patch，其余五项
+byte-exact inherit。每项用同一 smoke24，再在本 capability replay 子集复用 parent route/tool/scorer
+DTO。局部保留需 gains≥1、net≥1、regressions≤2、gains≥4×regressions，且无普通失败→hard/runtime
+严重度升级或 common-trace drift。通过分支按 receipt/screen hash fan-in，完整重跑 replay200，之后仅
+访问一次 body_gate75。最终选择 R10 Bank
+`51ae438e9ef9b4bad5d2809a7d0333e2627ff5ebd6ddd4aad6daeffbd53ac6cf`，停止 S1，不追加 R11。
+
+### 如何验证
+
+- v5/v6 fresh Static 各 800/800，GCS 都是 675/800，hard error 0；contract SHA 与 observation 绑定。
+- 相关 runner/Core Fast/feedback/lineage 回归通过；默认 spec 的 inputs-only 与完整 validate 均通过。
+- R10 decision 为 `accepted=true`、`alias_of=null`；replay/body 只有 Document delta，其他能力均 0。
+- R1–R10 共 25 个 Codex Creator session，人民币成本不可得；两个 Static 加十轮可追踪 DashScope
+  费用 ¥2.8180236，未访问 S2、Judge、val 或 test300。
+
+### 剩余限制
+
+body gate 只有 4 条 Document 样本，CI 下界恰为 0；这是 Portfolio 证据，不是正式论文结论。最终覆盖
+广度只有 1/6，但这是数据支持的真实结果：v6 replay 中 Multi/Style/Recipe 已满分，Exact 失败主要是
+冻结路由，Encyclopedia 主要是空检测，这些不应被 S1 selector 强行承担。后续若推进 S2，应从 R10
+canonical root/spec 出发，不能任选失败 candidate。
+
+### 30 秒回答
+
+“我把 whole-bank S1 改成六个独立 Creator 的 fan-out/fan-in：每项能力单独产候选、复用同一 parent
+工具证据做 counterfactual replay、按有界风险筛查，只组合通过分支。10 轮里 R5/R8/R10 接受，最终
+R10 用 48/48 可解析 Feedback 复现 Document replay +2.08pp、body +4.17pp。其他能力没有 gain 就不为
+覆盖数字强行保留，这让最终 Bank 的每个变化都有可验证因果证据。”
+
+### 2 分钟回答
+
+“历史 whole-bank 虽然总体上涨，却让 Encyclopedia 掉 5pp；后来单能力 sparse patch 好归因，但一轮
+覆盖不了六项。我设计了 fan-out/fan-in：六个独立 Codex Creator，每个只能改自己的 typed semantic
+policy，另外五项 byte-exact；每个分支先 smoke，再复用 parent route、tool 和公共 scorer DTO做本能力
+replay。screen 不再因普通失败 reason 迁移自动回滚，但要求至少 1 gain、净增至少 1、回退最多 2 且
+gain 是回退 4 倍，并硬拒绝严重度升级和 trace drift。通过分支才 fan-in，再跑全 replay 和 body gate。
+
+前几轮先暴露了两个机制问题：full Feedback gate 能阻止部分 bundle 进入 Creator；旧 replay primitive
+会把空检测变成假 oracle gap。我修成零 provider common-trace compiler，并在 v6 让 cards只暴露 response
+实际引用项。R6 证明字段词 selector 只在 replay 有效、body 不泛化；R8 删除字段词后接受。最后 R10
+用更小的 48-row contrastive packet 48/48 通过，复现同一 Document Skill：replay macro +2.08pp、body
++4.17pp、零 hard error。R8/R10 Skill 字节相同，所以我选成本更低、证据更干净的 R10。覆盖只有
+Document 一项，但 Multi/Style/Recipe baseline 已满分，Exact/Encyclopedia 残余不属于当前 S1 surface；
+我没有为好看的覆盖率接受无效 patch。”
+
+### 证据入口
+
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `src/skillchain/runners/assistant.py`
+- `src/skillchain/runners/assistant_deterministic_contract.py`
+- `specs/core-experiment-fast-v1.json`
+- `docs/s1-experiment-log.html`
+- `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813`
+- `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813`
+
+---
+
 ## 新条目模板
 
 复制下面的模板，编号后放到索引和正文中。结论未被验证时必须标为“待验证”或“部分解决”。

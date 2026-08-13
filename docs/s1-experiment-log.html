@@ -491,12 +491,12 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>v4 Document S1 已接受并作为备选起点冻结；当前只推进 v5 fan-out/fan-in 机制</span>
+        <span>六能力 fan-out/fan-in 已完成 10 轮；R10 Document Bank 被选为后续阶段备选起点</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
-        <div class="hero-stat"><strong>1 accepted</strong><span>typed semantic-policy S1</span></div>
-        <div class="hero-stat"><strong>676 / 800</strong><span>v4 Static GCS success</span></div>
+        <div class="hero-stat"><strong>3 / 10 accepted</strong><span>fan-out S1 rounds</span></div>
+        <div class="hero-stat"><strong>675 / 800</strong><span>v6 Static GCS success</span></div>
         <div class="hero-stat"><strong>+4.1667pp</strong><span>body-gate capability macro</span></div>
         <div class="hero-stat"><strong>0 calls</strong><span>S2 / Final Judge / test300</span></div>
       </div>
@@ -530,8 +530,8 @@
       </div>
 
       <div class="metric-strip">
-        <div class="metric good"><strong>800 / 800</strong><span>deterministic v4 Static success</span></div>
-        <div class="metric good"><strong>676 / 800</strong><span>deterministic v4 GCS success</span></div>
+        <div class="metric good"><strong>800 / 800</strong><span>deterministic v6 Static success</span></div>
+        <div class="metric good"><strong>675 / 800</strong><span>deterministic v6 GCS success</span></div>
         <div class="metric good"><strong>7/8 → 8/8</strong><span>Document replay200</span></div>
         <div class="metric good"><strong>3/4 → 4/4</strong><span>Document body_gate75</span></div>
       </div>
@@ -541,37 +541,37 @@
           <span class="kind fact">FACT</span>
           <h3>最终选择</h3>
           <p>
-            历史 R1–R10 仍全部回滚；新的 v4 lineage 为
-            <code>accepted=true</code>、<code>alias_of=null</code>，selected Bank 为
-            <code>efc7cbb3a25daf22…a85c3aaef</code>。本轮访问了冻结的
+            新 fan-out R5、R8、R10 均为 <code>accepted=true</code>；R8/R10 的有效
+            Document Skill 字节相同。最终 selected Bank 为
+            <code>51ae438e9ef9b4b…53ac6cf</code>。R10 访问了冻结的
             <code>body_gate75</code>，但未启动 S2、Final Judge 或 test。
           </p>
         </div>
         <div class="card">
           <span class="kind decision">DECISION</span>
-          <h3>首次 S1 接受已完成</h3>
+          <h3>10 轮 fan-out/fan-in 已完成</h3>
           <p>
-            deterministic v4 的 fresh Static、48-row Feedback、Creator、replay200 和 body_gate75
-            均真实运行。唯一变量是 Document 的 typed
-            <code>ocr_extraction_plan=literal-material-spans</code>；其余五能力使用 parent observation
-            消除冻结 Description 的独立采样噪声，Gate 数值阈值未降低。
+            两个独立 runtime lineage 都 fresh 重跑 Static；每个完整 fan-out 轮使用六个隔离的
+            Creator session。R10 的 48-row contrastive Feedback 为 48/48 schema-valid，只有
+            Document 的 <code>ocr_extraction_plan=literal-material-spans</code> 通过独立筛查并进入 fan-in。
           </p>
         </div>
       </div>
 
       <div class="callout" style="margin-top: 1rem;">
         <strong>当前工程状态</strong>
-        v5 已把六能力拆成独立 Creator / smoke24 / target replay screen，并只组合通过分支；Exact/Multi 也拥有 compiler 消费的 typed selector。离线回归通过，但 fresh Static 与新的 S1 尚未运行，因此本页不增加 experiment result，也不把机制完成写成效果提升。
+        v5/v6 已把六能力拆成独立 Creator / smoke24 / target replay screen，并只组合通过分支。
+        v6 还让 visible cards 与 compiler 实际引用的 handle 闭合。10 轮已经终结，不自动追加 R11；
+        R10 只作为后续阶段备选起点，本阶段仍不推进 S2。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
         <strong>成本口径</strong>
-        ¥4.5056716 = 可用 Static v2（¥1.2222646）+ 唯一 fresh Feedback（¥0.0585744）+
-        R1/R2/R4/R5 Assistant（¥1.4190554）+ R6–R10 Assistant（¥1.8057772）。
-        10 次 Creator 共 339,206 input / 10,375 output tokens，但人民币 cost basis 不可得；
-        不能把 receipt 中的 <code>0</code> 当成免费。若计入废弃 Static v1，Qwen3.7 两批 S1 周期的可追踪下界为
-        11,411 provider calls / ¥5.7260350，另有该失败行可能产生的未知 orphan；可用 v2+v3 lineage
-        为 8,914 calls / ¥4.5056716。
+        本批两个 fresh Static + R1–R10 的可追踪 DashScope 费用为 ¥2.8180236：Static ¥0.1492308，
+        10 轮 ¥2.6687928。共有 4,488 份 Assistant/Feedback result artifact，其中 4,459 份
+        <code>status=success</code>；确定性 common-trace replay 虽有 result 但不产生 provider call。
+        25 次 Codex Creator 共
+        932,867 input / 28,325 output tokens，人民币 cost basis 不可得；不能把 receipt 的 0 当成免费。
       </div>
     </section>
 
@@ -740,6 +740,48 @@
               <td class="num">—</td>
               <td>Static publish + preflight</td>
               <td><span class="state baseline">通过</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r01-r04">Fan-out R1–R4</a></th>
+              <td>Feedback gates + replay primitive</td>
+              <td>R1–R3 terminal gate；R4 replay 机制失败</td>
+              <td class="num">—</td><td class="num">—</td>
+              <td>Feedback / replay</td><td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r05">Fan-out R5</a></th>
+              <td>6 independent Creators</td>
+              <td>Document replay <span class="delta-pos">+2.0833pp</span>；body <span class="delta-pos">+4.1667pp</span></td>
+              <td class="num">0</td><td class="num">0 severity</td>
+              <td>body_gate75</td><td><span class="state accepted">接受</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r06-r07">Fan-out R6–R7</a></th>
+              <td>v6 card closure + selector regularization</td>
+              <td>R6 body 0pp；R7 Feedback 58/60</td>
+              <td class="num">0 Document</td><td class="num">0 severity</td>
+              <td>body / Feedback</td><td><span class="state rollback">回滚</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r08">Fan-out R8</a></th>
+              <td>empty selector + literal spans</td>
+              <td>Document replay <span class="delta-pos">+2.0833pp</span>；body <span class="delta-pos">+4.1667pp</span></td>
+              <td class="num">0</td><td class="num">0 severity</td>
+              <td>body_gate75</td><td><span class="state accepted">接受</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r09">Fan-out R9</a></th>
+              <td>failure-heavy Feedback</td>
+              <td>canary 5/6；16.67% parse error</td>
+              <td class="num">—</td><td class="num">—</td>
+              <td>Feedback canary</td><td><span class="state invalid">机制失败</span></td>
+            </tr>
+            <tr>
+              <th scope="row"><a href="#exp-20260813-fanout-r10">Fan-out R10</a></th>
+              <td>compact 48-row contrastive</td>
+              <td>48/48；Document replay <span class="delta-pos">+2.0833pp</span>；body <span class="delta-pos">+4.1667pp</span></td>
+              <td class="num">0</td><td class="num">0 severity</td>
+              <td>body_gate75</td><td><span class="state accepted">最终选择</span></td>
             </tr>
           </tbody>
         </table>
@@ -1218,6 +1260,67 @@
           <details open><summary>证据、成本与身份</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\s1-r1e-document-literal-span</code><code>D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\specs\s1-r1-document-literal-span.json</code><code>selected efc7cbb3a25daf22…a85c3aaef</code><code>48 Feedback + 1 Creator + 574 Assistant outer results（accepted root）</code><code>accepted-root Assistant CNY 0.0537732；首批 48 Feedback CNY 0.2399019，另两条定向重跑 CNY 0.00998445；Creator CNY cost basis unavailable</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260813-fanout-r01-r04" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Fan-out R1–R4 · 运行机制筛查</h3><p>先验证完整 Feedback gate，再暴露错误的 replay primitive。</p></div><div class="experiment-labels"><span class="state rollback">rollback</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>46/48</strong><span>R1 Feedback valid</span></div><div class="result-box"><strong>55/60</strong><span>R2 Feedback valid</span></div><div class="result-box"><strong>58/60</strong><span>R3 contrastive valid</span></div><div class="result-box"><strong>8/8 gap</strong><span>R4 replay adapter failure</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R1–R3 都在 full-batch gate 停止，Creator 0-call；R4 为 59/60，通过 gate 后使用一个旧式 fan-out Creator，只产生 Document patch，但误用 S3 replay primitive，把 8 条 common-trace replay 全变成 provider/oracle gap。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>60 条 packet 提高覆盖但没有提高 strict schema 稳定性；R4 不能用于判断 Document 算法，因为 Assistant comparison 本身无效。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保留三次 gate 负结果与 R4 机制失败；修为六个独立 Creator，并从 parent 公共 scorer DTO 做零 provider common-trace compilation。</p></div>
+          </div>
+          <details open><summary>成本与证据</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813\rounds\r1..r4</code><code>Feedback CNY 1.13514525；R4 Assistant CNY 0.0022284</code><code>Creator sessions 1；人民币 cost basis unavailable</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-fanout-r05" data-status="accepted" data-capability="utility.document_reading">
+          <div class="experiment-head"><div><h3>Fan-out R5 · 首次六个独立 Creator</h3><p>common-trace replay 修复后，六能力各自产生、筛查并组合候选。</p></div><div class="experiment-labels"><span class="state accepted">accepted backup</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>60/60</strong><span>Feedback valid</span></div><div class="result-box"><strong>6</strong><span>isolated Creator sessions</span></div><div class="result-box"><strong>+2.0833pp</strong><span>replay200 macro</span></div><div class="result-box"><strong>+4.1667pp</strong><span>body75 macro</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Document 7/8→8/8、0 regression，唯一进入 fan-in；body75 Document 3/4→4/4。其他 evidence-term 分支过度过滤：Exact 21 regressions、Multi 29、Style 33、Recipe 30。Encyclopedia replay 的 detector-only fallback 被错误记为 coverage gap。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Document 增益真实，但宽泛 evidence-term selector 会把“选择相关语义”退化成“删除所有公开证据”；同时 cards 必须跟随 compiler 选择闭合。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保留 R5 为 accepted backup；runtime 前向升级 v6，只暴露 compiler 引用的 cards，并修 detector-only replay 归类。</p></div>
+          </div>
+          <details open><summary>身份与成本</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813\rounds\r5</code><code>selected 70cdbbdc7f0eb67c…719c2bde1</code><code>decision SHA a515323c…42c178</code><code>DashScope CNY 0.32057395；6 Creator cost basis unavailable</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-fanout-r06-r07" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Fan-out R6–R7 · v6 closure 与 selector 正则化</h3><p>先修 card exposure，再检验更窄的 literal selector。</p></div><div class="experiment-labels"><span class="state rollback">rollback</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>675/800</strong><span>fresh v6 Static GCS</span></div><div class="result-box"><strong>+2.0833pp</strong><span>R6 replay</span></div><div class="result-box"><strong>0pp</strong><span>R6 body</span></div><div class="result-box"><strong>58/60</strong><span>R7 Feedback valid</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>v6 Static 为 800/800、hard 0、SHA <code>f2cd96ad…3c97</code>。R6 Document 用 Total/Cash/Change + literal spans 在 replay 得 1 gain/0 regression，但 body75 增益为 0；R7 在 Creator 前因 3.33% parse error 停止。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>R6 的字段词 selector 过拟合 replay 收据类型；真正稳定的变量更可能只是 punctuation-safe literal span，而非特定字段词。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R8 隔离变量：Document evidence_terms 为空，只保留 <code>literal-material-spans</code>；其他分支必须避开 schema/heading/request words。</p></div>
+          </div>
+          <details open><summary>身份与成本</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813\static-opt-run</code><code>R6 decision 0cc0e85a…74f964；R7 decision 13403560…c59fb4</code><code>R6/R7 DashScope CNY 0.633114; R6 6 Creator，R7 0</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-fanout-r08" data-status="accepted" data-capability="utility.document_reading">
+          <div class="experiment-head"><div><h3>Fan-out R8 · 空 selector + Document literal spans</h3><p>把 R6 的字段词过拟合从 treatment 中删除。</p></div><div class="experiment-labels"><span class="state accepted">accepted</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>59/60</strong><span>Feedback valid；1.67%</span></div><div class="result-box"><strong>1 / 0</strong><span>Document gain / regression</span></div><div class="result-box"><strong>+2.0833pp</strong><span>replay200 macro</span></div><div class="result-box"><strong>+4.1667pp</strong><span>body75 macro</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Document policy 精确为 empty evidence_terms、require_all=false、abstain=true、literal-material-spans；其余五能力独立拒绝。body CI95 下界 0pp，hard delta 0，所有非 Document capability delta 0。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>跨 replay/body 的重复增益支持“移除 OCR 终止标点以保持 statement-handle 同行”这一机制；不支持更强 OCR 理解、计算或字段归纳声明。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>接受 Bank <code>8d355971…001f93</code>；再用 compact 48-row contrastive packet做一次预注册复现，以比较 Feedback 精度与成本。</p></div>
+          </div>
+          <details open><summary>身份与成本</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813\rounds\r8</code><code>Document Skill ec6ae462…6fdf</code><code>DashScope CNY 0.31714185；6 Creator cost basis unavailable</code></div></details>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260813-fanout-r09" data-status="invalid" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Fan-out R9 · failure-heavy Feedback</h3><p>检验更高失败密度是否改善可执行建议。</p></div><div class="experiment-labels"><span class="state invalid">stopped at canary</span><span class="tag">2026-08-13</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>canary6 只有 5 条严格可解析，parse error 16.67%，service error 0；remaining54、Creator、Assistant 均 0-call。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>failure-heavy packet 没有显示出更好的结构稳定性；由于没有 Creator，不能据此否定任何 Skill 假设。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>不重试该 root；R10 改用更小的 contrastive packet。</p></div></div>
+          <details open><summary>成本与证据</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813\rounds\r9</code><code>decision SHA 82fd9b20…d9a85</code><code>6 Feedback；CNY 0.02914095；Creator 0</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260813-fanout-r10" data-status="accepted" data-capability="utility.document_reading">
+          <div class="experiment-head"><div><h3>Fan-out R10 · compact contrastive finalist</h3><p>48 条高精度 packet 复现 R8，并选为 10 轮最优 Bank。</p></div><div class="experiment-labels"><span class="state accepted">final selection</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>48/48</strong><span>Feedback schema-valid</span></div><div class="result-box"><strong>1 / 0</strong><span>Document gain / regression</span></div><div class="result-box"><strong>+2.0833pp</strong><span>replay200 macro</span></div><div class="result-box"><strong>+4.1667pp</strong><span>body75 macro</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>六个独立 Creator 均成功返回；其他五项给出 no-op typed policy并被 sparse compiler 在 Assistant 前拒绝。Document Skill 与 R8 byte-identical；replay/body 非目标能力 delta 0、hard delta 0、body CI95 下界 0。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>R10 不比 R8 有更高效果，但以更少 Feedback 和零 parse failure 复现相同 treatment，作为后续起点更简洁、成本更低。没有证据支持为了“覆盖广度”保留无 gain 的其他能力。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>在 10 轮中选择 R10 Bank <code>51ae438e…c6cf</code>；停止 S1，不追加 R11，不访问 S2/Judge/test。</p></div>
+          </div>
+          <details open><summary>身份、成本与边界</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813\rounds\r10</code><code>spec SHA b2fadb70…c90fa0；decision SHA de7a12a5…6d7b4</code><code>Document Skill ec6ae462…6fdf；selected 51ae438e…53ac6cf</code><code>DashScope CNY 0.2496909；6 Creator cost basis unavailable</code><code>S2 / Judge / val / test300: 0-call</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -1293,24 +1396,24 @@
         <article class="decision-card" id="decision-fanout-fanin-s1">
           <div>
             <div class="decision-id">DEC-20260813-06</div>
-            <span class="state pending">已实现，待 fresh qualification</span>
+            <span class="state accepted">已运行并验证</span>
           </div>
           <div>
             <h3>六能力 fan-out / 独立筛查 / fan-in</h3>
-            <p>保留 accepted v4 Document Bank 作为后续 S2 备选，不在本阶段推进。S1 v5 不恢复 whole-bank 自由重写，而是为六个能力建立独立 parent-bound Creator、smoke、目标 replay screen 与 decision；fan-in 只组合满足有界风险标准的分支：gains ≥ 1、net gain ≥ 1、regressions ≤ 2、gains ≥ 4 × regressions。普通失败之间的 reason 迁移只记录诊断；普通失败升级为 hard/runtime failure 或 route/tool trace 漂移仍硬拒绝。</p>
-            <div class="decision-meta"><span class="tag">范围：机制实现</span><span class="tag">runtime：v5</span><span class="tag">provider calls：0</span><span class="tag">算法增益：未声明</span></div>
+            <p>S1 不恢复 whole-bank 自由重写，而是为六个能力建立独立 parent-bound Creator、smoke、目标 replay screen 与 decision；fan-in 只组合满足有界风险标准的分支。R5/R8/R10 真实通过，其中都只保留 Document，其他能力精确继承。</p>
+            <div class="decision-meta"><span class="tag">验证：R1–R10</span><span class="tag">runtime：v5/v6</span><span class="tag">3 accepted</span><span class="tag">最终：R10</span></div>
           </div>
         </article>
 
         <article class="decision-card" id="decision-bounded-s1-risk">
           <div>
             <div class="decision-id">DEC-20260813-07</div>
-            <span class="state pending">前向策略，待 fresh experiment</span>
+            <span class="state accepted">前向策略已验证</span>
           </div>
           <div>
             <h3>S1 局部 screen 改用有界收益 / 风险标准</h3>
             <p>新 v5 分支不再因普通失败 A→普通失败 B 或任意新 contract reason 自动回滚；这类迁移进入逐 query 诊断。Static success→candidate failure 计 regression，普通失败→hard/runtime failure 计严重度升级并硬拒绝，普通失败→success 计 gain。replay200 与 body_gate75 的每能力净跌幅 floor 同步由 −3pp 放宽到 −5pp。</p>
-            <div class="decision-meta"><span class="tag">生效：v5 fresh lineage</span><span class="tag">历史 R0–R10/v4：不重判</span><span class="tag">provider calls：0</span><span class="tag">效果：待验证</span></div>
+            <div class="decision-meta"><span class="tag">生效：v5/v6 fresh lineage</span><span class="tag">历史轮次：不重判</span><span class="tag">R5/R8/R10 accepted</span><span class="tag">普通 reason migration 非硬拒绝</span></div>
           </div>
         </article>
       </div>
@@ -1325,7 +1428,7 @@
 
       <div class="callout">
         <strong>统一停止条件</strong>
-        新 v5 lineage 的 capability branch 只有在 gains ≥ 1、net gain ≥ 1、regressions ≤ 2、
+        后续沿用的 capability branch 只有在 gains ≥ 1、net gain ≥ 1、regressions ≤ 2、
         gains ≥ 4 × regressions，且没有普通失败→hard/runtime failure 或 route/tool trace 漂移时才保留。
         普通失败 reason 迁移只记录、不自动否决；组合 replay 和 body gate 的单能力 floor 为 −5pp。
         只有 development finalist 通过，才访问一次冻结 body gate；不得用 body/val/test 反向选题。
@@ -1333,30 +1436,31 @@
 
       <div class="callout warn" style="margin-top: 1rem;">
         <strong>当前启动边界</strong>
-        v4 accepted Bank 仅是后续阶段备选起点；v5 fan-out/fan-in 尚未运行。因为 Exact/Multi 的 typed selector 与 contract identity 新增，下一批必须 fresh Static opt800，不能复用 v4 baseline 或把离线回归写成 S1 增益。
+        fan-out/fan-in 的 10 轮已经结束，最终 R10 Bank 仅作为后续阶段备选起点。未经新授权不追加 R11；
+        若进入 S2，必须使用 R10 canonical spec/root，而不是把 tracked spec 的字节重新用于旧 root resume。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">
         <article class="future-card priority" id="future-runtime-qualification">
-          <span class="state baseline">qualification 已完成</span>
+          <span class="state accepted">v5/v6 qualification 已完成</span>
           <h3>ALG-00 · Runtime no-op qualification</h3>
           <p>先证明新 compiler 没有把候选专属 repair 注入比较。</p>
           <dl class="future-fields">
             <div><dt>机制</dt><dd>同一 runtime contract 下对称运行 fresh Static 与 no-op compiled candidate；绑定 contract hash。</dd></div>
             <div><dt>可证伪预测</dt><dd>同 route、同 tool payload 下 structural contract delta 必须为 0；否则先修 runtime，不开 S1。</dd></div>
-            <div><dt>结果</dt><dd>fresh Static 800/800，SHA <code>66bf7465…1e63</code>；typed-policy 会改变输出、普通 prose 不会。</dd></div>
-            <div><dt>下一步</dt><dd>该前置已关闭；进入已冻结 Recipe R1 前仍需显式启动付费命令。</dd></div>
+            <div><dt>结果</dt><dd>v5/v6 fresh Static 均 800/800、GCS 675/800；v6 SHA <code>f2cd96ad…3c97</code>。typed-policy 会改变输出、普通 prose 不会。</dd></div>
+            <div><dt>下一步</dt><dd>该前置已关闭；R10 已接受，不再启动新的 S1。</dd></div>
           </dl>
         </article>
 
         <article class="future-card priority" id="future-contrastive-packet">
-          <span class="state pending">Ready after ALG-00</span>
+          <span class="state baseline">部分验证</span>
           <h3>ALG-01 · Attribution-aware contrastive packet</h3>
-          <p>让 Creator 真正消费上一轮 replay delta，而不是十轮反复读取同一 canary12。</p>
+          <p>让 Creator 真正消费上一轮 replay delta，而不是旧 prompt-only 十轮反复读取同一 canary12。</p>
           <dl class="future-fields">
             <div><dt>机制</dt><dd>按 route → tool precondition → tool outcome → semantic selection → serialization → fallback → GCS 标 first causal divergence。</dd></div>
             <div><dt>输入</dt><dd>每个 failure cluster 同时给 representative failure、最近 protected success、历史 stable gain、历史 1→0 和 rejected-edit reason。</dd></div>
-            <div><dt>可证伪预测</dt><dd>相较 raw Feedback，候选不再修改 runtime-owned surface，并能在 targeted canary 上保持所有 protected anchors。</dd></div>
+            <div><dt>结果</dt><dd>contrastive 60 在 R8 接受；compact 48 在 R10 以 48/48 schema-valid 复现同一 Bank。failure-heavy R9 在 canary 失败。</dd></div>
             <div><dt>参考</dt><dd>SkillChain 的跨样本统计与正/反例；综述中的 Counterfactual Trace Auditing、SkillForge。</dd></div>
           </dl>
         </article>
@@ -1366,7 +1470,7 @@
           <h3>ALG-02 · 受约束的小编辑搜索</h3>
           <p>把 single-shot long rewrite 改成 bounded add / delete / replace 算子。</p>
           <dl class="future-fields">
-            <div><dt>机制</dt><dd>一个 Creator session 生成 2–3 个单算子候选；schema/static verifier 与 targeted canary 做 successive halving，只允许一个 finalist 进 replay。</dd></div>
+            <div><dt>机制</dt><dd>每个 capability 的独立 Creator session 生成 2–3 个单算子候选；schema/static verifier 与 targeted canary 做 successive halving，只允许一个 finalist 进 replay，六能力之间仍保持会话隔离。</dd></div>
             <div><dt>保护约束</dt><dd>一个 capability、一个 failure cluster、一个 rule ID；runtime contract、Description、tool schema 全冻结。</dd></div>
             <div><dt>可证伪预测</dt><dd>finalist 在 failure cluster 有至少 1 个稳定 gain，且 protected-success set 无回退。</dd></div>
             <div><dt>风险</dt><dd>多候选会改变成本与协议，必须事前冻结排序规则，不能 repeated rollout 挑赢家。</dd></div>
@@ -1386,36 +1490,36 @@
         </article>
 
         <article class="future-card priority" id="future-recipe">
-          <span class="state pending">首选语义实验</span>
+          <span class="state analysis">runtime 后无剩余 replay failure</span>
           <h3>ALG-04 · Recipe source-entailment selector</h3>
-          <p>利用 R8 的 7 gains / 0 paired regression，只处理 runtime 后仍存在的三类 source grounding 残余。</p>
+          <p>历史 R8 的 7 gains / 0 paired regression 已被 deterministic runtime 吸收；v6 replay 上 Recipe 为 30/30。</p>
           <dl class="future-fields">
             <div><dt>前置</dt><dd>tool sequence completion、typed args、fallback marker 和 evidence handle 已由 runtime 保证。</dd></div>
             <div><dt>Patch IR</dt><dd>source span selector + allowed ingredient/preparation claims + unsupported abstention；不修改工具顺序。</dd></div>
             <div><dt>可证伪预测</dt><dd>source-supported line ratio = 100%，并满足 v5 有界风险四条件；普通失败不得升级为 hard/runtime failure。</dd></div>
-            <div><dt>取消条件</dt><dd>fresh baseline 上没有剩余 semantic cluster，或 compiler 已确定性闭合全部相关 claims。</dd></div>
+            <div><dt>Disposition</dt><dd>取消当前 S1 选题；只有新数据出现 source-entailment failure cluster 时再启用。</dd></div>
           </dl>
         </article>
 
         <article class="future-card" id="future-style">
-          <span class="state pending">第二优先</span>
+          <span class="state analysis">runtime 后无剩余 replay failure</span>
           <h3>ALG-05 · Style evidence-bounded claim selector</h3>
-          <p>保留 R5/R7 的 11 条重复 gains，把“机械证据复制”和“语义主张”彻底分开。</p>
+          <p>历史 R5/R7 的稳定 gains 已被 deterministic runtime 吸收；v6 replay 上 Style 为 41/41。</p>
           <dl class="future-fields">
             <div><dt>Patch IR</dt><dd>public facet/value allowlist、用户偏好 coverage、无证据时 abstain；禁止新增材质、场景、舒适度等暗含事实。</dd></div>
             <div><dt>可证伪预测</dt><dd>unsupported_claim = 0；每个 material claim 可映射到至少一个 public style evidence atom。</dd></div>
             <div><dt>保护集</dt><dd>R5∩R7 稳定 gains + 两轮回退 anchors + empty/unsupported branch。</dd></div>
-            <div><dt>依赖</dt><dd>runtime 已保证 tool call、card/evidence closure 与 exact fallback。</dd></div>
+            <div><dt>Disposition</dt><dd>取消当前 S1 选题；不要为了覆盖广度引入会删除正确 evidence 的 selector。</dd></div>
           </dl>
         </article>
 
         <article class="future-card" id="future-document">
-          <span class="state accepted">已验证最小版本</span>
+          <span class="state accepted">R8/R10 重复验证</span>
           <h3>ALG-06 · Document typed extraction planner</h3>
           <p>不再追加 literal-line prompt；最小 typed literal-span plan 已被 runtime 消费并通过 S1 Gate。</p>
           <dl class="future-fields">
             <div><dt>机制</dt><dd>用户字段 → 一个或多个 OCR line spans → literal / normalized value → uncertainty，保留逐 span 引用。</dd></div>
-            <div><dt>已验证</dt><dd>Document replay 7/8→8/8，body 3/4→4/4，0 target regression；selected Bank <code>efc7cb…</code>。</dd></div>
+            <div><dt>已验证</dt><dd>Document replay 7/8→8/8，body 3/4→4/4，0 target regression；R8/R10 Skill byte-identical，最终 Bank <code>51ae43…</code>。</dd></div>
             <div><dt>可证伪预测</dt><dd>每个 material span 绑定有效 OCR line；无 unsupported computation / normalization；target 至少 1 gain。</dd></div>
             <div><dt>剩余边界</dt><dd>目前只做 literal material span；跨行字段组合、计算与语义归纳仍未验证，留待 S2/S3 后再评估。</dd></div>
           </dl>

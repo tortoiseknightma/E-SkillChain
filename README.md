@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：Portfolio V1 已完成五配置 `dev_mini 200×5` 方向性比较；历史 Core Fast R1–R10 均回滚。新的 deterministic action-response v4 lineage 已完成 fresh Qwen3.7 Static opt800，并首次接受了一个 S1 typed semantic policy：Document replay200 从 `7/8` 升至 `8/8`，body_gate75 从 `3/4` 升至 `4/4`，selected Bank 为 `efc7cbb3…aef`。按停止规则尚未启动 S2/test。**
+> **当前状态：新的六能力 fan-out/fan-in S1 已完成 10 轮真实实验。R5、R8、R10 接受了 Document 分支；R8/R10 的有效 Skill 字节相同。最终选择 R10：replay200 capability-macro `+2.0833pp`、body_gate75 `+4.1667pp`、0 hard-error delta，selected Bank 为 `51ae438e…c6cf`。其余五能力 byte-exact inherit；S2/Judge/test 均未启动。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -21,40 +21,40 @@ Core r3 完整实验现在使用独立的最小治理入口：
 uv run python scripts/run_core_experiment.py validate
 ```
 
-当前默认 spec 已绑定 accepted lineage 的 fresh Static 与 Document-only R1 设计；
+当前默认 spec 已绑定最终 R10 的 v6 Static 与 compact-contrastive fan-out 设计；
 `validate --inputs-only` 和完整 `validate` 均通过。已完成的 accepted 产物位于独立 run root，
 S2 必须显式使用该次运行的 canonical artifact spec 与 run root 继续，默认 spec 因字节 SHA
 不同会按预期拒绝 resume，也不会自动借用 accepted decision。
 
-deterministic v4 runtime 在路由后独占 tool-first、typed arguments、DTO/card/evidence
+deterministic v6 runtime 在路由后独占 tool-first、typed arguments、DTO/card/evidence
 closure、required sections 与 empty fallback。S1 不能再改这些机械 prose，只能提交
-`core-fast-semantic-policy-v2`。已接受的 R1 只把 Document 的 `ocr_extraction_plan`
+`core-fast-semantic-policy-v2`。最终接受的 R10 只把 Document 的 `ocr_extraction_plan`
 从 `all-lines` 切到 `literal-material-spans`，其余五项 byte-exact inherit。相同工具 DTO 下，typed policy 能改变编译结果；仅改普通 Body
 prose 不会改变结果，这一 treatment-sensitivity 边界已有聚焦测试。
 
-S1 已按规则停止：固定 `discovery600` 生成候选，已观察的 `replay200` 只作 development
-筛查，通过后才进入一次 `body_gate75` 接受门。历史 Qwen3.7 v2/v3 lineage 的 R1–R10
-均未通过 replay screen并保持 Static；新的 v4 Document-only lineage 已通过一次冻结
-body gate，因此选择新 Bank 并停止 S1，等待显式启动 S2。
-
-这次 accepted v4 Document Bank 现在只作为后续阶段的**备选起点**保留，尚不推进 S2。
-下一步先优化 S1 本身：v5 将单次 whole-bank Creator 改为六个独立能力 Creator 会话的 fan-out/fan-in；每个分支只可改自己的 typed semantic policy，独立筛查后才组合。
-每个能力拥有独立 Creator 候选、smoke、同 route/tool replay screen 与 decision；只有本能力
+新的 S1 采用六个独立 Codex Creator 会话的 fan-out/fan-in；每个分支只可改自己的 typed semantic policy，独立筛查后才组合。每个能力拥有独立 Creator 候选、smoke、同 route/tool replay screen 与 decision；只有本能力
 至少取得 1 个 gain、净增至少 1、regression 不超过 2 且 gain 至少为 regression 的 4 倍时，
 分支才进入 fan-in；普通失败之间的 reason 迁移只记录诊断，普通失败升级为 hard/runtime
 failure 或 route/tool trace 漂移仍会硬拒绝。最终组合 Bank 还要完整重跑 replay200，并只在
-通过后访问一次 body_gate75；新 v5 lineage 的 replay/body 单能力 floor 均为 `−5pp`。Exact 与
+通过后访问一次 body_gate75；新 lineage 的 replay/body 单能力 floor 均为 `−5pp`。Exact 与
 Multi 也新增了 compiler 实际消费的 typed evidence selector，DTO/card/handle/fallback 仍由
-runtime 独占。该 v5 改造目前只有离线回归，必须 fresh Static opt800 后才能启动新 S1；不能
-复用 v4 Static，也不构成新的实验增益。
+runtime 独占。v5/v6 各自完成了 fresh Static opt800；所有比较均使用同 runtime parent，未复用旧 Static。
+
+10 轮终态为：R1–R3、R7、R9 在 Feedback terminal gate 前停止；R4 暴露并修复了错误 replay
+primitive；R6 的 Document 分支局部通过但 body 增益为 0；R5、R8、R10 接受。R8 与 R10 的
+Document Skill SHA 都是 `ec6ae462…6fdf`，R10 使用更小的 48-row contrastive packet、48/48
+schema-valid Feedback，并以更低成本复现同一效果，所以被选为后续阶段的**备选起点**。
+本阶段不推进 S2；完整逐轮证据见 [S1 实验日志](docs/s1-experiment-log.html)。
 
 第一批证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`，第二批为
 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。十个 round root 均冻结
-`accepted=false`；它们只用于审计，不能任选一个继续 S2，也不能在新目录追加 R11。
+`accepted=false`；它们只用于审计。新的 fan-out 10 轮证据根为
+`D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813` 与
+`D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813`；除最终 R10 外不得任选失败候选继续 S2。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
-采用 `canary6 + remaining42` 的 48 条 Feedback，因而实际最多并发 48。完整 48 条必须在
+采用 `canary6 + remaining42/54` 的 48 或 60 条 Feedback。完整集合必须在
 Creator 前通过 completeness、service-error 与 parse/schema-error 门。限速作用于每次 provider call，而不是外层
 query。该配置只用于新 Fast execution overlay；历史 Formal profile、配置和 receipt
 保持原样，不回写。
@@ -155,9 +155,9 @@ Skill 被拆成影响路由的 Description 与影响执行的 Body。每个阶�
 
 | 阶段 | 主要输入 | 允许的变化 | 接受条件 | V1 状态 |
 | --- | --- | --- | --- | --- |
-| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | parent-bound sparse patch；未改项 byte-exact inherit | replay 筛查后一次正式 GCS 接受门 | Qwen3.7 R1–R10 均回滚；最终 alias Static |
-| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；因 S1 未接受而未启动 |
-| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待 S2 disposition |
+| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 六能力 fan-out typed policy patch；未改项 byte-exact inherit | 分支独立 screen、fan-in replay 后一次正式 GCS 接受门 | 10 轮完成；R10 Document 分支 accepted，覆盖 `1/6` |
+| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；R10 仅作备选起点，本阶段未启动 |
+| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否从 R10 推进 |
 
 候选 Bank 保存 parent / candidate lineage 与内容哈希。Gate 失败时，系统恢复到逐字节一致的 Parent Bank，而不是在失败候选上继续“补丁式调参”。
 
@@ -337,7 +337,7 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 - 所有合成 query 均标记为 `synthetic_derived`；它们模拟任务结构，不代表真实用户分布。
 - 原始图像、大体量数据、私有授权材料、API key 和大多数真实 run artifact 不随 Git 仓库分发。仓库公开代码、冻结规格、离线 fixture、选定证据与汇总报告。
 - Core r3 语料已经构造，但冻结的 `test300` 尚未执行；README 不把 development 诊断写成最终总体增益。
-- S1 已在 Qwen3.7 R10 后冻结为 Static alias；第二批五轮额度耗尽且无接受候选，因此 S2 / S3 虽有可执行原型，本轮也未启动。
+- 新 fan-out S1 已在 R10 后停止；R10 接受 Document 单能力分支，其余五能力仍为 Static parent。它是后续阶段备选起点，不是六能力普遍增益结论；S2 / S3 本轮未启动。
 - 部分历史 authoring receipt / runbook 保留创建时的 Windows 本地路径，它们是不可改写实验记录，不是 Quickstart 的可移植依赖。
 
 ## 数据与许可证
@@ -348,9 +348,9 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 
 ## 下一步
 
-1. 保留两批十轮负结果，不启动 S2、不重跑挑样、不放宽零回归门。
-2. 下一步优先把工具先行、DTO/card/evidence closure 和 fallback 分支移入版本化的确定性编译或运行时 contract；不再继续堆自然语言 prompt。
-3. 只有另行批准的新 S1 候选真实通过 replay 与 body gate 后，才进入 S2；随后再按冻结顺序推进 S3 与 `test300`。
+1. 冻结 fan-out R1–R10 及最终 R10 Bank；不追加 R11，也不从失败候选挑选局部结果。
+2. 将 R10 保留为后续阶段备选起点；若决定推进，必须使用 canonical spec / run root 启动 S2，不能用 tracked template resume 旧 root。
+3. 在进入 S2 前整理五配置开发结果与面试材料；后续再按冻结顺序推进 S2、S3 与 `test300`。
 
 ---
 

@@ -120,7 +120,7 @@ def _observation(
     *,
     success: bool = False,
     assistant_model: str = "fake-model",
-    assistant_contract: str = "core-fast-deterministic-action-response-v5",
+    assistant_contract: str = "core-fast-deterministic-action-response-v6",
 ) -> dict[str, object]:
     components = {
         "route_acceptable": True,
