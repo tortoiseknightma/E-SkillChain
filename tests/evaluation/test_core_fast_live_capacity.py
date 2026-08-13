@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -296,6 +297,27 @@ def test_cached_calls_do_not_consume_pacing_or_live_adapter_slots(
         assert adapter.calls[role] == 1
 
     assert pacer.calls == 1
+
+
+def test_feedback_parser_accepts_only_empty_top_level_note_annotations() -> None:
+    from skillchain.evaluation.evaluator_outputs import (
+        EvaluatorOutputParseError,
+        parse_visual_feedback_output_v4,
+    )
+
+    payload = {
+        "schema_version": 1,
+        "summary": "grounded summary",
+        "rule_violations": [],
+        "ideal_response_gaps": [],
+        "skill_suggestions": ["[policy_compatible] keep the typed policy bounded"],
+        "ideal_response_gaps_note": None,
+    }
+    parsed = parse_visual_feedback_output_v4(json.dumps(payload))
+    assert parsed.summary == "grounded summary"
+    payload["ideal_response_gaps_note"] = "extra prose"
+    with pytest.raises(EvaluatorOutputParseError, match="note annotations"):
+        parse_visual_feedback_output_v4(json.dumps(payload))
 
 
 def _query() -> Query:

@@ -627,6 +627,17 @@ def parse_visual_feedback_output_v4(text: str) -> VisualFeedbackOutput:
             raise EvaluatorOutputParseError(
                 "Feedback summary_note must be absent, null, or blank"
             )
+    # Qwen3.8 has also emitted one null/blank annotation adjacent to a valid
+    # strict-schema field.  Preserve the same narrow rule for any top-level
+    # ``*_note`` key: it carries no evaluation evidence, while a nonempty or
+    # non-note extra remains a hard schema failure.
+    for key in tuple(decoded):
+        if key.endswith("_note"):
+            note = decoded.pop(key)
+            if note is not None and (type(note) is not str or note.strip()):
+                raise EvaluatorOutputParseError(
+                    "Feedback note annotations must be absent, null, or blank"
+                )
     normalized = _trim_visual_feedback_free_text_v3(decoded)
     try:
         return VisualFeedbackOutput.model_validate_json(
