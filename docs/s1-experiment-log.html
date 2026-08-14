@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R12 仍是 cycle selected；R52 是唯一新增 accepted branch，R34–R54 已完成 21/30，test 未访问</span>
+        <span>R12 仍是 cycle selected；R52 是唯一新增 accepted branch，R34–R60 已完成 27/30，test 未访问</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>21 / 30</strong><span>adaptive rounds completed</span></div>
+        <div class="hero-stat"><strong>27 / 30</strong><span>adaptive rounds completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -577,7 +577,10 @@
         regression，R53/R54 均为 0/0；R52 的 Encyclopedia citation closure 得到局部 2/0、replay macro
         +0.8333pp、body macro +3.125pp、CI95 lower +2.7778pp、hard-error −4pp，成为唯一新增
         AcceptedBranchArtifact。R12 仍是 independent parent 和 cycle selected Bank；R52 只能进入后续
-        accepted-only fan-in/finalist 排序。完成轮数现为 21/30。
+        accepted-only fan-in/finalist 排序。第五阶段 R55–R60 中，R55 在完整 Feedback gate 停止；
+        R56–R60 全部进入可归因 local response screen。R56、R59 各为局部 1/0，但分别被 replay
+        capability/macro 门与 hard-error 门回滚；R57 为 0/1、R58 为 0/2、R60 为 0/0。完成轮数现为
+        27/30，body75、test300、S2/S3/Judge 仍未新增访问。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -586,7 +589,8 @@
         ¥2.52357745，另有一个 provider orphan 与 Creator 人民币成本未知。自适应首批 R34–R38
         新增可追踪 DashScope ¥0.3496057、4 个 Creator 会话。R39–R43 再新增 ¥0.67932075、5 个
         Creator 会话。R44–R48 再新增 ¥1.23552605、5 个 Creator 会话；R49–R54 新增
-        ¥1.3534802、5 个 Creator 会话。四个自适应阶段合计 ¥3.6179327、19 个 Creator 会话。
+        ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话。五个自适应阶段
+        合计 ¥5.47501575、24 个 Creator 会话。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2030,6 +2034,64 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-analysis" id="exp-20260815-adaptive-r55-r60" data-status="analysis" data-capability="exact,multi,encyclopedia">
+          <div class="experiment-title">
+            <div>
+              <div class="experiment-id">ADAPTIVE STAGE 05 · R55–R60</div>
+              <h3>Capability-specific response IR · treatment 可达，正式门仍拒绝</h3>
+              <p>在 R12-only parent、固定有界风险与 replay/body 门下，将 response operation 从跨能力通用动词收窄为 capability + failure-family typed IR。</p>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">0 new accepted</span><span class="tag">test untouched</span></div>
+          </div>
+
+          <div class="result-row">
+            <div class="result-box"><strong>27 / 30</strong><span>adaptive rounds completed</span></div>
+            <div class="result-box"><strong>5 / 5</strong><span>B08 treatments reached local screen</span></div>
+            <div class="result-box"><strong>5</strong><span>Creator sessions</span></div>
+            <div class="result-box"><strong>¥1.85708305</strong><span>priced DashScope</span></div>
+          </div>
+
+          <div class="table-wrap" role="region" aria-labelledby="adaptive-stage05-caption" tabindex="0">
+            <table>
+              <caption id="adaptive-stage05-caption">R55–R60 终态；普通 failure-reason 迁移只记诊断，parent-success regression 与正式 gate 决定回滚。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">Target</th><th scope="col">局部结果</th><th scope="col">最深 gate</th><th scope="col">终态</th><th scope="col" class="num">CNY</th></tr></thead>
+              <tbody>
+                <tr id="exp-20260815-r55"><th scope="row">R55</th><td>Exact response · unsupported claim</td><td>Feedback 8/9；1 provider 500 after timeout</td><td>full Feedback terminal gate</td><td>无 Creator/Assistant；无算法结论</td><td class="num">0.0385068</td></tr>
+                <tr id="exp-20260815-r56"><th scope="row">R56</th><td>Multi response · complete mapping</td><td>local 1 gain / 0 regression</td><td>replay macro −1.7241pp；Multi −10.3448pp</td><td>正式门回滚</td><td class="num">0.7753974</td></tr>
+                <tr id="exp-20260815-r57"><th scope="row">R57</th><td>Multi response · referenced cards</td><td>0 / 1；regression 0758</td><td>local response screen</td><td>有界风险门回滚</td><td class="num">0.13353655</td></tr>
+                <tr id="exp-20260815-r58"><th scope="row">R58</th><td>Encyclopedia response · supported cited claims</td><td>0 / 2；5 ordinary migrations</td><td>local response screen</td><td>有界风险门回滚</td><td class="num">0.10169715</td></tr>
+                <tr id="exp-20260815-r59"><th scope="row">R59</th><td>Encyclopedia response · unknown citation</td><td>local 1 / 0</td><td>replay macro 0pp；hard +1.5pp</td><td>正式 hard-error 门回滚</td><td class="num">0.74283965</td></tr>
+                <tr id="exp-20260815-r60"><th scope="row">R60</th><td>Exact response · evidenced claims/cards</td><td>0 / 0</td><td>local response screen</td><td>最小 gain/net 门回滚</td><td class="num">0.0651055</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · Bank <code>e70ed907…096cd</code>；R52 仅作为已接受分支冻结，未成为任何本轮 parent</dd></div>
+            <div><dt>Mechanism</dt><dd><code>single-surface-counterfactual-fanout-v8</code> + <code>parent-counterfactual-v11</code></dd></div>
+            <div><dt>Preflight</dt><dd>R56–R60 在任何新 Feedback 前 5/5 evidence-feasible、separable、structurally and behaviorally treatment-sensitive；0 provider calls</dd></div>
+            <div><dt>Unvisited</dt><dd>本阶段 body75、test300、S2、S3、Judge</dd></div>
+          </dl>
+
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R56–R60 全部把 Creator treatment 送入可归因 local screen，关闭了 R31/R32 的 0/2 treatment-throughput 缺口。R55 是完整 Feedback gate 的 operational failure，不能计为 treatment round 的正负结果。</p></div>
+            <div class="finding"><span class="kind fact">FACT</span><p>R58 的五条普通 failure→failure reason 迁移没有触发硬拒绝；真正的局部拒绝来自 0 gain / 2 parent-success regressions。R56 与 R59 则先按 1/0 保留，再分别因 replay capability 大跌和 hard-error +1.5pp 回滚。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>更具体的 response IR 能改变行为，但 narrow local screen 对完整 replay 的稳定性仍不足。当前唯一跨 local/replay/body 的可部署证据仍是 R52 citation closure，不能把 R56/R59 的局部 gain 拼入它。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保持 R12 selected，R52 仍是唯一 accepted branch。R55–R60 全部禁止作为 parent、复制 Skill 或参加 fan-in；gate、R33 accepted-only fan-in 与 one-finalist test300 均不改变。阶段预算用满后先汇报，再预注册最后三轮。</p></div>
+          </div>
+
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b07-20260815\artifacts\r55-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\batch-preflight.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\r56-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\r57-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\r58-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\r59-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\r60-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815\artifacts\b08-stage-summary.json</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -2197,9 +2259,10 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         当前 model-generated fresh Static、no-op qualification 与双策略 30 轮 campaign 均已结束；
         R12 是双策略周期唯一 accepted/selected Bank。R31 Recipe action、R32 Multi response 与 accepted-only R33
         fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
-        parent 或被复制。自适应 R34–R54 已完成 21/30；R52 是唯一新增 accepted branch，但 R12
+        parent 或被复制。自适应 R34–R60 已完成 27/30；R52 是唯一新增 accepted branch，但 R12
         仍是所有独立 round 的 parent 和当前 selected Bank。R52 只能参加 accepted-only fan-in/finalist；
-        其余自适应 candidate 均不得复制。test300 仍 untouched。下一阶段从尚未运行的 R55 开始，
+        其余自适应 candidate 均不得复制。test300 仍 untouched。最后三轮必须在一个新 batch 中先共同
+        完成零调用 evidence-feasibility、surface-separability 和 behavior-level treatment-sensitivity preflight；
         不得事后缩保护集、重跑已终结 round 或放宽 gate。
       </div>
 

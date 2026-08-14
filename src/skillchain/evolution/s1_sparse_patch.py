@@ -60,6 +60,9 @@ S1_COUNTERFACTUAL_SEMANTIC_POLICY_VERSION = "single-surface-counterfactual-fanou
 S1_COUNTERFACTUAL_SURFACE_CLOSED_POLICY_VERSION = (
     "single-surface-counterfactual-fanout-v7"
 )
+S1_COUNTERFACTUAL_CAPABILITY_RESPONSE_POLICY_VERSION = (
+    "single-surface-counterfactual-fanout-v8"
+)
 S1_POLICY_SURFACES = ("action-policy", "response-policy")
 S1_CAPABILITY_ACTION_TOOLS = {
     "knowledge.visual_encyclopedia": ("object_detect", "encyclopedia_lookup"),
@@ -77,6 +80,27 @@ S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY = {
     "unsupported-claim": "omit-unsupported-claims",
     "citation-closure": "attach-visible-citations",
     "output-structure": "preserve-required-sections",
+}
+S1_RESPONSE_OPERATION_BY_CAPABILITY_FAILURE_FAMILY = {
+    ("knowledge.visual_encyclopedia", "unsupported-claim"): (
+        "retain-only-source-supported-cited-claims"
+    ),
+    ("product.multi_search", "item-association"): ("serialize-complete-item-mapping"),
+    ("product.multi_search", "card-closure"): ("serialize-referenced-cards-verbatim"),
+    ("product.exact_match", "unsupported-claim"): (
+        "retain-only-evidenced-claims-and-cards"
+    ),
+    ("utility.recipe_guidance", "citation-closure"): (
+        "cite-each-source-supported-claim"
+    ),
+    ("utility.recipe_guidance", "unsupported-claim"): (
+        "retain-only-source-supported-claims"
+    ),
+}
+S1_RESPONSE_OPERATION_BY_CAPABILITY_REASON = {
+    ("knowledge.visual_encyclopedia", "evidence_handle_unknown"): (
+        "replace-unknown-citations-with-visible-handles"
+    )
 }
 S1_RESPONSE_METRIC_BY_FAILURE_FAMILY = {
     "fallback-branch": "evidence_grounded",
@@ -103,6 +127,8 @@ S1_RESPONSE_OPERATIONS_BY_CAPABILITY = {
             "omit-unsupported-claims",
             "attach-visible-citations",
             "preserve-required-sections",
+            "retain-only-source-supported-cited-claims",
+            "replace-unknown-citations-with-visible-handles",
         }
     ),
     "product.exact_match": frozenset(
@@ -111,6 +137,7 @@ S1_RESPONSE_OPERATIONS_BY_CAPABILITY = {
             "close-referenced-cards",
             "omit-unsupported-claims",
             "preserve-required-sections",
+            "retain-only-evidenced-claims-and-cards",
         }
     ),
     "product.multi_search": frozenset(
@@ -120,6 +147,8 @@ S1_RESPONSE_OPERATIONS_BY_CAPABILITY = {
             "close-referenced-cards",
             "omit-unsupported-claims",
             "preserve-required-sections",
+            "serialize-complete-item-mapping",
+            "serialize-referenced-cards-verbatim",
         }
     ),
     "product.style_recommendation": frozenset(
@@ -145,6 +174,8 @@ S1_RESPONSE_OPERATIONS_BY_CAPABILITY = {
             "omit-unsupported-claims",
             "attach-visible-citations",
             "preserve-required-sections",
+            "cite-each-source-supported-claim",
+            "retain-only-source-supported-claims",
         }
     ),
 }
@@ -479,6 +510,13 @@ class CounterfactualResponseDirectiveV1(_StrictFrozenModel):
         "omit-unsupported-claims",
         "attach-visible-citations",
         "preserve-required-sections",
+        "serialize-complete-item-mapping",
+        "serialize-referenced-cards-verbatim",
+        "retain-only-evidenced-claims-and-cards",
+        "cite-each-source-supported-claim",
+        "retain-only-source-supported-claims",
+        "retain-only-source-supported-cited-claims",
+        "replace-unknown-citations-with-visible-handles",
     ]
 
 
@@ -728,6 +766,12 @@ class SingleSurfaceCounterfactualPatchV4(SingleSurfaceCounterfactualPatchV3):
     must_preserve: tuple[CounterfactualPreservationRefV1, ...] = Field(
         min_length=3, max_length=3
     )
+
+
+class SingleSurfaceCounterfactualPatchV5(SingleSurfaceCounterfactualPatchV4):
+    """v8 IR: capability-specific response operations remain prose-free."""
+
+    schema_version: Literal[5] = 5
 
 
 class PolicySurfaceCompilationReceiptV1(_StrictFrozenModel):
@@ -1525,6 +1569,41 @@ def _response_directive_from_signature(
     return CounterfactualResponseDirectiveV1(operation=operation)
 
 
+def response_operation_for_capability_failure_family(
+    *,
+    capability_id: str,
+    failure_family: str,
+    predicted_reason_code: str | None = None,
+) -> str:
+    """Return the v8 capability-specific operation without exposing authored prose."""
+
+    reason_specific = S1_RESPONSE_OPERATION_BY_CAPABILITY_REASON.get(
+        (capability_id, str(predicted_reason_code))
+    )
+    if reason_specific is not None:
+        return reason_specific
+    return S1_RESPONSE_OPERATION_BY_CAPABILITY_FAILURE_FAMILY.get(
+        (capability_id, failure_family),
+        S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY[failure_family],
+    )
+
+
+def _capability_response_directive_from_signature(
+    capability_id: str,
+    signature: Mapping[str, object],
+) -> CounterfactualResponseDirectiveV1:
+    generic = _response_directive_from_signature(signature)
+    family = str(signature["response_failure_family"])
+    operation = response_operation_for_capability_failure_family(
+        capability_id=capability_id,
+        failure_family=family,
+        predicted_reason_code=str(signature.get("predicted_reason_code")),
+    )
+    if operation == generic.operation:
+        return generic
+    return CounterfactualResponseDirectiveV1(operation=operation)
+
+
 def counterfactual_semantic_policy_patch_output_json_schema(
     *,
     capability_id: str,
@@ -1699,6 +1778,44 @@ def counterfactual_surface_closed_policy_patch_output_json_schema(
     return schema
 
 
+def counterfactual_capability_response_policy_patch_output_json_schema(
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
+    expected_response_signature: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return v8 schema with capability-specific response operations."""
+
+    schema = counterfactual_surface_closed_policy_patch_output_json_schema(
+        capability_id=capability_id,
+        parent_skill_sha256=parent_skill_sha256,
+        target_surface=target_surface,
+        parent_success_query_ids=parent_success_query_ids,
+        expected_action_condition=expected_action_condition,
+        expected_response_signature=expected_response_signature,
+    )
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    properties["schema_version"] = {"type": "integer", "enum": [5]}
+    if target_surface == "response-policy":
+        assert expected_response_signature is not None
+        directive = _capability_response_directive_from_signature(
+            capability_id, expected_response_signature
+        )
+        response_then = properties["response_then"]
+        assert isinstance(response_then, dict)
+        response_properties = response_then["properties"]
+        assert isinstance(response_properties, dict)
+        response_properties["operation"] = {
+            "type": "string",
+            "enum": [directive.operation],
+        }
+    return schema
+
+
 def parse_counterfactual_policy_patch(
     raw_final: bytes,
     *,
@@ -1870,6 +1987,63 @@ def parse_counterfactual_surface_closed_policy_patch(
     return proposal
 
 
+def parse_counterfactual_capability_response_policy_patch(
+    raw_final: bytes,
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
+    expected_response_signature: Mapping[str, object] | None = None,
+) -> SingleSurfaceCounterfactualPatchV5:
+    try:
+        raw = parse_strict_json(
+            raw_final, label="S1 capability-response counterfactual Creator output"
+        )
+        proposal = SingleSurfaceCounterfactualPatchV5.model_validate(raw, strict=True)
+    except (ArtifactFormatError, ValidationError) as error:
+        raise S1SparsePatchError(
+            "S1 capability-response counterfactual Creator output is invalid"
+        ) from error
+    if (
+        proposal.capability_id != capability_id
+        or proposal.parent_skill_sha256 != parent_skill_sha256
+        or proposal.target_surface != target_surface
+        or tuple(item.query_id for item in proposal.must_preserve)
+        != parent_success_query_ids
+    ):
+        raise S1SparsePatchError(
+            "S1 capability-response counterfactual proposal binding drifted"
+        )
+    if target_surface == "action-policy":
+        if expected_action_condition is None or expected_response_signature is not None:
+            raise S1SparsePatchError(
+                "S1 capability-response action evidence binding is absent"
+            )
+        expected_action = CounterfactualActionConditionV1.model_validate(
+            expected_action_condition, strict=True
+        )
+        if proposal.action_when != expected_action:
+            raise S1SparsePatchError(
+                "S1 capability-response action condition drifted from evidence"
+            )
+    else:
+        if expected_action_condition is not None or expected_response_signature is None:
+            raise S1SparsePatchError(
+                "S1 capability-response evidence binding is absent"
+            )
+        if proposal.response_when != _response_condition_from_signature(
+            expected_response_signature
+        ) or proposal.response_then != _capability_response_directive_from_signature(
+            capability_id, expected_response_signature
+        ):
+            raise S1SparsePatchError(
+                "S1 capability-response treatment drifted from scored behavior"
+            )
+    return proposal
+
+
 def _render_typed_action_condition(value: CounterfactualActionConditionV1) -> str:
     if value.phase == "before-first-tool":
         return "the action loop is before its first tool call"
@@ -1931,13 +2105,47 @@ def _render_typed_response_directive(value: CounterfactualResponseDirectiveV1) -
         "preserve-required-sections": (
             "preserve every parent required response section exactly once"
         ),
+        "serialize-complete-item-mapping": (
+            "render exactly one mapping line for every visible item in public order, "
+            "copying its item reference, public class text, status, and public match handle verbatim "
+            "without filtering by the user wording"
+        ),
+        "serialize-referenced-cards-verbatim": (
+            "emit exactly once each distinct card referenced by the visible matched "
+            "items in public match order, copying its title, evidence reference, and "
+            "product identifier verbatim"
+        ),
+        "retain-only-evidenced-claims-and-cards": (
+            "retain only claims stated by the visible public product evidence while "
+            "preserving every supported card field and evidence handle"
+        ),
+        "cite-each-source-supported-claim": (
+            "place the exact visible source handle beside every retained ingredient or "
+            "preparation claim and omit claims absent from that source"
+        ),
+        "retain-only-source-supported-claims": (
+            "retain only ingredient and preparation claims stated in the visible source "
+            "text and keep each retained claim beside its exact public handle"
+        ),
+        "retain-only-source-supported-cited-claims": (
+            "retain only claims stated in the visible source text and keep one exact "
+            "visible source handle beside every retained material claim"
+        ),
+        "replace-unknown-citations-with-visible-handles": (
+            "replace every citation absent from the visible source output with the exact "
+            "visible handle supporting that material claim"
+        ),
     }[value.operation]
 
 
 def compile_counterfactual_semantic_policy_branch(
     *,
     parent_bank: StaticBankArtifact,
-    proposal: SingleSurfaceCounterfactualPatchV3 | SingleSurfaceCounterfactualPatchV4,
+    proposal: (
+        SingleSurfaceCounterfactualPatchV3
+        | SingleSurfaceCounterfactualPatchV4
+        | SingleSurfaceCounterfactualPatchV5
+    ),
 ) -> CompiledPolicySurfaceBranch:
     if proposal.target_surface == "action-policy":
         assert proposal.action_when is not None and proposal.action_then is not None
@@ -2951,6 +3159,7 @@ __all__ = [
     "SingleSurfaceCounterfactualPatchV2",
     "SingleSurfaceCounterfactualPatchV3",
     "SingleSurfaceCounterfactualPatchV4",
+    "SingleSurfaceCounterfactualPatchV5",
     "CounterfactualActionConditionV1",
     "CounterfactualActionDirectiveV1",
     "CounterfactualResponseConditionV1",
@@ -2969,10 +3178,13 @@ __all__ = [
     "counterfactual_typed_policy_patch_output_json_schema",
     "counterfactual_semantic_policy_patch_output_json_schema",
     "counterfactual_surface_closed_policy_patch_output_json_schema",
+    "counterfactual_capability_response_policy_patch_output_json_schema",
     "parse_dual_policy_patch",
     "parse_counterfactual_policy_patch",
     "parse_counterfactual_typed_policy_patch",
     "parse_counterfactual_semantic_policy_patch",
     "parse_counterfactual_surface_closed_policy_patch",
+    "parse_counterfactual_capability_response_policy_patch",
+    "response_operation_for_capability_failure_family",
     "sparse_patch_output_json_schema",
 ]

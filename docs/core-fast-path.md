@@ -510,6 +510,37 @@ hard-error 门、R33 accepted-only fan-in 与 one-finalist test300 规则未改�
 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-v3-20260815`、
 `...-b06-v4-20260815` 与 `...-b07-20260815`。
 
+### B08 capability-specific response IR 阶段（R55–R60）
+
+R31/R32 的 treatment throughput 0/2 已被前向机制关闭，而不是通过放宽 gate 追认：action Creator
+继续使用不能表达 answer/cards/evidence/fallback 的 typed tool-loop IR；Feedback 在进入 Creator 前按
+action/response surface 投影；response selector 只有在 route 正确、无 hard error、terminal tool 成功且
+目标 reason/component 可与 matched parent-success 对照时才允许成簇。B08 又把 response operation 从
+跨能力通用动词收窄为 capability + failure-family 枚举，并用 `parent-counterfactual-v11` 绑定实际评分行为。
+
+首次 B08 零调用 preflight 因两个 Recipe source family 找不到 3 个 matched parent-success 而 fail closed；
+没有调用 provider。前向 B08 v2 在任何新 Feedback 前一次性冻结 R56–R60，并对五轮全部得到
+`evidence_feasible=true`、`treatment_separable=true`、`structural_treatment_sensitive=true`、
+`behavior_treatment_sensitive=true`。R55 是 B07 预注册的唯一 Exact operational replacement：完整九条
+Feedback 为 8 success + 1 provider 500，terminal gate 在 Creator 前停止。
+
+| Round | Target | 局部 screen | 正式门 | 终态 |
+|---|---|---:|---|---|
+| R55 | Exact response · unsupported claim | 未执行；Feedback 8/9 | 完整 Feedback gate | operational failure；无算法结论 |
+| R56 | Multi response · complete item mapping | 1 gain / 0 regression | replay macro `−1.7241pp`；Multi `−10.3448pp`；hard 0pp | 正式门回滚 |
+| R57 | Multi response · referenced cards | 0 / 1 | 未进入 replay200 | 局部门回滚 |
+| R58 | Encyclopedia response · supported cited claims | 0 / 2；5 条普通 reason 迁移 | 未进入 replay200 | 局部门回滚 |
+| R59 | Encyclopedia response · unknown citation | 1 / 0 | replay macro 0pp；Encyclopedia 0pp；hard `+1.5pp` | 正式 hard-error 门回滚 |
+| R60 | Exact response · evidenced claims/cards | 0 / 0 | 未进入 replay200 | 最小 gain/net 门回滚 |
+
+普通失败到另一普通 reason 的五条 R58 迁移只进入诊断；真正否决的是两条 parent-success regression。
+R56 与 R59 证明 treatment 已经可达且局部可产生 gain，但 formal replay 分别暴露 capability 大幅下跌与
+hard-error 超限，所以不能 fan-in。五个候选全部从 R12 独立派生，R52 没有成为 parent，R55–R60 也
+没有相互继承。B08 阶段新增可追踪 DashScope ¥1.85708305、5 个 Creator 会话；body75、test300、
+S2/S3/Judge 均未访问。自适应进度为 27/30；R12 仍 selected，R52 仍是唯一新增 accepted branch。
+canonical root 为
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b08-v2-20260815`。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

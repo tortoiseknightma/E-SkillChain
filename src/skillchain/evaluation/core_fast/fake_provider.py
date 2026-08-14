@@ -6,6 +6,7 @@ from collections import Counter
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
 from skillchain.evolution.s1_sparse_patch import (
     S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY,
+    response_operation_for_capability_failure_family,
 )
 
 from .models import CAPABILITIES, CallIntent, CallResult
@@ -106,6 +107,8 @@ class FakeCoreFastAdapter:
                             "single-surface-counterfactual-v4",
                             "single-surface-counterfactual-v5",
                             "single-surface-counterfactual-v6",
+                            "single-surface-counterfactual-v7",
+                            "single-surface-counterfactual-v8",
                         }
                         else "[policy_compatible] make the existing contract explicit"
                     ),
@@ -139,7 +142,10 @@ class FakeCoreFastAdapter:
                 )
                 payload: dict[str, object] = {
                     "schema_version": (
-                        4
+                        5
+                        if intent.payload.get("proposal_mode")
+                        == "single-surface-counterfactual-fanout-v8"
+                        else 4
                         if intent.payload.get("proposal_mode")
                         == "single-surface-counterfactual-fanout-v7"
                         else 3
@@ -158,7 +164,10 @@ class FakeCoreFastAdapter:
                         (
                             {"query_id": query_id}
                             if intent.payload.get("proposal_mode")
-                            == "single-surface-counterfactual-fanout-v7"
+                            in {
+                                "single-surface-counterfactual-fanout-v7",
+                                "single-surface-counterfactual-fanout-v8",
+                            }
                             else {
                                 "query_id": query_id,
                                 "provider_visible_state": (
@@ -171,7 +180,7 @@ class FakeCoreFastAdapter:
                     ],
                 }
                 if (
-                    payload["schema_version"] in {2, 3, 4}
+                    payload["schema_version"] in {2, 3, 4, 5}
                     and surface == "action-policy"
                 ):
                     expected = requirements.get(
@@ -205,7 +214,7 @@ class FakeCoreFastAdapter:
                             },
                         }
                     )
-                elif payload["schema_version"] in {3, 4}:
+                elif payload["schema_version"] in {3, 4, 5}:
                     signature = requirements.get(
                         "response_behavior_is_bound_to_selected_failure"
                     )
@@ -221,9 +230,17 @@ class FakeCoreFastAdapter:
                                 "evidence_kinds": evidence["evidence_kinds"],
                             },
                             "response_then": {
-                                "operation": S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY[
-                                    family
-                                ]
+                                "operation": (
+                                    response_operation_for_capability_failure_family(
+                                        capability_id=capability,
+                                        failure_family=family,
+                                        predicted_reason_code=str(
+                                            signature.get("predicted_reason_code")
+                                        ),
+                                    )
+                                    if payload["schema_version"] == 5
+                                    else S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY[family]
+                                )
                             },
                         }
                     )

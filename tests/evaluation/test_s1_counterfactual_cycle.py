@@ -228,9 +228,16 @@ def test_v8_treatment_probe_uses_the_selected_provider_visible_failure() -> None
     assert probe["probe_action_tool_name"] == "recipe_lookup"
 
 
-def test_v10_preflight_requires_a_scored_response_behavior_and_matched_successes() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("selection_policy", "proposal_mode"),
+    [
+        ("parent-counterfactual-v10", "single-surface-counterfactual-fanout-v7"),
+        ("parent-counterfactual-v11", "single-surface-counterfactual-fanout-v8"),
+    ],
+)
+def test_v10_v11_preflight_requires_scored_response_behavior_and_matched_successes(
+    selection_policy: str, proposal_mode: str
+) -> None:
     signature = {
         "terminal_evidence_class": {
             "tool_names": ["recipe_lookup"],
@@ -245,8 +252,8 @@ def test_v10_preflight_requires_a_scored_response_behavior_and_matched_successes
         s1_settings=SimpleNamespace(
             target_capabilities=("utility.recipe_guidance",),
             target_surface="response-policy",
-            feedback_selection_policy="parent-counterfactual-v10",
-            proposal_mode="single-surface-counterfactual-fanout-v7",
+            feedback_selection_policy=selection_policy,
+            proposal_mode=proposal_mode,
         ),
         s1_parent=SimpleNamespace(
             protected_skill_sha256={"product.style_recommendation": "a" * 64}

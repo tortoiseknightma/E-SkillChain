@@ -29,8 +29,10 @@ from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
     compile_counterfactual_semantic_policy_branch,
     compile_counterfactual_typed_policy_branch,
     parse_counterfactual_semantic_policy_patch,
+    parse_counterfactual_capability_response_policy_patch,
     parse_counterfactual_surface_closed_policy_patch,
     parse_counterfactual_typed_policy_patch,
+    response_operation_for_capability_failure_family,
 )
 from skillchain.schemas import Query  # noqa: E402
 from skillchain.static_authoring import StaticBankArtifact  # noqa: E402
@@ -298,7 +300,9 @@ def _round_spec(
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
         "proposal_mode": (
-            "single-surface-counterfactual-fanout-v7"
+            "single-surface-counterfactual-fanout-v8"
+            if typed_contract and selection_policy == "parent-counterfactual-v11"
+            else "single-surface-counterfactual-fanout-v7"
             if typed_contract and selection_policy == "parent-counterfactual-v10"
             else "single-surface-counterfactual-fanout-v6"
             if typed_contract and selection_policy == "parent-counterfactual-v9"
@@ -463,13 +467,20 @@ def _treatment_probe(
     ) in {
         "single-surface-counterfactual-fanout-v6",
         "single-surface-counterfactual-fanout-v7",
+        "single-surface-counterfactual-fanout-v8",
     }
     surface_closed_contract = (
         getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
         == "single-surface-counterfactual-fanout-v7"
     )
+    capability_response_contract = (
+        getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
+        == "single-surface-counterfactual-fanout-v8"
+    )
     payload: dict[str, object] = {
-        "schema_version": 4
+        "schema_version": 5
+        if capability_response_contract
+        else 4
         if surface_closed_contract
         else 3
         if semantic_contract
@@ -481,7 +492,7 @@ def _treatment_probe(
         "must_preserve": [
             (
                 {"query_id": query_id}
-                if surface_closed_contract
+                if surface_closed_contract or capability_response_contract
                 else {
                     "query_id": query_id,
                     "provider_visible_state": (
@@ -515,6 +526,7 @@ def _treatment_probe(
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
+            "parent-counterfactual-v11",
         }:
             if not isinstance(action_signature, dict):
                 raise ValueError(
@@ -592,6 +604,7 @@ def _treatment_probe(
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
+            "parent-counterfactual-v11",
         }:
             if not isinstance(response_signature, dict):
                 raise ValueError(
@@ -600,7 +613,17 @@ def _treatment_probe(
             if semantic_contract:
                 evidence = response_signature.get("terminal_evidence_class")
                 family = response_signature.get("response_failure_family")
-                operation = S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY.get(str(family))
+                operation = (
+                    response_operation_for_capability_failure_family(
+                        capability_id=capability,
+                        failure_family=str(family),
+                        predicted_reason_code=str(
+                            response_signature.get("predicted_reason_code")
+                        ),
+                    )
+                    if capability_response_contract
+                    else S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY.get(str(family))
+                )
                 if not isinstance(evidence, dict) or operation is None:
                     raise ValueError("response treatment has no typed behavior")
                 payload.update(
@@ -624,7 +647,9 @@ def _treatment_probe(
             payload.update({"when": when, "then": then})
     if semantic_contract:
         parse_semantic = (
-            parse_counterfactual_surface_closed_policy_patch
+            parse_counterfactual_capability_response_policy_patch
+            if capability_response_contract
+            else parse_counterfactual_surface_closed_policy_patch
             if surface_closed_contract
             else parse_counterfactual_semantic_policy_patch
         )
@@ -821,6 +846,7 @@ def _build_cycle_preflight(
                 "parent-counterfactual-v8",
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
+                "parent-counterfactual-v11",
             }:
                 if spec.s1_settings.target_surface == "action-policy":
                     failure_signatures = {

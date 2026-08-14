@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b08",
+  "rounds": [
+    {
+      "round_id": "r56",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v11",
+      "gain_seeds": ["r2-core-0208", "r2-core-0260", "r2-core-0308", "r2-core-0333", "r2-core-0334"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "product.multi_search",
+          "hypothesis": "For a successful Multi tool state, render every visible item association once in public order and copy its public fields verbatim without filtering by user wording.",
+          "historical_signal": "R53's generic copy-item-associations operation was safe but inert at 0 gains and 0 regressions. v11 replaces the cross-capability verb with a Multi-specific complete-mapping operation while preserving the same scored state.",
+          "forbidden_carry_forward": "Do not inherit R53, change action policy, tool arguments, card closure, fallback, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r57",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v11",
+      "gain_seeds": ["r2-core-0258", "r2-core-0609", "r2-core-0682", "r2-core-0711"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "product.multi_search",
+          "hypothesis": "For a successful Multi tool state, emit exactly each distinct referenced card once in public match order and copy its three public fields verbatim.",
+          "historical_signal": "R46's free-form card-closure clause was a 0/0 no-op. v11 binds a Multi-specific referenced-card serialization operation to the distinct card-only failure family.",
+          "forbidden_carry_forward": "Do not change item association, action policy, tool arguments, fallback, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r58",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v11",
+      "gain_seeds": ["r2-core-0266", "r2-core-0292", "r2-core-0316", "r2-core-0320", "r2-core-0418"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "For successful nonempty source evidence, retain only source-stated claims and keep an exact visible source handle beside every retained material claim.",
+          "historical_signal": "R51's generic unsupported-claim operation was 0/1 because it removed a citation while retaining claims. v11 combines source entailment with citation preservation in one Encyclopedia-specific response operation; R52 remains a separate accepted alternative.",
+          "forbidden_carry_forward": "Do not inherit or edit R52, change action policy, source selection, fallback, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r59",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v11",
+      "gain_seeds": ["r2-core-0442", "r2-core-0592", "r2-core-0643"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "For successful nonempty source evidence, replace every unknown citation with the exact visible handle that supports the same material claim.",
+          "historical_signal": "R52 accepted the material-claim-uncited family. This round isolates the three evidence-handle-unknown failures with a distinct reason-bound operation instead of repeating R52's candidate.",
+          "forbidden_carry_forward": "Do not inherit or edit R52, change action policy, source selection, unsupported-claim policy, fallback, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r60",
+      "capability": "product.exact_match",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v11",
+      "gain_seeds": ["r2-core-0452", "r2-core-0456", "r2-core-0502", "r2-core-0551", "r2-core-0603"],
+      "regressions": ["r2-core-0306", "r2-core-0429", "r2-core-0955"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "product.exact_match",
+          "hypothesis": "For successful image-search evidence, retain only public-evidence claims while preserving every supported card field and handle.",
+          "historical_signal": "R55 ended at the full Feedback gate after a provider 500 timeout and never called Creator or Assistant. This is the one pre-registered replacement round, with a more concrete Exact-specific operation and no reuse of partial R55 Feedback.",
+          "forbidden_carry_forward": "Do not resume R55, reuse its partial Feedback, change route or action policy, change fallback, or copy any rejected Bank."
+        }
+      ]
+    }
+  ]
+}

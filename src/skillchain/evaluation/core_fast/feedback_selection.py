@@ -348,6 +348,7 @@ def _counterfactual_cluster_state(
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
+            "parent-counterfactual-v11",
         }:
             return {
                 "action_failure_signature": _action_failure_signature(state),
@@ -361,6 +362,7 @@ def _counterfactual_cluster_state(
         "parent-counterfactual-v8",
         "parent-counterfactual-v9",
         "parent-counterfactual-v10",
+        "parent-counterfactual-v11",
     }:
         signature = state.get("response_treatment_signature")
         return {
@@ -406,6 +408,7 @@ def build_parent_counterfactual_population(
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
+            "parent-counterfactual-v11",
         }
         action_signature = (
             _action_failure_signature(state)
@@ -415,7 +418,11 @@ def build_parent_counterfactual_population(
         response_signature = (
             _response_treatment_signature_v9(observation)
             if settings.feedback_selection_policy
-            in {"parent-counterfactual-v9", "parent-counterfactual-v10"}
+            in {
+                "parent-counterfactual-v9",
+                "parent-counterfactual-v10",
+                "parent-counterfactual-v11",
+            }
             and settings.target_surface == "response-policy"
             and not success
             else (
@@ -433,6 +440,7 @@ def build_parent_counterfactual_population(
         if settings.feedback_selection_policy in {
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
+            "parent-counterfactual-v11",
         }:
             state = {
                 **state,
@@ -500,6 +508,7 @@ def select_parent_counterfactual_samples(
         "parent-counterfactual-v8",
         "parent-counterfactual-v9",
         "parent-counterfactual-v10",
+        "parent-counterfactual-v11",
     }
 
     def treatment_separable(row: Mapping[str, object]) -> bool:
@@ -590,7 +599,11 @@ def select_parent_counterfactual_samples(
             evidence_key = (
                 "terminal_response_evidence_class"
                 if settings.feedback_selection_policy
-                in {"parent-counterfactual-v9", "parent-counterfactual-v10"}
+                in {
+                    "parent-counterfactual-v9",
+                    "parent-counterfactual-v10",
+                    "parent-counterfactual-v11",
+                }
                 else "response_evidence_class"
             )
             exact_boundary = int(
@@ -1372,6 +1385,7 @@ def build_parent_counterfactual_manifest(
                         "parent-counterfactual-v8",
                         "parent-counterfactual-v9",
                         "parent-counterfactual-v10",
+                        "parent-counterfactual-v11",
                     }
                     and settings.target_surface == "action-policy"
                     else {}
@@ -1387,6 +1401,7 @@ def build_parent_counterfactual_manifest(
                         "parent-counterfactual-v8",
                         "parent-counterfactual-v9",
                         "parent-counterfactual-v10",
+                        "parent-counterfactual-v11",
                     }
                     and settings.target_surface == "response-policy"
                     else {}

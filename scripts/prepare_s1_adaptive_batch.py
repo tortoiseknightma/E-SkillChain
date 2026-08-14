@@ -70,6 +70,7 @@ def _load_plan(path: Path) -> dict[str, object]:
                 "parent-counterfactual-v8",
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
+                "parent-counterfactual-v11",
             }
             or not isinstance(exclusions, list)
             or exclusions != sorted(set(exclusions))

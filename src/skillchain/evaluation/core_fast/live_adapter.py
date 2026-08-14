@@ -739,6 +739,7 @@ class LiveCoreFastAdapter:
                 "single-surface-counterfactual-v5",
                 "single-surface-counterfactual-v6",
                 "single-surface-counterfactual-v7",
+                "single-surface-counterfactual-v8",
             }
             and target_surface in {"action-policy", "response-policy"}
             else project_feedback_observation(baseline)
@@ -824,6 +825,7 @@ class LiveCoreFastAdapter:
             "single-surface-counterfactual-v5",
             "single-surface-counterfactual-v6",
             "single-surface-counterfactual-v7",
+            "single-surface-counterfactual-v8",
         }:
             target_surface = intent.payload.get("target_surface")
             if target_surface not in {"action-policy", "response-policy"}:

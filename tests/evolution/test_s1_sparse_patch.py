@@ -26,9 +26,11 @@ from skillchain.evolution.s1_sparse_patch import (
     parse_dual_policy_patch,
     parse_counterfactual_policy_patch,
     parse_counterfactual_semantic_policy_patch,
+    parse_counterfactual_capability_response_policy_patch,
     parse_counterfactual_surface_closed_policy_patch,
     parse_counterfactual_typed_policy_patch,
     counterfactual_semantic_policy_patch_output_json_schema,
+    counterfactual_capability_response_policy_patch_output_json_schema,
     counterfactual_surface_closed_policy_patch_output_json_schema,
     counterfactual_typed_policy_patch_output_json_schema,
     sparse_patch_output_json_schema,
@@ -429,6 +431,63 @@ def test_surface_closed_ir_uses_query_only_preservation_refs(parent_materials) -
             parent_success_query_ids=success_ids,
             expected_response_signature=signature,
         )
+
+
+def test_capability_response_ir_renders_complete_multi_mapping(
+    parent_materials,
+) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "product.multi_search"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = ("success-1", "success-2", "success-3")
+    signature = {
+        "terminal_evidence_class": {
+            "tool_names": ["multi_product_search"],
+            "outcome": "nonempty",
+            "evidence_kinds": ["cards"],
+        },
+        "response_failure_family": "item-association",
+        "predicted_reason_code": "multi_mapping_invalid",
+        "predicted_metric_component": "evidence_grounded",
+    }
+    schema = counterfactual_capability_response_policy_patch_output_json_schema(
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="response-policy",
+        parent_success_query_ids=success_ids,
+        expected_response_signature=signature,
+    )
+    operation = schema["properties"]["response_then"]["properties"]["operation"]
+    assert operation["enum"] == ["serialize-complete-item-mapping"]
+    raw = {
+        "schema_version": 5,
+        "capability_id": capability,
+        "parent_skill_sha256": parent_skill.skill_sha256,
+        "target_surface": "response-policy",
+        "non_target_surface_action": "inherit",
+        "response_when": {
+            "terminal_tool_names": ["multi_product_search"],
+            "terminal_evidence_outcome": "nonempty",
+            "evidence_kinds": ["cards"],
+        },
+        "response_then": {"operation": "serialize-complete-item-mapping"},
+        "must_preserve": [{"query_id": query_id} for query_id in success_ids],
+    }
+    proposal = parse_counterfactual_capability_response_policy_patch(
+        canonical_json_bytes(raw),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="response-policy",
+        parent_success_query_ids=success_ids,
+        expected_response_signature=signature,
+    )
+    compiled = compile_counterfactual_semantic_policy_branch(
+        parent_bank=parent, proposal=proposal
+    )
+    assert "exactly one mapping line for every visible item" in compiled.policy_text
+    assert "without filtering by the user wording" in compiled.policy_text
 
 
 def test_typed_recipe_action_cannot_bypass_detection_for_lookup() -> None:
