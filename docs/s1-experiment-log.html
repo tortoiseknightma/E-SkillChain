@@ -483,7 +483,7 @@
 
   <header class="hero">
     <div class="wrap hero-inner">
-      <p class="eyebrow">Core Fast · S1 Experiment Ledger · Updated 2026-08-13</p>
+      <p class="eyebrow">Core Fast · S1 Experiment Ledger · Updated 2026-08-14</p>
       <h1>S1 实验与算法演进日志</h1>
       <p class="subtitle">
         逐轮记录“做了什么、发生了什么、为什么回滚、下一次改哪里”。本页是可读索引；
@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>六能力 fan-out/fan-in 已完成 10 轮；R10 Document Bank 被选为后续阶段备选起点</span>
+        <span>R12 仍是唯一正式 accepted；R31/R32 条件化周期已结束，0 branch accepted，test 未访问</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
-        <div class="hero-stat"><strong>3 / 10 accepted</strong><span>fan-out S1 rounds</span></div>
-        <div class="hero-stat"><strong>675 / 800</strong><span>v6 Static GCS success</span></div>
-        <div class="hero-stat"><strong>+4.1667pp</strong><span>body-gate capability macro</span></div>
-        <div class="hero-stat"><strong>0 calls</strong><span>S2 / Final Judge / test300</span></div>
+        <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
+        <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
+        <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
+        <div class="hero-stat"><strong>0 / 2</strong><span>new branches accepted</span></div>
       </div>
 
       <div class="hero-actions">
@@ -530,48 +530,50 @@
       </div>
 
       <div class="metric-strip">
-        <div class="metric good"><strong>800 / 800</strong><span>deterministic v6 Static success</span></div>
-        <div class="metric good"><strong>675 / 800</strong><span>deterministic v6 GCS success</span></div>
-        <div class="metric good"><strong>7/8 → 8/8</strong><span>Document replay200</span></div>
-        <div class="metric good"><strong>3/4 → 4/4</strong><span>Document body_gate75</span></div>
+        <div class="metric"><strong>removed</strong><span>deterministic response compiler</span></div>
+        <div class="metric"><strong>restored</strong><span>model tool choice + final response</span></div>
+        <div class="metric"><strong>qualified</strong><span>fresh Static + parent/no-op</span></div>
+        <div class="metric"><strong>1 accepted</strong><span>dual-policy R1–R30</span></div>
       </div>
 
       <div class="grid-2">
         <div class="card">
           <span class="kind fact">FACT</span>
-          <h3>最终选择</h3>
+          <h3>历史结果保持不变</h3>
           <p>
-            新 fan-out R5、R8、R10 均为 <code>accepted=true</code>；R8/R10 的有效
-            Document Skill 字节相同。最终 selected Bank 为
-            <code>51ae438e9ef9b4b…53ac6cf</code>。R10 访问了冻结的
-            <code>body_gate75</code>，但未启动 S2、Final Judge 或 test。
+            deterministic fan-out R5、R8、R10 的 canonical decisions 不改写；R10 selected Bank
+            <code>51ae438e9ef9b4b…53ac6cf</code> 仍是旧 runtime 下的备选。但该 Bank 与对应 Static
+            不再是当前 runtime 的有效 parent，旧增益也不能外推到新比较。
           </p>
         </div>
         <div class="card">
           <span class="kind decision">DECISION</span>
-          <h3>10 轮 fan-out/fan-in 已完成</h3>
+          <h3>恢复可消费的 S1 Body treatment</h3>
           <p>
-            两个独立 runtime lineage 都 fresh 重跑 Static；每个完整 fan-out 轮使用六个隔离的
-            Creator session。R10 的 48-row contrastive Feedback 为 48/48 schema-valid，只有
-            Document 的 <code>ocr_extraction_plan=literal-material-spans</code> 通过独立筛查并进入 fan-in。
+            当前 runner 路由后把 Skill Body 与函数工具交给 action model；模型重新负责工具选择、参数和
+            最终回答。typed semantic policy 与纯函数 response compiler 已删除；六分支 S1 保留独立
+            Creator、common-trace answer replay、有界风险 screen 与通过后 fan-in。
           </p>
         </div>
       </div>
 
       <div class="callout" style="margin-top: 1rem;">
         <strong>当前工程状态</strong>
-        v5/v6 已把六能力拆成独立 Creator / smoke24 / target replay screen，并只组合通过分支。
-        v6 还让 visible cards 与 compiler 实际引用的 handle 闭合。10 轮已经终结，不自动追加 R11；
-        R10 只作为后续阶段备选起点，本阶段仍不推进 S2。
+        tracked spec 已绑定 <code>core-fast-model-generated-action-response-v1</code>、fresh Static SHA
+        <code>a9949cd673fff547…2c0805a7</code> 与新 fixed samples；inputs-only 和完整 validate 都通过。
+        双策略 R12 已通过完整 replay 与 body75：selected Bank 为
+        <code>e70ed907…096cd</code>。新的 <code>s1-counterfactual-v1</code> 已终结：fresh R12 parent
+        opt800 800/800；R31 的 9/9 Feedback 通过、Creator 规则因跨 surface 被拒；R32 因证据不足
+        零 Creator 终止；R33 没有 finalist，test300 未访问。R17/R26/R29 及其他 rejected Bank
+        全程未成为 parent 或 fan-in 输入，selected Bank 仍为 R12。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
-        <strong>成本口径</strong>
-        本批两个 fresh Static + R1–R10 的可追踪 DashScope 费用为 ¥2.8180236：Static ¥0.1492308，
-        10 轮 ¥2.6687928。共有 4,488 份 Assistant/Feedback result artifact，其中 4,459 份
-        <code>status=success</code>；确定性 common-trace replay 虽有 result 但不产生 provider call。
-        25 次 Codex Creator 共
-        932,867 input / 28,325 output tokens，人民币 cost basis 不可得；不能把 receipt 的 0 当成免费。
+        <strong>当前 campaign 成本口径</strong>
+        双策略 R1–R30 的可追踪 DashScope 累计成本为 ¥33.1941053。新周期另计
+        ¥2.52357745：失败 baseline v2 ¥1.2357178、canonical baseline ¥1.2439722、R31 Feedback
+        ¥0.04388745；v2 另有一个 provider orphan 成本未知。新周期仅 1 个 Creator
+        （35,972 / 823 tokens），人民币 cost basis 不可得。
       </div>
     </section>
 
@@ -787,6 +789,25 @@
         </table>
       </div>
       <p class="tiny muted">* R8 的 7 是 reason×query 事件，落在 6 条原本就失败的 query 上；不是 7 条 Static-success 回退。</p>
+
+      <div class="table-wrap" role="region" aria-labelledby="model-generated-round-index-title" tabindex="0">
+        <table>
+          <caption id="model-generated-round-index-title">2026-08-13 model-generated fresh lineage：所有候选最终均回滚到 Static。</caption>
+          <thead><tr><th scope="col">Round</th><th scope="col">机制变量</th><th scope="col">局部 / replay</th><th scope="col">Body gate</th><th scope="col">结论</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r01">R1</a></th><td>contrastive 48</td><td>canary 5/6</td><td>未访问</td><td>Feedback gate 停止</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r02">R2</a></th><td>adaptive confirmation v1</td><td>Style +1/0；组合 −0.4065pp</td><td>未访问</td><td>回滚</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r03">R3</a></th><td>stable fan-in</td><td>full48 47/48</td><td>未访问</td><td>Feedback gate 停止</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r04">R4</a></th><td>role-separated packet</td><td>Multi + Style；+0.9812pp</td><td>0pp</td><td>覆盖最广，回滚</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r05">R5</a></th><td>failure-rich</td><td>canary 5/6</td><td>未访问</td><td>Feedback gate 停止</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r06">R6</a></th><td>supported clusters</td><td>无保留分支</td><td>未访问</td><td>回滚</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r07">R7</a></th><td>attributed Feedback</td><td>Multi +3.4483pp；macro +0.5747pp</td><td>Multi +10pp；macro +1.6667pp</td><td>效果最佳，未达 +2pp</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r08">R8</a></th><td>single-step replace</td><td>Multi +3.4483pp；macro +0.5747pp</td><td>0pp</td><td>回滚</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r09">R9</a></th><td>failed-edit memory</td><td>Multi +1/−1</td><td>未访问</td><td>回滚</td></tr>
+            <tr><th scope="row"><a href="#exp-20260813-mg-r10">R10</a></th><td>attribution + bounded edit + memory</td><td>Multi +1/−2</td><td>未访问</td><td>回滚并停止</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <section id="experiments">
@@ -821,7 +842,7 @@
           </select>
         </div>
         <button class="filter-reset" id="filter-reset" type="button">重置</button>
-          <div class="filter-count" id="filter-count" aria-live="polite">显示 15 / 15 条</div>
+          <div class="filter-count" id="filter-count" aria-live="polite">显示 27 / 27 条</div>
       </div>
 
       <div class="ledger" id="experiment-ledger">
@@ -1321,6 +1342,372 @@
           <details open><summary>身份、成本与边界</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813\rounds\r10</code><code>spec SHA b2fadb70…c90fa0；decision SHA de7a12a5…6d7b4</code><code>Document Skill ec6ae462…6fdf；selected 51ae438e…53ac6cf</code><code>DashScope CNY 0.2496909；6 Creator cost basis unavailable</code><code>S2 / Judge / val / test300: 0-call</code></div></details>
         </article>
 
+        <article class="experiment status-invalid" id="exp-20260813-runtime-model-generated-v1" data-status="invalid" data-capability="runtime">
+          <div class="experiment-head"><div><h3>Architecture addendum · 删除 deterministic runtime</h3><p>工程机制变更；不是新的 S1 算法实验。</p></div><div class="experiment-labels"><span class="state invalid">qualification pending</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>0</strong><span>provider calls</span></div><div class="result-box"><strong>model-generated</strong><span>tool choice + final text</span></div><div class="result-box"><strong>6 branches</strong><span>Body fan-out retained</span></div><div class="result-box"><strong>blocked</strong><span>fresh Static required</span></div></div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>纯函数 response compiler、typed semantic-policy schema/renderer 与 zero-call deterministic replay 已从活动代码删除。Core Fast action model 再次读取候选 Skill Body、选择函数工具并生成最终回答；common-trace screen 复用 parent route/tool evidence，但会发起新的 answer model call。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>这恢复了 S1 Body 的 treatment sensitivity，也重新引入模型工具选择与格式波动。历史 R10 增益可能消失、保留或被其他 Body patch 超过；在 fresh Static/S1 配对完成前没有数据支持其中任何结论。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>当时先将默认 spec 切到新 runtime identity 和无效 opt800 占位，禁止复用 deterministic Static；随后 fresh Static、no-op qualification 与十轮新 S1 均已在后续条目完成。保留六能力独立 Creator、独立有界风险筛查与 fan-in。</p></div>
+          </div>
+          <details open><summary>验证与边界</summary><div class="artifact-list"><code>assistant contract: core-fast-model-generated-action-response-v1</code><code>tests: action runner + sparse compiler + Core Fast + lineage</code><code>historical R10 remains read-only; no retrospective re-judgment</code><code>new S1 / S2 / Judge / test: 0-call</code></div></details>
+        </article>
+
+
+        <article class="experiment status-baseline" id="exp-20260813-mg-static" data-status="baseline" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated Static v1 · fresh opt800</h3><p>删除 response compiler 后重新建立同 runtime parent。</p></div><div class="experiment-labels"><span class="state baseline">frozen baseline</span><span class="tag">2026-08-13</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>800 / 800</strong><span>outer success</span></div><div class="result-box"><strong>168 / 800</strong><span>GCS success</span></div><div class="result-box"><strong>135 / 800</strong><span>hard error</span></div><div class="result-box"><strong>¥1.2151480</strong><span>DashScope</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>Assistant 为 <code>qwen3.7-flash-2026-07-15</code>，contract 为 <code>core-fast-model-generated-action-response-v1</code>；artifact SHA <code>a9949cd673fff547…2c0805a7</code>，fixed samples 由该 800 行重新冻结。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>低于 deterministic lineage 的成功率并不证明模型自由生成机制更差；runtime、输出合同与执行路径同时变化，只能作为新比较的 parent。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>该 Static 是本批唯一合法 parent；旧 deterministic Static 与 accepted Bank 均不得跨 runtime 复用。</p></div></div>
+          <details open><summary>证据</summary><div class="artifact-list"><code>D:thena\experiment-runs\portfolio-core-qwen37-model-generated-v1-20260813\static-opt-run</code><code>4,505,152 input / 392,647 output tokens</code><code>selected Bank da5cfe1f…1348a</code></div></details>
+        </article>
+
+        <article class="experiment status-baseline" id="exp-20260813-mg-noop" data-status="baseline" data-capability="runtime">
+          <div class="experiment-head"><div><h3>Parent/no-op qualification v4</h3><p>同 Bank、同 route/tool/public evidence 下量化 answer-generation 噪声。</p></div><div class="experiment-labels"><span class="state baseline">qualified</span><span class="tag">runtime</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>137</strong><span>treatment reached</span></div><div class="result-box"><strong class="delta-pos">1</strong><span>gain</span></div><div class="result-box"><strong>0</strong><span>regression</span></div><div class="result-box"><strong>¥0.2627260</strong><span>authoritative v4</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>qualification 通过冻结的上限：no-op gains≤2、regressions=0；失败→失败 reason 迁移保留为诊断。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>一次 no-op gain 证明自由生成存在小幅随机波动；adaptive confirmation 必须用于隔离不稳定方向。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>允许启动新 S1；v1–v3 诊断 root 保留但不作为 authoritative qualification。阈值在 v3 后冻结，这是本批限制。</p></div></div>
+          <details open><summary>证据</summary><div class="artifact-list"><code>…
+oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3 cost ¥0.5520736</code></div></details>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260813-mg-r01" data-status="invalid" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R1 · contrastive minimal</h3><p>第一轮 fresh 48-row contrastive Feedback。</p></div><div class="experiment-labels"><span class="state invalid">Feedback gate</span><span class="tag">R1</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>5 / 6</strong><span>canary parsed</span></div><div class="result-box"><strong>0</strong><span>Creator sessions</span></div><div class="result-box"><strong>¥0.0274565</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>1 条 schema error 使 canary 超过冻结 parse limit；remaining42、Creator、Assistant 都未启动。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>这是 Feedback 运输/结构失败，不评价任何 Body 假设。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>不在同 root 重试；下一轮保留 contrastive 选择并加入稳定性确认。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r02" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head"><div><h3>Model-generated R2 · stable contrastive</h3><p>首次 adaptive A/B confirmation；旧 fan-in 仍做完整重采样。</p></div><div class="experiment-labels"><span class="state rollback">rollback</span><span class="tag">R2</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>Style +1 / −0</strong><span>local screen</span></div><div class="result-box"><strong class="delta-neg">−0.4065pp</strong><span>fanin replay macro</span></div><div class="result-box"><strong>¥0.7294404</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>局部 Style gain 在完整 fan-in 重采样中反向为 Style −2.4390pp；其余能力 alias parent。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>重复采样而非 patch 组合本身引入了新的随机结果，局部证据与 fan-in 证据不一致。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；fan-in 改为复用已确认的稳定 branch evidence，不额外重采样同一 treatment。</p></div></div>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260813-mg-r03" data-status="invalid" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R3 · stable fan-in</h3><p>验证完整 Feedback terminal gate。</p></div><div class="experiment-labels"><span class="state invalid">Feedback gate</span><span class="tag">R3</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>47 / 48</strong><span>Feedback success</span></div><div class="result-box"><strong>1</strong><span>service error</span></div><div class="result-box"><strong>¥0.2349375</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>canary 通过，但 remaining42 中 1 条 URL/provider error；full48 service limit 为 0，因此 Creator/Assistant 0-call。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>证明补上的 full-batch gate 能阻止部分 Feedback bundle 污染 Creator。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>保留 terminal gate；下一轮改 Creator packet 的职责分离，而不重试同一服务失败。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r04" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R4 · role-separated Creator packet</h3><p>failure、protected success 与 non-body diagnostics 分栏。</p></div><div class="experiment-labels"><span class="state rollback">widest signal</span><span class="tag">R4</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>2 capabilities</strong><span>Multi + Style retained locally</span></div><div class="result-box"><strong class="delta-pos">+0.9812pp</strong><span>replay macro</span></div><div class="result-box"><strong>0pp</strong><span>body macro</span></div><div class="result-box"><strong>¥1.0282277</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>Multi 与 Style 各有稳定 +1/0；组合 replay 的能力 delta 分别 +3.4483pp、+2.4390pp，但 body75 两项都为 0。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>职责分离提高了 development 覆盖广度，却没有跨到冻结 body gate。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；R4 保留为“覆盖最广”证据，不与后续 round 的候选事后拼接。</p></div></div>
+        </article>
+
+        <article class="experiment status-invalid" id="exp-20260813-mg-r05" data-status="invalid" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R5 · failure-rich selection</h3><p>提高失败密度，检验是否比 contrastive packet 更有效。</p></div><div class="experiment-labels"><span class="state invalid">Feedback gate</span><span class="tag">R5</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>5 / 6</strong><span>canary parsed</span></div><div class="result-box"><strong>0</strong><span>Creator / Assistant</span></div><div class="result-box"><strong>¥0.0245729</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>Qwen strict-JSON generation abort 被记为 schema error；没有服务错误。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>failure-heavy packet 没有产生可比较的 Skill；不能把 gate failure 解释成算法负效果。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>改用能力均衡的 supported clusters，并继续禁止同 root lucky retry。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r06" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R6 · supported failure clusters</h3><p>每能力 10 条 Feedback，按跨样本 failure cluster 分配。</p></div><div class="experiment-labels"><span class="state rollback">no retained branch</span><span class="tag">R6</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>60 / 60</strong><span>Feedback</span></div><div class="result-box"><strong>6</strong><span>Creator sessions</span></div><div class="result-box"><strong>0</strong><span>retained branches</span></div><div class="result-box"><strong>¥0.5668853</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>Encyclopedia proposal 被 sparse contract 拒绝；Style 0 gain / 1 regression；其余有效候选均 0 gain。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>只有 cluster support 仍不足以区分 Body-fixable 与 route/tool/runtime failure。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>下一轮把 attribution class 写入 Feedback wire，只允许 body-fixable suggestion 驱动 Creator。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r07" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head"><div><h3>Model-generated R7 · attribution-aware Feedback</h3><p>十轮中效果最强、最接近正式接受的候选。</p></div><div class="experiment-labels"><span class="state rollback">best unaccepted</span><span class="tag">R7</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>Multi +1 / −0</strong><span>local screen</span></div><div class="result-box"><strong class="delta-pos">+0.5747pp</strong><span>replay macro</span></div><div class="result-box"><strong class="delta-pos">+1.6667pp</strong><span>body macro</span></div><div class="result-box"><strong>¥0.7288369</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>replay200 Multi +3.4483pp；body75 Multi +10pp，CI95 low=0、hard-error delta=0、其他五项 alias parent。系统 macro 仍低于冻结的 +2pp。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>先做 failure attribution、再让 Creator 看 body-fixable cluster，是本批最有价值的机制信号；但只有一个 body gain，证据仍薄。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>严格回滚；R7 只作为未来 Multi 假设，不作为 selected Bank 或 S2 parent。</p></div></div>
+          <details open><summary>证据</summary><div class="artifact-list"><code>…\s1-r7-attributed-feedback\decisions\s1.json</code><code>selected=Static da5cfe1f…1348a</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r08" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head"><div><h3>Model-generated R8 · single-step replacement</h3><p>把 editable surface 从 author fields 收窄为恰好一个 tool-step instruction。</p></div><div class="experiment-labels"><span class="state rollback">rollback</span><span class="tag">R8</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>Multi +1 / −0</strong><span>local</span></div><div class="result-box"><strong class="delta-pos">+0.5747pp</strong><span>replay macro</span></div><div class="result-box"><strong>0pp</strong><span>body macro</span></div><div class="result-box"><strong>¥0.7227982</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>R8 复现 R7 的 replay gain，但 body75 不再产生任何增益。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>更小 edit surface 提高可解释性，却没有提升 held-out 稳定性。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；下一轮让 Creator 看到结构化 rejected-edit memory，检查是否减少重复失败。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r09" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head"><div><h3>Model-generated R9 · failed-edit memory</h3><p>冻结 R4/R6/R7/R8 的候选、screen 与拒绝原因作为反例。</p></div><div class="experiment-labels"><span class="state rollback">rollback</span><span class="tag">R9</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>Multi +1 / −1</strong><span>stable local events</span></div><div class="result-box"><strong>0</strong><span>net gain</span></div><div class="result-box"><strong>¥0.5759102</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>六个 Creator 都被调用，但没有能力满足 net gain≥1；Encyclopedia 仍被 sparse contract 拒绝。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>把完整 rejected Body 放进上下文没有自动形成有效的“从失败中学习”；也可能增加上下文噪声。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>回滚；R10 只做一次预注册的 combined mechanisms 检验，然后停止。</p></div></div>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260813-mg-r10" data-status="rollback" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R10 · attributed + bounded edit + memory</h3><p>最后一轮合并本批三个最有依据的机制。</p></div><div class="experiment-labels"><span class="state rollback">stop after R10</span><span class="tag">R10</span></div></div>
+          <div class="result-grid"><div class="result-box"><strong>59 / 60</strong><span>Feedback success</span></div><div class="result-box"><strong>Multi +1 / −2</strong><span>local screen</span></div><div class="result-box"><strong>0</strong><span>retained branches</span></div><div class="result-box"><strong>¥0.5691993</strong><span>cost</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>1.67% parse error 在冻结上限内，full gate 通过；Multi 的 gain/regression ratio=0.5、net=−1，其他有效分支 0 gain，Encyclopedia proposal 被拒绝。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>历史 memory 与 single-step constraint 没有叠加出比 R7 更好的候选；本批最强证据仍来自 attribution-aware packet 本身。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>十轮全部结束，selected Bank 保持 Static。不得追加 R11、拼接 R4/R7 或用 body/test 调参。</p></div></div>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260813-mg-batch-summary" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head"><div><h3>Model-generated R1–R10 batch decision</h3><p>效果、覆盖与未来算法方向的最终选择。</p></div><div class="experiment-labels"><span class="state analysis">negative result</span><span class="tag">batch summary</span></div></div>
+          <div class="analysis-grid"><div class="finding"><span class="kind fact">FACT</span><p>0/10 accepted；R4 覆盖最广（Multi+Style），R7 body 效果最好（macro +1.6667pp），两者都不满足正式门。S2/Judge/test 0-call。</p></div><div class="finding inference"><span class="kind inference">INFERENCE</span><p>后续最值得做的是：每能力让一个 Creator 产出少量、预排序的 bounded candidates，在 failure cluster + protected successes 上 successive-halving；同时修复反复出现的 Encyclopedia sparse rejection。直接扩大 Feedback 或堆积完整失败 Body memory 的证据较弱。</p></div><div class="finding decision"><span class="kind decision">DECISION</span><p>本批选择 Static，不选择“最好看的 rejected candidate”。若另行授权新周期，优先保留 R7 attribution wire，并把覆盖目标作为预注册的候选排序项；不降低 +2pp 正式 body gate。</p></div></div>
+          <details open><summary>总成本与边界</summary><div class="artifact-list"><code>new R1–R10: ¥5.2082646</code><code>all fresh Static/no-op/S1 priced roots: ¥7.2382122</code><code>Codex Creator: 42/100 sessions; CNY unknown</code><code>replay200 is observed development evidence, not test</code></div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-dual-r01-r11" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div>
+              <h3>Dual-policy campaign · R1–R11 stage checkpoint</h3>
+              <p>六能力 fan-out；action-policy 与 response-policy 独立筛查；保留分支 fan-in 后再跑 replay200 / body75。</p>
+            </div>
+            <div class="experiment-labels"><span class="state analysis">11 / 30 complete</span><span class="tag">2026-08-14</span></div>
+          </div>
+
+          <div class="result-grid">
+            <div class="result-box"><strong>0 / 11</strong><span>accepted rounds</span></div>
+            <div class="result-box"><strong>3 capabilities</strong><span>widest retained set · R4</span></div>
+            <div class="result-box"><strong>+2.7778pp</strong><span>best replay macro · R9</span></div>
+            <div class="result-box"><strong>¥8.5571615</strong><span>DashScope · R1–R11</span></div>
+          </div>
+
+          <div class="table-wrap" role="region" aria-labelledby="dual-r01-r11-caption" tabindex="0">
+            <table>
+              <caption id="dual-r01-r11-caption">每轮终态。local 是 action / response capability screen；所有轮次最终都选择同一 Static parent。</caption>
+              <thead>
+                <tr><th scope="col">Round</th><th scope="col">预注册机制</th><th scope="col">最深阶段与关键结果</th><th scope="col">终态 / 后续改进</th><th scope="col">成本</th></tr>
+              </thead>
+              <tbody>
+                <tr id="exp-20260814-dual-r01"><th scope="row">R1</th><td>dual baseline</td><td>Feedback canary 1/6；5 个 schema failure</td><td>invalid；兼容两种 policy / surface 标签顺序</td><td class="num">¥0.02766705</td></tr>
+                <tr id="exp-20260814-dual-r02"><th scope="row">R2</th><td>attributed packet</td><td>full48 为 45/48；2 empty + 1 malformed JSON</td><td>invalid；只对 format failure 增加一次、非择优重试</td><td class="num">¥0.2341623</td></tr>
+                <tr id="exp-20260814-dual-r03"><th scope="row">R3</th><td>supported clusters</td><td>Recipe action +6/−3；比例 2:1，0 branch retained</td><td>rollback；保留 4× regression 的有界风险门</td><td class="num">¥0.5868052</td></tr>
+                <tr id="exp-20260814-dual-r04"><th scope="row">R4</th><td>contrastive packet</td><td>Exact action +4/−1、Multi response +1/−0、Recipe action +5/−1；replay macro +1.2349pp；body macro +0.0877pp，Multi −10pp</td><td>rollback；覆盖最广的 3-capability finalist，未过 +2pp / −5pp / CI gate</td><td class="num">¥1.72875625</td></tr>
+                <tr id="exp-20260814-dual-r05"><th scope="row">R5</th><td>stratified control</td><td>Recipe action +5/−1；replay macro +2.7778pp，但 parent row oracle coverage 缺失</td><td>invalid rollback；不把不完整比较追认为算法成功</td><td class="num">¥1.1387434</td></tr>
+                <tr id="exp-20260814-dual-r06"><th scope="row">R6</th><td>protected-first</td><td>Feedback canary 5/6；并发 identity cache race</td><td>invalid；以锁和原子 publish 前向修复，旧 decision 不改写</td><td class="num">¥0.02386215</td></tr>
+                <tr id="exp-20260814-dual-r07"><th scope="row">R7</th><td>minimal replace</td><td>Exact action +3/−4；其余有效 response 分支 0 gain</td><td>rollback；单句替换没有改善风险收益比</td><td class="num">¥0.59126555</td></tr>
+                <tr id="exp-20260814-dual-r08"><th scope="row">R8</th><td>risk prediction</td><td>full48 为 47/48；1 个 invalid image URL provider failure</td><td>invalid；完整集合 gate 正确阻止 partial bundle 进入 Creator</td><td class="num">¥0.2335806</td></tr>
+                <tr id="exp-20260814-dual-r09"><th scope="row">R9</th><td>action-first</td><td>Recipe action +9/−1；replay macro +2.7778pp / Recipe +16.6667pp；body macro 0</td><td>rollback；最强 clean replay 信号，但 holdout 无增益</td><td class="num">¥1.4843525</td></tr>
+                <tr id="exp-20260814-dual-r10"><th scope="row">R10</th><td>response-first</td><td>Recipe action +6/−0、response +1/−0；组合 replay macro 0，hard-error 超限</td><td>rollback；局部双 surface 增益未转成完整系统增益</td><td class="num">¥1.2271163</td></tr>
+                <tr id="exp-20260814-dual-r11"><th scope="row">R11</th><td>first divergence</td><td>Encyclopedia response +1/−0、Recipe action +5/−1；replay macro −0.5556pp</td><td>rollback；覆盖 2 capability，但组合方向为负且 hard-error 超限</td><td class="num">¥1.2808502</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R1–R11 全部终态落盘，selected Bank 都是 Static <code>da5cfe1f…1348a</code>；R4、R5、R9 进入完整 replay，其中 R4、R9 进入 body75。没有轮次进入 S2、Judge 或 test。R1–R11 共使用 32 个 Creator 会话。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Recipe action-policy 是当前最稳定的局部信号；contrastive packet 更利于跨能力覆盖。局部筛查通过却在完整 replay/body 消失，说明分支交互与模型采样仍是下一阶段的主要不确定性，不能仅继续强化单能力 prompt。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不选择 rejected Bank。R12–R30 继续使用同一 Static parent 和预注册机制空间，优先检验 contrastive coverage 与 action-first Recipe 的可重复性；保持 +2pp body gate、CI 与 hard-error 门，不用 body/test 反向调参。</p></div>
+          </div>
+
+          <details open><summary>身份、预算与证据</summary><div class="artifact-list">
+            <code>Static observation SHA a9949cd673fff54711053c0ce8b10b3999f4c71641ef6498706b03082c0805a7</code>
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814</code>
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2</code>
+            <code>R1–R11 DashScope ¥8.5571615; Creator CNY unknown</code>
+            <code>replay200 is observed development evidence; body75 is accessed once only after fan-in passes replay</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-dual-r12-r17" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div><h3>Dual-policy campaign · R12–R17 stage checkpoint</h3><p>counterfactual、历史回退约束、正负例联合与语义边界机制；所有轮次仍从同一 Static parent 独立派生。</p></div>
+            <div class="experiment-labels"><span class="state accepted">first accepted</span><span class="tag">17 / 30 complete</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>1 / 6</strong><span>accepted this stage</span></div>
+            <div class="result-box"><strong>+2.0833pp</strong><span>R12 body macro</span></div>
+            <div class="result-box"><strong>+6.6667pp</strong><span>best rejected body · R17</span></div>
+            <div class="result-box"><strong>¥9.44165315</strong><span>stage DashScope cost</span></div>
+          </div>
+          <div class="table-wrap" role="region" aria-labelledby="dual-r12-r17-caption" tabindex="0">
+            <table>
+              <caption id="dual-r12-r17-caption">第二阶段逐轮终态。accepted 仅表示通过冻结 replay/body gate；rejected 候选不进入后续 Bank。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">机制</th><th scope="col">局部保留</th><th scope="col">Replay / Body</th><th scope="col">终态</th><th scope="col">成本</th></tr></thead>
+              <tbody>
+                <tr id="exp-20260814-dual-r12"><th scope="row">R12</th><td>counterfactual iff rule</td><td>Style action +6/−0</td><td>replay +0.4065pp；body +2.0833pp，Style +12.5pp，CI low=0，hard error −1.3333pp</td><td><strong>accepted</strong> · Bank <code>e70ed907…096cd</code></td><td class="num">¥1.6481793</td></tr>
+                <tr id="exp-20260814-dual-r13"><th scope="row">R13</th><td>failed-edit avoidance</td><td>Recipe action +10/−2；response +1/−0</td><td>replay +2.7778pp；body 0，hard-error 超限</td><td>rollback</td><td class="num">¥1.5152828</td></tr>
+                <tr id="exp-20260814-dual-r14"><th scope="row">R14</th><td>regression anchors</td><td>Multi response +1/−0；Style action +6/−0</td><td>replay +0.9812pp；body −0.2083pp：Style +18.75pp、Multi −20pp</td><td>rollback · fan-in interference</td><td class="num">¥1.62611145</td></tr>
+                <tr id="exp-20260814-dual-r15"><th scope="row">R15</th><td>positive/negative joint induction</td><td>Multi response +2/−0</td><td>replay +3.4483pp；body +1.6667pp、Multi +10pp；oracle coverage incomplete</td><td>rollback · below +2pp</td><td class="num">¥1.5875784</td></tr>
+                <tr id="exp-20260814-dual-r16"><th scope="row">R16</th><td>source entailment</td><td>Multi response +1/−0</td><td>replay −4.0230pp、Multi −24.1379pp；未访问 body</td><td>rollback</td><td class="num">¥1.4304974</td></tr>
+                <tr id="exp-20260814-dual-r17"><th scope="row">R17</th><td>calibrated abstention</td><td>Multi response +1/−0；Recipe action +8/−1</td><td>replay +2.8544pp；body +6.6667pp：Multi +30pp、Recipe +10pp；hard error +2.6667pp</td><td>rollback · hard-error gate</td><td class="num">¥1.6340038</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R12 是本 campaign 首个正式 accepted：仅 Style action-policy 被编译进 Bank，body75 macro +2.0833pp，所有冻结门通过。R17 的效果更大且覆盖 Multi+Recipe，但 hard-error delta +2.6667pp，必须回滚。R14 证明各自通过的 Multi/Style 分支组合后可以发生强负交互。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>最可靠的机制信号是“failure 与最近 protected success 的 counterfactual 条件”，尤其适用于 Style action。Multi response 与 Recipe action 多次取得 development/body 增益，但稳定性与 hard-error 风险尚未收敛；覆盖目标不能替代组合安全。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R12 进入最终 top-10 的首位候选，但 R18–R30 仍从 Static 独立搜索，以便公平排名。R17 作为高增益/高风险对照保留；不放宽 hard-error 门，不拼接 R12/R15/R17，不访问 test。</p></div>
+          </div>
+          <details open><summary>身份、预算与边界</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\runs\r12-counterfactual-rule</code>
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\runs\r17-calibrated-abstention</code>
+            <code>R12–R17 DashScope ¥9.44165315; Creator 32 sessions; CNY unknown</code>
+            <code>campaign cumulative R1–R17: ¥17.99881465; Creator 64/100</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-dual-r18-r26" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div><h3>Dual-policy campaign · R18–R26 stage checkpoint</h3><p>分别验证参数、停止、fallback、card、source、OCR、association 与稳定性机制；没有用 accepted R12 作为父节点。</p></div>
+            <div class="experiment-labels"><span class="state analysis">0 accepted this stage</span><span class="tag">26 / 30 complete</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>0 / 9</strong><span>accepted this stage</span></div>
+            <div class="result-box"><strong>+4.6408pp</strong><span>best replay · R21</span></div>
+            <div class="result-box"><strong>+3.3333pp</strong><span>best safe-coverage body · R26</span></div>
+            <div class="result-box"><strong>¥9.64591795</strong><span>stage DashScope cost</span></div>
+          </div>
+          <div class="table-wrap" role="region" aria-labelledby="dual-r18-r26-caption" tabindex="0">
+            <table>
+              <caption id="dual-r18-r26-caption">第三阶段逐轮终态。空的 body 表示在 Feedback 或 replay 前已正确停止。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">机制</th><th scope="col">局部保留</th><th scope="col">Replay / Body</th><th scope="col">终态</th><th scope="col">成本</th></tr></thead>
+              <tbody>
+                <tr id="exp-20260814-dual-r18"><th scope="row">R18</th><td>public argument construction</td><td>Recipe response +1/−0</td><td>replay +0.5556pp；oracle coverage incomplete</td><td>rollback</td><td class="num">¥1.2240390</td></tr>
+                <tr id="exp-20260814-dual-r19"><th scope="row">R19</th><td>continuation / stopping</td><td>无；Style action +3/−1、Recipe +5/−2 未过 4× risk ratio</td><td>未访问 replay/body</td><td>local rollback</td><td class="num">¥0.80988115</td></tr>
+                <tr id="exp-20260814-dual-r20"><th scope="row">R20</th><td>fallback boundary</td><td>无；Exact action +3/−1，response 0 gain</td><td>未访问 replay/body</td><td>local rollback</td><td class="num">¥0.69776265</td></tr>
+                <tr id="exp-20260814-dual-r21"><th scope="row">R21</th><td>evidence-bounded card selection</td><td>Encyclopedia response +4/−0；Multi response +3/−0</td><td>replay +4.6408pp；body −0.625pp：Encyclopedia +6.25pp、Multi −10pp</td><td>rollback · fan-in interference</td><td class="num">¥1.5958453</td></tr>
+                <tr id="exp-20260814-dual-r22"><th scope="row">R22</th><td>knowledge / recipe source claims</td><td>Encyclopedia response +2/−0</td><td>replay +3.75pp；body −1.0417pp、Encyclopedia −6.25pp</td><td>rollback · holdout reversal</td><td class="num">¥1.53002595</td></tr>
+                <tr id="exp-20260814-dual-r23"><th scope="row">R23</th><td>OCR field-to-span plan</td><td>无</td><td>Feedback 47/48；Creator 0-call</td><td>invalid · full Feedback gate</td><td class="num">¥0.2343372</td></tr>
+                <tr id="exp-20260814-dual-r24"><th scope="row">R24</th><td>product association semantics</td><td>无；Recipe action +7/−3 未过风险比</td><td>未访问 replay/body</td><td>local rollback</td><td class="num">¥0.6831816</td></tr>
+                <tr id="exp-20260814-dual-r25"><th scope="row">R25</th><td>smallest stable edit</td><td>Style response +1/−0；Recipe action +4/−1</td><td>replay +1.2602pp；coverage incomplete、hard-error 超限</td><td>rollback</td><td class="num">¥1.3008772</td></tr>
+                <tr id="exp-20260814-dual-r26"><th scope="row">R26</th><td>per-capability best cluster</td><td>Multi response +1/−0；Recipe action +6/−1</td><td>replay +3.3908pp；body +3.3333pp、Multi +20pp；hard error +1.3333pp</td><td>rollback · hard-error gate</td><td class="num">¥1.5699679</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R21 产生本阶段最宽的局部 response 覆盖和最高 replay 增益，但 Multi 在 body 反转。R26 同时覆盖 Multi response 与 Recipe action，body macro +3.3333pp、CI low=0、各能力 floor 通过；唯一拒绝原因是 hard-error delta +1.3333pp，超过冻结 +1pp 上限。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>参数、停止、fallback、OCR 和 product association 的通用自然语言机制证据较弱。Multi response 与 Recipe action 是可重复的高增益组合，但 hard-error 稳定性仍是关键瓶颈；Encyclopedia response 在 replay 上有信号，却连续在 body 反转。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R26 进入最终 top-10 的高位 rejected 候选，R21 保留为覆盖/交互诊断，R23 记为无效实验而非 OCR 算法负结果。维持 hard-error 门，不因只超 0.3333pp 追认 R26。R27–R30 继续预注册的单 surface、互补 surface、coverage finalist 与 synthesis。</p></div>
+          </div>
+          <details open><summary>身份、预算与边界</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\runs\r18-argument-construction</code>
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\runs\r26-capability-best-cluster</code>
+            <code>R18–R26 DashScope ¥9.64591795; Creator 39 sessions; CNY unknown</code>
+            <code>campaign cumulative R1–R26: ¥27.6447326; accepted only R12</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-dual-r27-r30" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div><h3>Dual-policy campaign · R27–R30 final stage</h3><p>完成 single-surface、complementary-surfaces、coverage finalist 与 campaign synthesis。</p></div>
+            <div class="experiment-labels"><span class="state analysis">30 / 30 complete</span><span class="tag">final stage</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>0 / 4</strong><span>accepted final stage</span></div>
+            <div class="result-box"><strong>+1.6667pp</strong><span>best final-stage body</span></div>
+            <div class="result-box"><strong>2 capabilities</strong><span>R29 safe coverage</span></div>
+            <div class="result-box"><strong>¥5.5493727</strong><span>stage DashScope cost</span></div>
+          </div>
+          <div class="table-wrap" role="region" aria-labelledby="dual-r27-r30-caption" tabindex="0">
+            <table>
+              <caption id="dual-r27-r30-caption">最后四轮终态；所有 rejected candidate 继续 alias Static。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">机制</th><th scope="col">局部保留</th><th scope="col">Replay / Body</th><th scope="col">终态</th><th scope="col">成本</th></tr></thead>
+              <tbody>
+                <tr id="exp-20260814-dual-r27"><th scope="row">R27</th><td>single-surface conservative</td><td>无</td><td>未访问 replay/body</td><td>local rollback</td><td class="num">¥0.5776600</td></tr>
+                <tr id="exp-20260814-dual-r28"><th scope="row">R28</th><td>complementary dual surfaces</td><td>Encyclopedia response +2/−0；Recipe action +7/−0</td><td>replay +0.8333pp；body −4.7917pp：Encyclopedia −18.75pp、Recipe −10pp</td><td>rollback · strong holdout reversal</td><td class="num">¥1.64526955</td></tr>
+                <tr id="exp-20260814-dual-r29"><th scope="row">R29</th><td>coverage-aware finalist</td><td>Multi response +2/−0；Style action +5/−0</td><td>replay +0.5747pp；body +1.6667pp、hard error 0</td><td>rollback · below +2pp / CI</td><td class="num">¥1.6335135</td></tr>
+                <tr id="exp-20260814-dual-r30"><th scope="row">R30</th><td>campaign synthesis</td><td>Recipe action +11/−2</td><td>replay +1.1111pp；body +1.6667pp、Recipe +10pp、hard error +2.6667pp</td><td>rollback</td><td class="num">¥1.69292965</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R29 是最后阶段最安全的覆盖候选：Multi+Style、hard-error delta 0，但 body macro 只有 +1.6667pp。R28 再次证明局部分支零 regression 仍可能在 body 强反转。R30 的 Recipe development 强信号没有跨越 body 与 hard-error 门。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>30 轮总体上，counterfactual protected-success rule 比单纯保守、fallback、source 或 synthesis prompt 更可靠；Multi response 与 Recipe action 的高增益反复出现，但 hard-error 和组合稳定性仍不足。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>停止 S1 搜索，不追加 R31。唯一可部署选择为 R12；R17/R26/R29 等仅作为下一机制周期的研究证据。未访问 test，也未把 rejected Bank 拼装成新候选。</p></div>
+          </div>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-dual-top10" data-status="analysis" data-capability="all-capabilities">
+          <div class="experiment-head">
+            <div><h3>30-round balanced top 10</h3><p>accepted 优先；其后按 body macro、覆盖、replay macro 排序，并做一次确定性 coverage repair。</p></div>
+            <div class="experiment-labels"><span class="state accepted">R12 deployable</span><span class="tag">9 research-only</span></div>
+          </div>
+          <div class="table-wrap" role="region" aria-labelledby="dual-top10-caption" tabindex="0">
+            <table>
+              <caption id="dual-top10-caption">排名不是 acceptance override；只有 R12 可作为后续 Bank。</caption>
+              <thead><tr><th scope="col">Rank</th><th scope="col">Round</th><th scope="col">Capabilities</th><th scope="col">Replay Δ</th><th scope="col">Body Δ</th><th scope="col">HE Δ</th><th scope="col">状态 / 主要限制</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">1</th><td>R12</td><td>Style</td><td class="num">+0.4065pp</td><td class="num">+2.0833pp</td><td class="num">−1.3333pp</td><td><strong>accepted / deployable</strong></td></tr>
+                <tr><th scope="row">2</th><td>R17</td><td>Multi + Recipe</td><td class="num">+2.8544pp</td><td class="num">+6.6667pp</td><td class="num">+2.6667pp</td><td>research only · hard-error</td></tr>
+                <tr><th scope="row">3</th><td>R26</td><td>Multi + Recipe</td><td class="num">+3.3908pp</td><td class="num">+3.3333pp</td><td class="num">+1.3333pp</td><td>research only · hard-error</td></tr>
+                <tr><th scope="row">4</th><td>R29</td><td>Multi + Style</td><td class="num">+0.5747pp</td><td class="num">+1.6667pp</td><td class="num">0</td><td>research only · effect / CI</td></tr>
+                <tr><th scope="row">5</th><td>R30</td><td>Recipe</td><td class="num">+1.1111pp</td><td class="num">+1.6667pp</td><td class="num">+2.6667pp</td><td>research only · effect / hard-error</td></tr>
+                <tr><th scope="row">6</th><td>R4</td><td>Exact + Multi + Recipe</td><td class="num">+1.2349pp</td><td class="num">+0.0877pp</td><td class="num">0</td><td>research only · widest 3-cap coverage</td></tr>
+                <tr><th scope="row">7</th><td>R9</td><td>Recipe</td><td class="num">+2.7778pp</td><td class="num">0</td><td class="num">−2.6667pp</td><td>research only · no body gain</td></tr>
+                <tr><th scope="row">8</th><td>R13</td><td>Recipe</td><td class="num">+2.7778pp</td><td class="num">0</td><td class="num">+2.6667pp</td><td>research only · no body gain / hard-error</td></tr>
+                <tr><th scope="row">9</th><td>R14</td><td>Multi + Style</td><td class="num">+0.9812pp</td><td class="num">−0.2083pp</td><td class="num">0</td><td>research only · Multi body regression</td></tr>
+                <tr><th scope="row">10</th><td>R21</td><td>Encyclopedia + Multi</td><td class="num">+4.6408pp</td><td class="num">−0.6250pp</td><td class="num">0</td><td>coverage repair · research only</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>30 个 terminal decisions 全部进入排名输入；13 轮到达 body gate，其中 R15 因 oracle coverage 不完整被排除，12 轮具备完整 body 比较。Top 10 的 capability union 为 Encyclopedia、Exact、Multi、Style、Recipe；Document 没有任何有效 body candidate，因此不能诚实纳入。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>如果只看效果，R17/R26 会排在最前；如果同时要求可部署安全，R12 明显优于其余候选。R21 被纳入是为了保留 Encyclopedia 的有效 body 证据，而非因为其 Bank 可用。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>后续阶段以 R12 Bank 为唯一合法起点。Top 10 其余项只用于设计新的 hard-error verifier、branch interaction screen 或 Document 专向机制，不得直接进入 S2。</p></div>
+          </div>
+          <details open><summary>Canonical ranking artifact</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\campaign-top10.json</code>
+            <code>SHA256 b11001de02a6f045bd246ab0729a46ab20c466e117723bfa6807e03b041037f1</code>
+            <code>policy s1-campaign-top10-balanced-v1; acceptance_override=false</code>
+            <code>campaign total DashScope ¥33.1941053; test/S2 0-call</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260814-r12-counterfactual-preflight" data-status="analysis" data-capability="recipe,multi">
+          <div class="experiment-head">
+            <div>
+              <h3>R12-parent counterfactual cycle · implementation / pre-registration</h3>
+              <p>R31 Recipe action、R32 Multi response、R33 accepted-only fan-in；这是一条尚未执行的前向协议，不是新实验结果。</p>
+            </div>
+            <div class="experiment-labels"><span class="state baseline">Ready · 0 calls</span><span class="tag">s1-counterfactual-v1</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>R12 only</strong><span>legal parent</span></div>
+            <div class="result-box"><strong>3 + 3 + 3</strong><span>counterfactual packet</span></div>
+            <div class="result-box"><strong>≤2</strong><span>new Creator sessions</span></div>
+            <div class="result-box"><strong>¥0</strong><span>provider cost so far</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>Bank <code>e70ed907…096cd</code>；file <code>edf83d28…bf9489</code>；decision <code>1edc7fba…23bc4</code></dd></div>
+            <div><dt>Protection</dt><dd>R12 Style Skill <code>a5c6c53f…b5ef</code>；8 个 parent-success 周期保护样本</dd></div>
+            <div><dt>R31</dt><dd><code>utility.recipe_guidance</code> · action-policy · 单条件最小规则</dd></div>
+            <div><dt>R32</dt><dd><code>product.multi_search</code> · response-policy · 与 R31 同时预冻结</dd></div>
+            <div><dt>R33</dt><dd>只组合独立通过 replay200/body75 的 AcceptedBranchArtifact；0/1/2 分支路径固定</dd></div>
+            <div><dt>Final test</dt><dd>唯一 frozen finalist 与 R12 成对 test300；最多一次，失败仍选择 R12</dd></div>
+          </dl>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>实现新增 accepted-parent SHA binding、fresh parent-opt800 入口、严格 9-case packet、单 surface Creator schema、六 BranchRecord、正式 branch artifact、accepted-only R33 fan-in 与 create-only finalist test。历史 roots 未被修改，本条目未调用任何 provider。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>同 route/tool/evidence 状态下的 failure、parent-success 与历史 regression 对照，预计比继续复用宽泛 Feedback 更能隔离 Recipe action 与 Multi response 的因果信号；该效果尚未经过新 lineage 验证。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>先完成 fresh R12 parent opt800 和 parent/no-op qualification。R31/R32 无论彼此结果如何都按同一冻结设计执行；body75 不反向改机制。只有一个正式 finalist 才能永久消耗 test300，周期内不启动 S2/S3/Judge。</p></div>
+          </div>
+          <details open><summary>Implementation evidence and fixed gates</summary><div class="artifact-list">
+            <code>scripts/prepare_s1_counterfactual_cycle.py</code>
+            <code>scripts/run_s1_counterfactual_cycle.py</code>
+            <code>policy single-surface-counterfactual-fanout-v4</code>
+            <code>local: gains≥1; net≥1; regressions≤2; gains≥4×regressions; explicit parent-success regressions=0</code>
+            <code>replay: macro≥0pp; hard≤+1pp; cap floor≥−5pp</code>
+            <code>body/test: macro≥+2pp; CI95 low≥0; hard≤+1pp; cap floor≥−5pp</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-rejected" id="exp-20260814-r31-r33-counterfactual-cycle" data-status="rejected" data-capability="recipe,multi">
+          <div class="experiment-head">
+            <div><h3>R31–R33 · R12-parent conditional single-surface cycle</h3><p>fresh parent baseline、Recipe action、Multi response、accepted-only fan-in 与 one-finalist test 边界。</p></div>
+            <div class="experiment-labels"><span class="state rejected">0 accepted · cycle stopped</span><span class="tag">test300 untouched</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>canonical R12 parent opt</span></div>
+            <div class="result-box"><strong>9 / 9</strong><span>R31 Feedback valid</span></div>
+            <div class="result-box"><strong>0 / 2</strong><span>accepted branches</span></div>
+            <div class="result-box"><strong>¥2.52357745</strong><span>traceable cycle cost</span></div>
+          </div>
+          <div class="table-wrap" role="region" aria-labelledby="r31-r33-caption" tabindex="0">
+            <table>
+              <caption id="r31-r33-caption">终态按预注册顺序；未通过正式门的分支不进入 R33。</caption>
+              <thead><tr><th scope="col">Stage</th><th scope="col">Target</th><th scope="col">最深阶段</th><th scope="col">结果</th><th scope="col">Disposition</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Parent opt800</th><td>R12 Bank</td><td>fresh Assistant 800</td><td>164 GCS success；146 hard error；SHA <code>4c6bafa6…84fcf</code></td><td>frozen baseline</td></tr>
+                <tr><th scope="row">R31</th><td>Recipe action</td><td>Feedback 9 + Creator 1</td><td>Feedback 9/9；Creator JSON schema-valid，但 action <code>then</code> 要求输出 fallback/answer/evidence，跨 response surface</td><td>contract rejected；replay/body 0-call</td></tr>
+                <tr><th scope="row">R32</th><td>Multi response</td><td>counterfactual selection</td><td>不足 3 个保持同 tool outcome / public evidence fingerprint 的 R12 parent-success</td><td><code>insufficient_counterfactual_evidence</code>；Creator 0-call</td></tr>
+                <tr><th scope="row">R33</th><td>accepted-only fan-in</td><td>finalist freeze</td><td>accepted branch 0；<code>finalist=null</code></td><td>test300 forbidden；R12 remains selected</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>R17/R26/R29 与其他 rejected Bank 没有被加载为 parent、复制 Skill 或 fan-in。R12 Style Skill SHA 与八个保护样本保持冻结。实际调用只有 canonical parent Assistant 800、一次失败 parent run 的 799 success + 1 provider failure、R31 Feedback 9 与 Creator 1；R31/R32 replay、body、R33 Assistant、test、Judge、S2/S3 全部 0-call。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Recipe failure cluster 足以支持 counterfactual packet，但 Creator 仍把“停止动作”与“如何回答”混在同一规则中；严格 surface compiler 成功阻止了不可归因 treatment。Multi 的固定-evidence保护要求揭示了另一限制：当前 R12 observations 中相同状态的成功反例不足，贸然放宽会重新引入响应采样噪声。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>本周期不修 Creator 文本后重试，也不缩减 R32 的三个 parent-success。cycle finalist receipt 固定为无 finalist，selected Bank 保持 R12；test300 继续 untouched。若另开周期，应先让 action schema 从类型上禁止 response verbs/fields，并为 Multi 建立新的、事前冻结的 evidence-matched parent-success 数据，而不是复用本轮失败 root。</p></div>
+          </div>
+          <details open><summary>Canonical evidence and cost boundary</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v3-20260814\runs\parent-opt800\s1-parent-opt800-bootstrap.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v4-20260814\runs\r31\decisions\s1.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v4-20260814\runs\r32\decisions\s1.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v4-20260814\cycle-finalist.json · SHA cf708f9a…4ef95</code>
+            <code>known CNY = 1.2357178 failed baseline + 1.2439722 canonical baseline + 0.04388745 Feedback; one failed-request orphan and Creator CNY unknown</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -1416,6 +1803,30 @@
             <div class="decision-meta"><span class="tag">生效：v5/v6 fresh lineage</span><span class="tag">历史轮次：不重判</span><span class="tag">R5/R8/R10 accepted</span><span class="tag">普通 reason migration 非硬拒绝</span></div>
           </div>
         </article>
+
+        <article class="decision-card" id="decision-dual-policy-attribution">
+          <div>
+            <div class="decision-id">DEC-20260814-01</div>
+            <span class="state accepted">30 轮已验证</span>
+          </div>
+          <div>
+            <h3>S1 拆成 action-policy 与 response-policy 两条可归因 screen</h3>
+            <p>每个 capability 使用一个独立 Creator 会话，结构化输出包含两个可分别 inherit/patch 的 surface。action-policy 固定 Static route 后重跑 action/tool loop，只以 route/tool 成功评价 tool-first、公共参数和停止条件；回答格式错误不计入 action regression。response-policy 固定 route/tool/scorer evidence，只以 no-hard/evidence/output 成功评价 cards、answer、uncertainty 与 fallback。两条 surface 使用不同成功谓词与 protected-success，分别通过后才在 capability 内组合，最后进入六能力 fan-in 与完整 replay/body gate。30 轮中 R12 的 Style action-policy 局部筛查为 6 gains / 0 regressions，response-policy 为 0 / 0 并继承；最终 body75 macro +2.0833pp，证明两类 treatment 可以独立归因、独立回滚并只组合有效 surface。</p>
+            <div class="decision-meta"><span class="tag">validated rounds：30</span><span class="tag">Creator sessions：124</span><span class="tag">unique accepted：R12</span><span class="tag">response surface：未误纳入</span></div>
+          </div>
+        </article>
+
+        <article class="decision-card" id="decision-r12-counterfactual-cycle">
+          <div>
+            <div class="decision-id">DEC-20260814-02</div>
+            <span class="state baseline">已预注册 / 未运行</span>
+          </div>
+          <div>
+            <h3>R12 parent + 单失败簇条件化单 Surface 周期</h3>
+            <p>下一周期把 accepted R12 作为唯一 parent，并重新生成 R12 opt800。R31 Recipe action 与 R32 Multi response 在调用前同时冻结：每轮一个 failure cluster、三个 parent-success、三个历史 regression，只追加一条 iff 条件规则；R33 只组合已经独立通过 replay200/body75 的分支。唯一 finalist 才能成对访问一次 test300。</p>
+            <div class="decision-meta"><span class="tag">parent：R12 only</span><span class="tag">R17/R26/R29：禁止</span><span class="tag">Creator：≤2</span><span class="tag">S2/S3/Judge：0-call</span></div>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -1436,20 +1847,24 @@
 
       <div class="callout warn" style="margin-top: 1rem;">
         <strong>当前启动边界</strong>
-        fan-out/fan-in 的 10 轮已经结束，最终 R10 Bank 仅作为后续阶段备选起点。未经新授权不追加 R11；
-        若进入 S2，必须使用 R10 canonical spec/root，而不是把 tracked spec 的字节重新用于旧 root resume。
+        历史 deterministic fan-out/fan-in 的 10 轮已经结束，最终 R10 Bank 仅作为旧 runtime 下的只读备选起点。
+        当前 model-generated fresh Static、no-op qualification 与双策略 30 轮 campaign 均已结束；
+        R12 是唯一 accepted Bank。R31 Recipe action、R32 Multi response 与 accepted-only R33
+        fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
+        parent 或被复制。finalist 为 null，test300 仍 untouched；本周期不得事后修文案、缩保护集或
+        重跑挑结果。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">
         <article class="future-card priority" id="future-runtime-qualification">
-          <span class="state accepted">v5/v6 qualification 已完成</span>
+          <span class="state baseline">Validated</span>
           <h3>ALG-00 · Runtime no-op qualification</h3>
-          <p>先证明新 compiler 没有把候选专属 repair 注入比较。</p>
+          <p>先证明删除 compiler 后，parent 与 no-op candidate 在同一 model-generated runtime 下可公平比较。</p>
           <dl class="future-fields">
-            <div><dt>机制</dt><dd>同一 runtime contract 下对称运行 fresh Static 与 no-op compiled candidate；绑定 contract hash。</dd></div>
-            <div><dt>可证伪预测</dt><dd>同 route、同 tool payload 下 structural contract delta 必须为 0；否则先修 runtime，不开 S1。</dd></div>
-            <div><dt>结果</dt><dd>v5/v6 fresh Static 均 800/800、GCS 675/800；v6 SHA <code>f2cd96ad…3c97</code>。typed-policy 会改变输出、普通 prose 不会。</dd></div>
-            <div><dt>下一步</dt><dd>该前置已关闭；R10 已接受，不再启动新的 S1。</dd></div>
+            <div><dt>机制</dt><dd>在 <code>core-fast-model-generated-action-response-v1</code> 下生成 fresh Static opt800；no-op candidate 使用相同 Bank Body、模型、route/tool evidence 与 answer replay primitive。</dd></div>
+            <div><dt>可证伪预测</dt><dd>no-op 不得产生可归因的系统性指标或结构差异；候选 Body 的真实改动必须进入 action model prompt 并可改变模型回答。</dd></div>
+            <div><dt>历史边界</dt><dd>v5/v6 的 800/800 qualification 只证明已删除的 deterministic runtime，不关闭当前前置，也不能复用其 Static SHA。</dd></div>
+            <div><dt>结果</dt><dd>fresh Static 800/800；authoritative v4 为 137 条 treatment-reached、1 gain / 0 regression，qualification 通过。该项已关闭，不再是启动前置。</dd></div>
           </dl>
         </article>
 
@@ -1460,13 +1875,13 @@
           <dl class="future-fields">
             <div><dt>机制</dt><dd>按 route → tool precondition → tool outcome → semantic selection → serialization → fallback → GCS 标 first causal divergence。</dd></div>
             <div><dt>输入</dt><dd>每个 failure cluster 同时给 representative failure、最近 protected success、历史 stable gain、历史 1→0 和 rejected-edit reason。</dd></div>
-            <div><dt>结果</dt><dd>contrastive 60 在 R8 接受；compact 48 在 R10 以 48/48 schema-valid 复现同一 Bank。failure-heavy R9 在 canary 失败。</dd></div>
+            <div><dt>新 lineage 结果</dt><dd>attributed 60 的 R7 取得最强 held-out 信号：Multi body +10pp、总体 +1.6667pp，但低于 +2pp；failure-rich R5 在 canary 失败。</dd></div>
             <div><dt>参考</dt><dd>SkillChain 的跨样本统计与正/反例；综述中的 Counterfactual Trace Auditing、SkillForge。</dd></div>
           </dl>
         </article>
 
         <article class="future-card" id="future-edit-search">
-          <span class="state pending">Idea / P1</span>
+          <span class="state priority">Next-cycle priority</span>
           <h3>ALG-02 · 受约束的小编辑搜索</h3>
           <p>把 single-shot long rewrite 改成 bounded add / delete / replace 算子。</p>
           <dl class="future-fields">
@@ -1478,50 +1893,50 @@
         </article>
 
         <article class="future-card" id="future-failed-edit-memory">
-          <span class="state pending">Idea / P1</span>
+          <span class="state analysis">Weak evidence</span>
           <h3>ALG-03 · Failed-edit meta-memory</h3>
           <p>把 rejected candidate 变成可检索的反例，而不是下一轮重新犯同类错误。</p>
           <dl class="future-fields">
             <div><dt>结构</dt><dd>hypothesis → edit → first divergence → gains / regressions / new reasons → reject cause。</dd></div>
             <div><dt>Promotion</dt><dd>context-sensitive 经验先保持 local；只有跨路径或跨轮一致有效才写入 durable Skill。</dd></div>
-            <div><dt>证据</dt><dd>R2/R6 与 R5/R7 的稳定 gains，同时伴随不稳定或重复的 tool-skip 回退。</dd></div>
+            <div><dt>证据</dt><dd>新 R9/R10 已实际携带 prior experiment memory，但分别得到 Multi +1/−1 与 +1/−2，没有保留分支；完整 rejected Body memory 可能增加上下文噪声。</dd></div>
             <div><dt>可证伪预测</dt><dd>新候选不再生成与已拒 edit 语义等价的 patch，除非显式提供新证据。</dd></div>
           </dl>
         </article>
 
         <article class="future-card priority" id="future-recipe">
-          <span class="state analysis">runtime 后无剩余 replay failure</span>
+          <span class="state analysis">新 Static 上未得 gain</span>
           <h3>ALG-04 · Recipe source-entailment selector</h3>
-          <p>历史 R8 的 7 gains / 0 paired regression 已被 deterministic runtime 吸收；v6 replay 上 Recipe 为 30/30。</p>
+          <p>历史 R8 的 7 gains / 0 paired regression 是旧 model-generated 路径上最干净的方向信号；v6 的 30/30 只属于已删除的 deterministic runtime。</p>
           <dl class="future-fields">
-            <div><dt>前置</dt><dd>tool sequence completion、typed args、fallback marker 和 evidence handle 已由 runtime 保证。</dd></div>
-            <div><dt>Patch IR</dt><dd>source span selector + allowed ingredient/preparation claims + unsupported abstention；不修改工具顺序。</dd></div>
-            <div><dt>可证伪预测</dt><dd>source-supported line ratio = 100%，并满足 v5 有界风险四条件；普通失败不得升级为 hard/runtime failure。</dd></div>
-            <div><dt>Disposition</dt><dd>取消当前 S1 选题；只有新数据出现 source-entailment failure cluster 时再启用。</dd></div>
+            <div><dt>前置</dt><dd>先用新 Static 把 tool skip、invalid args、source entailment、格式与 fallback 分桶；不得假设旧 compiler 仍会吸收机械失败。</dd></div>
+            <div><dt>Body patch</dt><dd>只在新的 source-entailment cluster 有足够支持时，加入短的 evidence-bounded claim / abstention 规则；工具序列声明保持冻结。</dd></div>
+            <div><dt>可证伪预测</dt><dd>目标 cluster 至少 1 gain，并满足有界风险四条件；普通失败不得升级为 hard/runtime failure。</dd></div>
+            <div><dt>Disposition</dt><dd>候选方向，不预注册为下一轮 target；以 fresh Static 归因结果决定。</dd></div>
           </dl>
         </article>
 
         <article class="future-card" id="future-style">
-          <span class="state analysis">runtime 后无剩余 replay failure</span>
+          <span class="state analysis">R4 有局部信号</span>
           <h3>ALG-05 · Style evidence-bounded claim selector</h3>
-          <p>历史 R5/R7 的稳定 gains 已被 deterministic runtime 吸收；v6 replay 上 Style 为 41/41。</p>
+          <p>历史 R5/R7 有 11 个重复 gain，说明 evidence-bounded Body 值得保留为假设；v6 的 41/41 不能外推到当前 runtime。</p>
           <dl class="future-fields">
-            <div><dt>Patch IR</dt><dd>public facet/value allowlist、用户偏好 coverage、无证据时 abstain；禁止新增材质、场景、舒适度等暗含事实。</dd></div>
+            <div><dt>Body patch</dt><dd>public facet/value allowlist、用户偏好 coverage、无证据时 abstain；禁止新增材质、场景、舒适度等暗含事实。</dd></div>
             <div><dt>可证伪预测</dt><dd>unsupported_claim = 0；每个 material claim 可映射到至少一个 public style evidence atom。</dd></div>
             <div><dt>保护集</dt><dd>R5∩R7 稳定 gains + 两轮回退 anchors + empty/unsupported branch。</dd></div>
-            <div><dt>Disposition</dt><dd>取消当前 S1 选题；不要为了覆盖广度引入会删除正确 evidence 的 selector。</dd></div>
+            <div><dt>Disposition</dt><dd>候选方向；必须先在 fresh Static 上确认仍存在 grounding cluster，不能因历史增益直接进入 Creator。</dd></div>
           </dl>
         </article>
 
         <article class="future-card" id="future-document">
-          <span class="state accepted">R8/R10 重复验证</span>
-          <h3>ALG-06 · Document typed extraction planner</h3>
-          <p>不再追加 literal-line prompt；最小 typed literal-span plan 已被 runtime 消费并通过 S1 Gate。</p>
+          <span class="state baseline">历史备选 / 当前未验证</span>
+          <h3>ALG-06 · Document extraction Body</h3>
+          <p>deterministic R8/R10 的 literal-span policy 曾重复通过，但该枚举随 compiler 一并删除；当前 runtime 只能把它作为新 Body 假设重新验证。</p>
           <dl class="future-fields">
-            <div><dt>机制</dt><dd>用户字段 → 一个或多个 OCR line spans → literal / normalized value → uncertainty，保留逐 span 引用。</dd></div>
-            <div><dt>已验证</dt><dd>Document replay 7/8→8/8，body 3/4→4/4，0 target regression；R8/R10 Skill byte-identical，最终 Bank <code>51ae43…</code>。</dd></div>
+            <div><dt>历史事实</dt><dd>旧 runtime 中 Document replay 7/8→8/8、body 3/4→4/4、0 target regression；R8/R10 Skill byte-identical。</dd></div>
+            <div><dt>新机制</dt><dd>用短 Body 规则表达用户字段 → OCR literal spans → uncertainty；不再依赖 typed-policy renderer 代写回答。</dd></div>
             <div><dt>可证伪预测</dt><dd>每个 material span 绑定有效 OCR line；无 unsupported computation / normalization；target 至少 1 gain。</dd></div>
-            <div><dt>剩余边界</dt><dd>目前只做 literal material span；跨行字段组合、计算与语义归纳仍未验证，留待 S2/S3 后再评估。</dd></div>
+            <div><dt>边界</dt><dd>必须以 current fresh Static 为 parent 重新跑 screen/body；历史 accepted Bank 不跨 runtime 继承。</dd></div>
           </dl>
         </article>
 
@@ -1530,10 +1945,22 @@
           <h3>ALG-07 · Multi residual / Exact 转 S2</h3>
           <p>防止把不属于 S1 的问题继续塞进 Body。</p>
           <dl class="future-fields">
-            <div><dt>Multi</dt><dd>只有 runtime 后仍有 item↔candidate semantic association / coverage 错误时才排期；不再做 DTO prose。</dd></div>
+            <div><dt>Multi</dt><dd>在新 Static 中分开统计 tool skip、DTO/card 闭合与 item↔candidate 语义错误；Body 可以影响模型行为，但只对高支持 failure cluster 做短规则，不恢复 whole-bank 或长 DTO 模板。</dd></div>
             <div><dt>Exact</dt><dd>29/35 target failures 含 route_unacceptable；优先交给 S2，或固定 parent route 做 counterfactual Body replay。</dd></div>
             <div><dt>可证伪预测</dt><dd>route/control noise 从 S1 attribution 中剥离后，Body patch 的 1→0 应显著减少。</dd></div>
             <div><dt>边界</dt><dd>不改变六 capability、五配置和冻结 GCS；surrogate verifier 不能替代 oracle。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card priority" id="future-coverage-effect-search">
+          <span class="state analysis">30 轮后续诊断</span>
+          <h3>ALG-08 · 覆盖广度与 held-out 效果联合排序</h3>
+          <p>本 campaign 已验证“多能力局部通过”不等于组合可接受：R17/R26 的 Multi + Recipe 有较高 body 增益却触发 hard-error 门，R29 的 Multi + Style 保持 hard-error delta=0 但总体仅 +1.6667pp；只有 R12 的单项 Style 达到正式接受门。</p>
+          <dl class="future-fields">
+            <div><dt>已验证机制</dt><dd>每能力独立 Creator、action/response 双 screen、capability 内组合、六能力 fan-in 与一次正式 body gate；balanced top 10 同时保留效果与五能力覆盖，但不覆盖没有有效 body candidate 的 Document。</dd></div>
+            <div><dt>剩余问题</dt><dd>优先诊断 Multi/Recipe 的 hard-error 增量和多分支 fan-in interaction；不要把 rejected Bank 拼成新 parent，也不要用排名覆盖 acceptance gate。</dd></div>
+            <div><dt>若另启周期的预测</dt><dd>至少两个 capability 分支通过局部 screen，且组合 body75 macro ≥ +2pp；每项能力 floor ≥ −5pp、CI95 low ≥ 0、hard-error delta ≤ +1pp。</dd></div>
+            <div><dt>当前处置</dt><dd>本批 R1–R30 已停止；新的独立周期已预注册 R31/R32/R33，但只能以 R12 fresh observations 前向执行，不能借用或拼装 rejected Bank。</dd></div>
           </dl>
         </article>
       </div>
@@ -1629,7 +2056,7 @@
   <footer>
     <div class="wrap">
       <strong>ECommerceSkillChain S1 Experiment Ledger</strong><br>
-      最后更新：2026-08-13 · 本页为可读索引，不替代 canonical experiment artifacts。
+      最后更新：2026-08-14 · 本页为可读索引，不替代 canonical experiment artifacts。
     </div>
   </footer>
 

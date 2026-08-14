@@ -24,16 +24,13 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from skillchain.evaluation.core_fast.models import (  # noqa: E402
     CAPABILITIES,
-    S1_SEMANTIC_POLICY_TARGETS,
+    S1_BODY_PATCH_TARGETS,
     CallIntent,
     CallResult,
     CoreFastSpec,
     load_core_fast_spec,
 )
 from skillchain.evaluation.core_fast.store import atomic_write_json  # noqa: E402
-from skillchain.runners.assistant_deterministic_contract import (  # noqa: E402
-    DETERMINISTIC_ASSISTANT_CONTRACT_VERSION,
-)
 from skillchain.tools.serialization import (  # noqa: E402
     ArtifactFormatError,
     canonical_json_bytes,
@@ -55,7 +52,7 @@ STALE_DISCLOSURE_FRAGMENTS = (
     "bootstrap-only spec:",
     "Qwen3.7 Static v2 is the selected baseline input",
     "The recorded S1 R1-R10 optimization allowance is exhausted",
-    "The deterministic action-response runtime requires a fresh symmetric Static",
+    "The model-generated action-response runtime requires a fresh symmetric Static",
     "This default spec is retained for input validation",
 )
 
@@ -140,7 +137,7 @@ def prepare_static_bootstrap_spec(
     runtime = base_payload.get("runtime")
     if not isinstance(runtime, dict):
         raise LineagePreparationError("base Core Fast spec lacks runtime settings")
-    runtime["assistant_contract"] = DETERMINISTIC_ASSISTANT_CONTRACT_VERSION
+    runtime["assistant_contract"] = "core-fast-model-generated-action-response-v1"
     gates = base_payload.get("gates")
     if not isinstance(gates, dict):
         raise LineagePreparationError("base Core Fast spec lacks gate settings")
@@ -165,9 +162,9 @@ def prepare_static_bootstrap_spec(
         "feedback_canary_count": 6,
         "feedback_selection_policy": "discovery-stratified-v1",
         "feedback_allocation": "balanced-six-capability",
-        "target_capabilities": list(S1_SEMANTIC_POLICY_TARGETS),
+        "target_capabilities": list(S1_BODY_PATCH_TARGETS),
         "proposal_mode": "six-capability-fanout-fanin-v2",
-        "max_patched_capabilities": len(S1_SEMANTIC_POLICY_TARGETS),
+        "max_patched_capabilities": len(S1_BODY_PATCH_TARGETS),
         "protected_capabilities": [],
         "creator_directives": [],
         "required_patch_phrases": {},
@@ -198,6 +195,8 @@ def freeze_r1_spec(
     round_id: str = "r1",
     feedback_total_count: int = 48,
     feedback_selection_policy: str = "discovery-stratified-v1",
+    bounded_edit_surface: str = "author-fields",
+    prior_experiment_roots: Sequence[Path] = (),
 ) -> CoreFastSpec:
     """Bind fresh Static to either one capability or six isolated branches."""
 
@@ -206,11 +205,11 @@ def freeze_r1_spec(
     _assert_qwen37(source)
     if fanout and (target_capability is not None or required_patch_phrases):
         raise LineagePreparationError(
-            "fan-out R1 uses all typed capabilities and no shared required phrases"
+            "fan-out R1 uses all Body capabilities and no shared required phrases"
         )
-    if not fanout and target_capability not in S1_SEMANTIC_POLICY_TARGETS:
+    if not fanout and target_capability not in S1_BODY_PATCH_TARGETS:
         raise LineagePreparationError(
-            "R1 target must expose a deterministic-runtime semantic policy"
+            "R1 target must expose a model-generated Body surface"
         )
     if not creator_directives:
         raise LineagePreparationError("R1 requires at least one Creator directive")
@@ -254,6 +253,66 @@ def freeze_r1_spec(
     payload["opt_static_results_sha256"] = observed_sha256
     payload["fixed_samples"] = fixed_samples
     phrases = sorted(set(required_patch_phrases))
+    prior_memory: dict[str, list[dict[str, object]]] = {}
+    for prior_root in prior_experiment_roots:
+        resolved = prior_root.resolve()
+        decision = _load_canonical_object(
+            resolved / "decisions" / "s1.json", label="prior S1 decision"
+        )
+        metrics = decision.get("metrics")
+        if not isinstance(metrics, dict) or not isinstance(
+            metrics.get("fanout_branches"), list
+        ):
+            raise LineagePreparationError("prior S1 decision lacks fan-out evidence")
+        if metrics.get("body_accessed") and decision.get("accepted") is True:
+            raise LineagePreparationError(
+                "accepted prior candidate is not failure memory"
+            )
+        for branch in metrics["fanout_branches"]:
+            if (
+                not isinstance(branch, dict)
+                or branch.get("capability") not in CAPABILITIES
+            ):
+                raise LineagePreparationError("prior S1 branch identity is invalid")
+            capability = str(branch["capability"])
+            candidate_path = (
+                resolved / "banks" / f"s1-branch-{capability}-candidate.json"
+            )
+            candidate_body = None
+            if candidate_path.exists():
+                candidate = _load_canonical_object(
+                    candidate_path, label="prior S1 branch candidate"
+                )
+                skills = candidate.get("skills")
+                if not isinstance(skills, list):
+                    raise LineagePreparationError("prior S1 candidate lacks Skills")
+                skill = next(
+                    (
+                        item
+                        for item in skills
+                        if isinstance(item, dict)
+                        and item.get("capability_id") == capability
+                    ),
+                    None,
+                )
+                if not isinstance(skill, dict) or not isinstance(
+                    skill.get("body"), str
+                ):
+                    raise LineagePreparationError("prior S1 candidate Skill is invalid")
+                candidate_body = skill["body"]
+            prior_memory.setdefault(capability, []).append(
+                {
+                    "capability": capability,
+                    "source_experiment_id": decision.get("metrics", {}).get(
+                        "experiment_id", resolved.name
+                    ),
+                    "source_round_id": decision.get("metrics", {}).get("round_id"),
+                    "branch_status": branch.get("status"),
+                    "branch_rejection_reason": branch.get("reason"),
+                    "screen": branch.get("screen"),
+                    "candidate_body": candidate_body,
+                }
+            )
     s1_settings = {
         "round_id": round_id,
         "feedback_mode": "fresh-per-round",
@@ -261,6 +320,8 @@ def freeze_r1_spec(
         "feedback_canary_count": 6,
         "feedback_selection_policy": feedback_selection_policy,
         "creator_directives": list(dict.fromkeys(creator_directives)),
+        "bounded_edit_surface": bounded_edit_surface,
+        "prior_experiment_memory": prior_memory,
         "required_patch_phrases": (
             {target_capability: phrases}
             if not fanout and target_capability is not None and phrases
@@ -271,9 +332,9 @@ def freeze_r1_spec(
         s1_settings.update(
             {
                 "feedback_allocation": "balanced-six-capability",
-                "target_capabilities": list(S1_SEMANTIC_POLICY_TARGETS),
+                "target_capabilities": list(S1_BODY_PATCH_TARGETS),
                 "proposal_mode": "six-capability-fanout-fanin-v2",
-                "max_patched_capabilities": len(S1_SEMANTIC_POLICY_TARGETS),
+                "max_patched_capabilities": len(S1_BODY_PATCH_TARGETS),
                 "protected_capabilities": [],
             }
         )
@@ -297,14 +358,14 @@ def freeze_r1_spec(
     disclosures.extend(
         (
             f"Static opt800 was freshly generated with {QWEN37_ASSISTANT_MODEL}; "
-            "this spec binds its SHA and deterministic fixed sample roles.",
+            "this spec binds its SHA and reproducible fixed sample roles.",
             "Historical S1 R1-R10 remain rejected and read-only; this is a "
-            "separately authorized semantic-policy lineage.",
+            "separately authorized model-generated Body lineage.",
             "S1 R1 uses a spec-frozen discovery600 selection and 48 fresh Feedback "
             "calls with canary6 plus a full-batch terminal gate before Creator.",
-            "S1 may change only the typed semantic policy consumed by deterministic "
-            "runtime; tool, DTO/card/evidence closure, sections, and fallback remain "
-            "runtime-owned.",
+            "S1 may change only the selected capability Body authoring fields; "
+            "Description and the other five Skills remain byte-exact. The action "
+            "model freely chooses tools and generates the final response format.",
             "Running S1 creates new Feedback, Creator, and Assistant calls and has "
             "not been started by lineage preparation.",
         )
@@ -703,9 +764,7 @@ def build_parser() -> argparse.ArgumentParser:
     r1.add_argument("--bootstrap-result", type=Path, required=True)
     r1.add_argument("--output-spec", type=Path, required=True)
     r1.add_argument("--experiment-id", required=True)
-    r1.add_argument(
-        "--target-capability", choices=S1_SEMANTIC_POLICY_TARGETS, required=True
-    )
+    r1.add_argument("--target-capability", choices=S1_BODY_PATCH_TARGETS, required=True)
     r1.add_argument("--creator-directive", action="append", required=True)
     r1.add_argument("--required-patch-phrase", action="append", default=[])
 
@@ -719,11 +778,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--feedback-total-count", type=int, choices=(48, 60), default=48
     )
     fanout_r1.add_argument(
+        "--prior-experiment-root", type=Path, action="append", default=[]
+    )
+    fanout_r1.add_argument(
         "--feedback-selection-policy",
-        choices=("discovery-stratified-v1", "discovery-contrastive-v2"),
+        choices=(
+            "discovery-stratified-v1",
+            "discovery-contrastive-v2",
+            "discovery-supported-clusters-v3",
+            "discovery-attributed-v4",
+        ),
         default="discovery-stratified-v1",
     )
     fanout_r1.add_argument("--creator-directive", action="append", required=True)
+    fanout_r1.add_argument(
+        "--bounded-edit-surface",
+        choices=("author-fields", "single-step-replace"),
+        default="author-fields",
+    )
 
     export = commands.add_parser("export-feedback")
     export.add_argument("--source-root", type=Path, required=True)
@@ -781,6 +853,8 @@ def main(argv: list[str] | None = None) -> int:
                 round_id=args.round_id,
                 feedback_total_count=args.feedback_total_count,
                 feedback_selection_policy=args.feedback_selection_policy,
+                bounded_edit_surface=args.bounded_edit_surface,
+                prior_experiment_roots=args.prior_experiment_root,
             )
             result = {
                 "status": "created",

@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：新的六能力 fan-out/fan-in S1 已完成 10 轮真实实验。R5、R8、R10 接受了 Document 分支；R8/R10 的有效 Skill 字节相同。最终选择 R10：replay200 capability-macro `+2.0833pp`、body_gate75 `+4.1667pp`、0 hard-error delta，selected Bank 为 `51ae438e…c6cf`。其余五能力 byte-exact inherit；S2/Judge/test 均未启动。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的 `s1-counterfactual-v1` 已按预注册执行：fresh R12 parent opt800 为 800/800；R31 Recipe action 的 9/9 Feedback 通过，但唯一 Creator 规则跨入 response surface，被 compiler 拒绝；R32 Multi response 因不足 3 个 matched parent-success 零调用终止。R33 因 0 个 accepted branch 冻结为无 finalist，test300 未访问；S2/S3/Judge 继续保持 0-call。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -21,36 +21,74 @@ Core r3 完整实验现在使用独立的最小治理入口：
 uv run python scripts/run_core_experiment.py validate
 ```
 
-当前默认 spec 已绑定最终 R10 的 v6 Static 与 compact-contrastive fan-out 设计；
-`validate --inputs-only` 和完整 `validate` 均通过。已完成的 accepted 产物位于独立 run root，
-S2 必须显式使用该次运行的 canonical artifact spec 与 run root 继续，默认 spec 因字节 SHA
-不同会按预期拒绝 resume，也不会自动借用 accepted decision。
+当前 tracked spec 已把 `assistant_contract` 绑定为
+`core-fast-model-generated-action-response-v1`，并绑定 fresh Static opt800 SHA
+`a9949cd673fff547…2c0805a7` 与重新选择的 fixed samples。`validate --inputs-only` 和完整
+`validate` 均通过；历史 deterministic R10 仍在独立 root 中保持只读，不能作为新 runtime 的
+parent 或 resume 输入。
 
-deterministic v6 runtime 在路由后独占 tool-first、typed arguments、DTO/card/evidence
-closure、required sections 与 empty fallback。S1 不能再改这些机械 prose，只能提交
-`core-fast-semantic-policy-v2`。最终接受的 R10 只把 Document 的 `ocr_extraction_plan`
-从 `all-lines` 切到 `literal-material-spans`，其余五项 byte-exact inherit。相同工具 DTO 下，typed policy 能改变编译结果；仅改普通 Body
-prose 不会改变结果，这一 treatment-sensitivity 边界已有聚焦测试。
+当前 runner 在冻结 Description 完成路由后，把所选 Skill 的 Body 与允许的函数工具交给 action model。
+模型负责工具选择、参数和最终回答文本；runner 只负责真实工具执行、格式预检与最多一次固定修复，
+不再用纯函数编译 DTO/card/evidence/fallback，也不再解析或渲染 typed semantic policy。S1 因而重新
+拥有真实可消费的 Body treatment surface，同时继续冻结 Description、工具集合与工具顺序。
 
-新的 S1 采用六个独立 Codex Creator 会话的 fan-out/fan-in；每个分支只可改自己的 typed semantic policy，独立筛查后才组合。每个能力拥有独立 Creator 候选、smoke、同 route/tool replay screen 与 decision；只有本能力
-至少取得 1 个 gain、净增至少 1、regression 不超过 2 且 gain 至少为 regression 的 4 倍时，
-分支才进入 fan-in；普通失败之间的 reason 迁移只记录诊断，普通失败升级为 hard/runtime
-failure 或 route/tool trace 漂移仍会硬拒绝。最终组合 Bank 还要完整重跑 replay200，并只在
-通过后访问一次 body_gate75；新 lineage 的 replay/body 单能力 floor 均为 `−5pp`。Exact 与
-Multi 也新增了 compiler 实际消费的 typed evidence selector，DTO/card/handle/fallback 仍由
-runtime 独占。v5/v6 各自完成了 fresh Static opt800；所有比较均使用同 runtime parent，未复用旧 Static。
+新的 S1 继续采用六个独立 Codex Creator 会话的 fan-out/fan-in；每个 capability 的一次结构化提案
+同时包含可独立 `inherit|patch` 的 `action-policy` 与 `response-policy`。action-policy screen 固定
+Static route、重新执行 action/tool loop，只评价 tool-first、公共参数、继续/重试与停止条件；
+response-policy screen 固定 route/tool/scorer evidence，只评价 evidence、cards、answer、uncertainty 与
+fallback。action 成功只看 `route_acceptable ∧ tool_contract_pass`；response 成功只看
+`no_hard_error ∧ evidence_grounded ∧ output_contract_pass`。两类 patch 使用两组独立的
+protected-success，分别通过后才在 capability 内组合，再参加
+跨能力 fan-in。每个 surface 至少取得 1 个 gain、净增至少 1、regression 不超过 2 且 gain 至少为
+regression 的 4 倍时才保留；普通失败之间的 reason 迁移只记录诊断，普通失败升级为 hard/runtime
+failure 或对应固定边界漂移仍会硬拒绝。最终组合 Bank 还要完整重跑 replay200，并只在通过后访问一次
+body_gate75；新 lineage 的 replay/body 单能力 floor 均为 `−5pp`。完整 fan-in replay 恢复模型自主
+route/action/tool/answer，用来检验两类 policy 组合后的交互风险。
 
-10 轮终态为：R1–R3、R7、R9 在 Feedback terminal gate 前停止；R4 暴露并修复了错误 replay
+历史 deterministic v5/v6 的 10 轮终态为：R1–R3、R7、R9 在 Feedback terminal gate 前停止；R4 暴露并修复了错误 replay
 primitive；R6 的 Document 分支局部通过但 body 增益为 0；R5、R8、R10 接受。R8 与 R10 的
 Document Skill SHA 都是 `ec6ae462…6fdf`，R10 使用更小的 48-row contrastive packet、48/48
-schema-valid Feedback，并以更低成本复现同一效果，所以被选为后续阶段的**备选起点**。
-本阶段不推进 S2；完整逐轮证据见 [S1 实验日志](docs/s1-experiment-log.html)。
+schema-valid Feedback，并以更低成本复现同一效果，所以被保留为后续阶段的**历史备选起点**。
+删除 deterministic runtime 后这些数值不追溯重判，也不能外推到当前 model-generated runtime；
+完整逐轮证据与本次架构更正见 [S1 实验日志](docs/s1-experiment-log.html)。
+
+当前 model-generated lineage 的 fresh Static 为 168/800 GCS success、135/800 hard error，成本
+¥1.2151480；no-op qualification 在 137 条 treatment-reached replay 上为 1 gain / 0 regression，
+成本 ¥0.2627260。新的 30 轮 dual-policy campaign 共使用可追踪 DashScope ¥33.1941053；Creator
+人民币 cost basis 不可得。每轮都从同一 Static parent 独立派生，不把 accepted 或 rejected 候选
+作为后续 parent。R12 是唯一 `accepted=true` 的 Bank；R17/R26 虽有更高 body 增益和 Multi+Recipe
+覆盖，但因 hard-error 超限回滚；R29 覆盖 Multi+Style 且 hard-error delta=0，body macro 仅
+`+1.6667pp`，低于正式门。完整逐轮结果与 balanced top 10 见
+[S1 实验日志](docs/s1-experiment-log.html)。
 
 第一批证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v2`，第二批为
 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。十个 round root 均冻结
 `accepted=false`；它们只用于审计。新的 fan-out 10 轮证据根为
 `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813` 与
 `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813`；除最终 R10 外不得任选失败候选继续 S2。
+当前 model-generated Static 与 qualification 的证据根为
+`D:\athena\experiment-runs\portfolio-core-qwen37-model-generated-v1-20260813`；30 轮 campaign
+证据根为 `D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814` 与
+`...-v2`。canonical top 10 为 R12/R17/R26/R29/R30/R4/R9/R13/R14/R21，其中只有 R12
+标记为 deployable；其余 rejected candidate 不得进入 S2。
+
+本次机制周期没有延续 R17/R26/R29 或其他 rejected Bank。它新增显式 `S1ParentBinding`，把
+R12 Bank、accepted decision、来源 manifest、fresh R12 opt800 observations 及其 SHA 一起绑定；
+Feedback selection、failure cluster、parent-success、replay baseline 与 Style 保护集全部改读同一
+R12 parent lineage。R31/R32 的设计在任何 Feedback/Creator 调用前同时冻结，每轮只有一个
+capability 的一个 surface 可修改，Creator 只能输出一条
+`If and only if <when>, <then>. Otherwise preserve ...` 条件规则。局部有界风险 screen 后仍必须依次
+通过 replay200 与 body75；只有正式 accepted branch 才能进入 R33。body75 不再用于调整下一轮机制，
+test300 只允许对一个已冻结 finalist 成对运行一次。本周期没有 finalist，命令已 fail closed，
+因此 test300 仍 untouched，也没有改变五配置最终评测边界。
+
+fresh R12 parent opt800 的 canonical 成功 lineage 位于
+`D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v3-20260814`：800/800、GCS success
+164、hard error 146、observation SHA `4c6bafa65e320f46…aa84fcf`，成本 ¥1.2439722。此前 v2
+lineage 为 799 success + 1 non-retryable provider failure，已知成本 ¥1.2357178，另有失败请求
+orphan 成本未知；它未参与 selection。终态 R31/R32/R33 位于 `...-v4-20260814`，R31 的 9 条
+Qwen3.8 Feedback 成本 ¥0.04388745，唯一 Creator 为 `35,972 / 823` input/output tokens、人民币
+cost basis 不可得。周期可追踪总成本 ¥2.52357745，Assistant replay/body 与 test 均为 0-call。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
@@ -155,9 +193,9 @@ Skill 被拆成影响路由的 Description 与影响执行的 Body。每个阶�
 
 | 阶段 | 主要输入 | 允许的变化 | 接受条件 | V1 状态 |
 | --- | --- | --- | --- | --- |
-| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 六能力 fan-out typed policy patch；未改项 byte-exact inherit | 分支独立 screen、fan-in replay 后一次正式 GCS 接受门 | 10 轮完成；R10 Document 分支 accepted，覆盖 `1/6` |
-| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；R10 仅作备选起点，本阶段未启动 |
-| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否从 R10 推进 |
+| S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 六能力 fan-out Body patch；每项再拆 action / response surface，未改项 byte-exact inherit | 两类 surface 独立 screen、capability 内组合、六能力 fan-in replay 后一次正式 GCS 接受门 | fresh Static 与 30 轮完成；R12 Style action-policy accepted，覆盖 `1/6` |
+| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；若推进只允许从 R12 canonical Bank 开始，本阶段未启动 |
+| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否从 R12 推进 |
 
 候选 Bank 保存 parent / candidate lineage 与内容哈希。Gate 失败时，系统恢复到逐字节一致的 Parent Bank，而不是在失败候选上继续“补丁式调参”。
 
@@ -337,7 +375,7 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 - 所有合成 query 均标记为 `synthetic_derived`；它们模拟任务结构，不代表真实用户分布。
 - 原始图像、大体量数据、私有授权材料、API key 和大多数真实 run artifact 不随 Git 仓库分发。仓库公开代码、冻结规格、离线 fixture、选定证据与汇总报告。
 - Core r3 语料已经构造，但冻结的 `test300` 尚未执行；README 不把 development 诊断写成最终总体增益。
-- 新 fan-out S1 已在 R10 后停止；R10 接受 Document 单能力分支，其余五能力仍为 Static parent。它是后续阶段备选起点，不是六能力普遍增益结论；S2 / S3 本轮未启动。
+- 历史 deterministic fan-out R10 是旧 runtime 下的 Document 单能力备选，不是当前 model-generated runtime 的有效 parent。当前 runtime 的 30 轮 S1 中只有 R12 accepted；balanced top 10 的其他九项均是不可部署研究证据。新的 R31/R32/R33 周期只能从 R12 fresh parent observations 前向派生。S2 / S3 / Judge / test 均未启动。
 - 部分历史 authoring receipt / runbook 保留创建时的 Windows 本地路径，它们是不可改写实验记录，不是 Quickstart 的可移植依赖。
 
 ## 数据与许可证
@@ -348,9 +386,10 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 
 ## 下一步
 
-1. 冻结 fan-out R1–R10 及最终 R10 Bank；不追加 R11，也不从失败候选挑选局部结果。
-2. 将 R10 保留为后续阶段备选起点；若决定推进，必须使用 canonical spec / run root 启动 S2，不能用 tracked template resume 旧 root。
-3. 在进入 S2 前整理五配置开发结果与面试材料；后续再按冻结顺序推进 S2、S3 与 `test300`。
+1. 保持历史 deterministic rounds、当前 30 轮 canonical artifacts 及所有 rejected Bank 只读，不追溯重判，也不跨 runtime resume。
+2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
+3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
+4. 若开始下一阶段，仍从 R12 出发；本周期的跨-surface Creator 拒绝与 Multi 证据不足只作为算法诊断，不能事后改写本周期或拼装 rejected Bank。
 
 ---
 

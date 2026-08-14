@@ -7,7 +7,7 @@ provider/usage/latency/tool provenance consumed by the Phase 4 bundle writer.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 import time
@@ -34,6 +34,7 @@ from skillchain.evaluation.assistant_runs import (
     AssistantModelCallReceipt,
     AssistantRequestSnapshot,
     AssistantRouteCallEvidence,
+    AssistantRouteAttempt,
     AssistantRouteFailureShape,
     AssistantRouteFailureSubtype,
     AssistantResponseContractRepairReceipt,
@@ -91,15 +92,6 @@ from skillchain.runners.assistant_response_contract import (
     fixed_response_repair_prompt,
     repair_preserves_material_atoms,
     validate_assistant_response_contract,
-)
-from skillchain.runners.assistant_deterministic_contract import (
-    SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
-    DeterministicToolObservation,
-    compile_deterministic_response,
-    deterministic_tool_names,
-    next_deterministic_tool,
-    observation_from_public_scorer_payload,
-    parse_deterministic_semantic_policy,
 )
 
 
@@ -355,7 +347,7 @@ def gcs_v2_model_response_contract_payload() -> dict[str, JSONValue]:
         "encyclopedia_ambiguity_signal_policy": (
             "empty_sources_only_no_reliable_public_ambiguity_field"
         ),
-        "second_invalid_response": "deterministic_runtime_error",
+        "second_invalid_response": "response_contract_error",
         "contracts_by_tool": contracts,
     }
     validate_json_value(payload)
@@ -366,7 +358,7 @@ GCS_V2_MODEL_RESPONSE_CONTRACT_SHA256 = sha256_bytes(
     canonical_json_bytes(gcs_v2_model_response_contract_payload())
 )
 _GCS_V2_MODEL_RESPONSE_CONTRACT_EXPECTED_SHA256 = (
-    "1633e59ad95368858f7e5a8b28e358590fe681a841849860eb0c29bd9757c162"
+    "5e60a7c512992e0fc11ef8edec23cb55c9bb825f690c164b6633bda93393cf5e"
 )
 if (
     GCS_V2_MODEL_RESPONSE_CONTRACT_SHA256
@@ -1517,26 +1509,6 @@ def _visible_projection(
     return tuple(cards), evidence
 
 
-def _compiler_referenced_visible_cards(
-    cards: Sequence[VisibleCard], response_text: str
-) -> tuple[VisibleCard, ...]:
-    """Keep only cards whose public evidence and product handles were emitted."""
-
-    selected: list[VisibleCard] = []
-    for card in cards:
-        fields = dict(card.fields)
-        evidence = fields.get("evidence_reference")
-        product = fields.get("product_id")
-        if (
-            isinstance(evidence, str)
-            and isinstance(product, str)
-            and evidence in response_text
-            and product in response_text
-        ):
-            selected.append(card)
-    return tuple(selected)
-
-
 def _public_query(request: AssistantRequestSnapshot) -> dict[str, JSONValue]:
     try:
         raw = parse_canonical_json(
@@ -1692,7 +1664,7 @@ def _shared_stage2_capabilities(
 def evolution_bank_boundary_violations(
     banks: Mapping[str, StaticBankArtifact],
 ) -> tuple[str, ...]:
-    """Return deterministic S2/S3 edit-boundary violations.
+    """Return reproducible S2/S3 edit-boundary violations.
 
     Slug, version, content hash, and parent hash are lineage metadata.  They may
     change between stages, so comparisons are keyed by capability and cover
@@ -1766,7 +1738,6 @@ class ProductionAssistantRunner:
         "_banks",
         "_asset_catalog",
         "_qwen_call_start_waiter",
-        "_deterministic_action_contract_version",
     )
 
     def __init__(
@@ -1817,7 +1788,6 @@ class ProductionAssistantRunner:
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
-        self._deterministic_action_contract_version = None
         _require_evolution_bank_boundaries(held)
 
     @property
@@ -2672,6 +2642,7 @@ class ProductionAssistantRunner:
         request: AssistantRequestSnapshot,
         *,
         shared_stage2_route: SharedStage2RouteArtifact | None = None,
+        fixed_stage1_route: AssistantRouteAttempt | None = None,
         budget_context: PortfolioAssistantBudgetContext | None = None,
         scorer_query: Query | None = None,
     ) -> RunnerOwnedAssistantExecution:
@@ -2807,7 +2778,27 @@ class ProductionAssistantRunner:
                 )
 
         try:
-            if request.config in {"s1s2", "full"}:
+            if fixed_stage1_route is not None:
+                if (
+                    request.config not in {"llm_static", "s1"}
+                    or shared_stage2_route is not None
+                    or fixed_stage1_route.status != "selected"
+                    or fixed_stage1_route.selected_capability is None
+                    or fixed_stage1_route.skill_slug is None
+                    or fixed_stage1_route.route_trace_sha256 is None
+                ):
+                    raise AssistantBackendContractError(
+                        "fixed Stage-1 route is invalid for this execution"
+                    )
+                bank = self._banks[request.config]
+                selected_capability = fixed_stage1_route.selected_capability
+                skill_slug = _skill_slug_for_capability(bank, selected_capability)
+                if skill_slug != fixed_stage1_route.skill_slug:
+                    raise AssistantBackendContractError(
+                        "fixed Stage-1 route changed the selected Skill identity"
+                    )
+                route_trace_sha256 = fixed_stage1_route.route_trace_sha256
+            elif request.config in {"s1s2", "full"}:
                 if shared_stage2_route is None:
                     raise AssistantBackendContractError(
                         "S1+S2 and Full require one shared Stage-2 route artifact"
@@ -3024,126 +3015,57 @@ class ProductionAssistantRunner:
             repair_initial_text = ""
             repair_initial_validation: AssistantResponseContractValidation | None = None
             for action_call_index in range(1, action_turn_budget + 1):
-                deterministic_contract = (
-                    getattr(self, "_deterministic_action_contract_version", None)
-                    in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
-                    and request.config != "noskill"
-                    and selected_capability is not None
-                )
-                if deterministic_contract:
-                    contract_tools = deterministic_tool_names(selected_capability)
-                    if (
-                        not contract_tools
-                        or selected_operators is None
-                        or not set(contract_tools).issubset(selected_operators)
-                    ):
-                        error = "runtime_error"
-                        break
-                    deterministic_observations = tuple(
-                        DeterministicToolObservation(
-                            tool_name=item.tool_name,
-                            status=item.status,
-                            public_output=item.public_output,
-                        )
-                        for item in response_contract_observations
-                    )
-                    deterministic_response = compile_deterministic_response(
-                        selected_capability,
-                        deterministic_observations,
-                        semantic_policy=parse_deterministic_semantic_policy(
-                            next(
-                                item.body
-                                for item in bank.skills
-                                if item.slug == skill_slug
-                            ),
-                            capability_id=selected_capability,
-                        ),
-                    )
-                    deterministic_tool = next_deterministic_tool(
-                        selected_capability,
-                        deterministic_observations,
-                    )
-                    if deterministic_response is not None:
-                        final = AssistantTurnDecision.model_validate(
-                            {
-                                "kind": "final",
-                                "response_text": deterministic_response,
-                            },
-                            strict=True,
-                        )
-                        break
-                    if deterministic_tool is None:
-                        error = "response_contract_error"
-                        break
-                    decision = AssistantTurnDecision.model_validate(
-                        {
-                            "kind": "tool",
-                            "tool_name": deterministic_tool.tool_name,
-                            "arguments": deterministic_tool.arguments,
-                        },
-                        strict=True,
-                    )
-                    response = None
-                else:
-                    response = None
                 used_output = reserved_route_usage.output_tokens + sum(
                     item.output_tokens for item in model_calls
                 )
                 remaining_output = request.budget.max_output_tokens - used_output
-                if not deterministic_contract:
-                    try:
-                        response = self._chat(
-                            request,
-                            messages,
-                            remaining_output,
-                            absolute_image_path,
-                            authoritative_asset_id,
-                            json_mode=False,
-                            tools=None if repair_pending else action_tools,
-                            attach_image=not repair_pending,
-                            timeout_seconds=remaining_timeout_seconds(),
-                            failure_stage="action",
-                            portfolio_budget_context=budget_context,
-                            budget_stage=(
-                                "assistant_action"
-                                if budget_context is not None
-                                else None
-                            ),
-                            budget_call_index=(
-                                action_call_index
-                                if budget_context is not None
-                                else None
-                            ),
-                        )
-                    except AssistantCapturedResponseContractError as captured_error:
-                        if not repair_pending:
-                            raise
-                        assert repair_initial_validation is not None
-                        response = captured_error.response
-                        record_model_call(response)
-                        material_atoms_added = not repair_preserves_material_atoms(
-                            repair_initial_text, response.text
-                        )
-                        repair_wire_reasons = {"response_repair_wire_invalid"}
-                        if material_atoms_added:
-                            repair_wire_reasons.add("response_repair_new_material_atom")
-                        response_contract_repair = (
-                            make_assistant_response_contract_repair_receipt(
-                                initial_response_text=repair_initial_text,
-                                initial_reason_codes=(
-                                    repair_initial_validation.reason_codes
-                                ),
-                                repair_call_index=len(model_calls),
-                                repair_call_usage=response.usage,
-                                repaired_response_text=response.text,
-                                final_reason_codes=tuple(sorted(repair_wire_reasons)),
-                                material_atoms_added=material_atoms_added,
-                            )
-                        )
-                        error = "response_contract_error"
-                        break
+                try:
+                    response = self._chat(
+                        request,
+                        messages,
+                        remaining_output,
+                        absolute_image_path,
+                        authoritative_asset_id,
+                        json_mode=False,
+                        tools=None if repair_pending else action_tools,
+                        attach_image=not repair_pending,
+                        timeout_seconds=remaining_timeout_seconds(),
+                        failure_stage="action",
+                        portfolio_budget_context=budget_context,
+                        budget_stage=(
+                            "assistant_action" if budget_context is not None else None
+                        ),
+                        budget_call_index=(
+                            action_call_index if budget_context is not None else None
+                        ),
+                    )
+                except AssistantCapturedResponseContractError as captured_error:
+                    if not repair_pending:
+                        raise
+                    assert repair_initial_validation is not None
+                    response = captured_error.response
                     record_model_call(response)
-                if response is not None and response.finish_reason == "length":
+                    material_atoms_added = not repair_preserves_material_atoms(
+                        repair_initial_text, response.text
+                    )
+                    repair_wire_reasons = {"response_repair_wire_invalid"}
+                    if material_atoms_added:
+                        repair_wire_reasons.add("response_repair_new_material_atom")
+                    response_contract_repair = (
+                        make_assistant_response_contract_repair_receipt(
+                            initial_response_text=repair_initial_text,
+                            initial_reason_codes=repair_initial_validation.reason_codes,
+                            repair_call_index=len(model_calls),
+                            repair_call_usage=response.usage,
+                            repaired_response_text=response.text,
+                            final_reason_codes=tuple(sorted(repair_wire_reasons)),
+                            material_atoms_added=material_atoms_added,
+                        )
+                    )
+                    error = "response_contract_error"
+                    break
+                record_model_call(response)
+                if response.finish_reason == "length":
                     if repair_pending:
                         assert repair_initial_validation is not None
                         material_atoms_added = not repair_preserves_material_atoms(
@@ -3170,9 +3092,7 @@ class ProductionAssistantRunner:
                     raise AssistantBackendContractError(
                         "Assistant action exhausted its output-token allowance"
                     )
-                if response is None:
-                    tool_call = None
-                elif response.tool_calls:
+                if response.tool_calls:
                     if repair_pending:  # _chat normally rejects this wire shape.
                         raise AssistantBackendContractError(
                             "response repair attempted to call a tool"
@@ -3439,16 +3359,10 @@ class ProductionAssistantRunner:
                     (
                         {
                             "role": "assistant",
-                            "content": (
-                                None if response is None else response.text or None
-                            ),
+                            "content": response.text or None,
                             "tool_calls": [
                                 {
-                                    "id": (
-                                        f"runner-tool-{len(tool_trace)}"
-                                        if tool_call is None
-                                        else tool_call.call_id
-                                    ),
+                                    "id": tool_call.call_id,
                                     "type": "function",
                                     "function": {
                                         "name": decision.tool_name,
@@ -3461,11 +3375,7 @@ class ProductionAssistantRunner:
                         },
                         {
                             "role": "tool",
-                            "tool_call_id": (
-                                f"runner-tool-{len(tool_trace)}"
-                                if tool_call is None
-                                else tool_call.call_id
-                            ),
+                            "tool_call_id": tool_call.call_id,
                             "content": canonical_json_bytes(tool_message).decode(
                                 "utf-8"
                             ),
@@ -3539,15 +3449,6 @@ class ProductionAssistantRunner:
                 else "runtime_error"
             ),
         )
-        response_cards = tuple(visible_cards)
-        if (
-            final is not None
-            and getattr(self, "_deterministic_action_contract_version", None)
-            == "core-fast-deterministic-action-response-v6"
-        ):
-            response_cards = _compiler_referenced_visible_cards(
-                visible_cards, final.response_text
-            )
         response_model = AssistantBackendResponse(
             schema_version=2 if budget_context is not None else 1,
             request_sha256=request.request_sha256,
@@ -3559,7 +3460,7 @@ class ProductionAssistantRunner:
             registry_runtime_sha256=request.registry.registry_runtime_sha256,
             budget_sha256=request.budget.budget_sha256,
             response_text=(final.response_text if final is not None else ""),
-            visible_cards=response_cards,
+            visible_cards=tuple(visible_cards),
             visible_tool_evidence=tuple(visible_tool_evidence),
             tool_trace=tuple(tool_trace),
             selected_capability=selected_capability,
@@ -3608,6 +3509,10 @@ class ProductionAssistantRunner:
             unsigned_receipt["route_call_evidence"] = route_call_evidence
         if response_contract_repair is not None:
             unsigned_receipt["response_contract_repair"] = response_contract_repair
+        if fixed_stage1_route is not None:
+            unsigned_receipt["fixed_stage1_route_attempt_sha256"] = (
+                fixed_stage1_route.route_attempt_sha256
+            )
         receipt = AssistantExecutionReceipt.model_validate(
             {
                 **unsigned_receipt,
@@ -3736,7 +3641,6 @@ class PortfolioAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
-        self._deterministic_action_contract_version = None
         _require_evolution_bank_boundaries(held)
 
 
@@ -3816,7 +3720,6 @@ class PortfolioStaticOptAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
-        self._deterministic_action_contract_version = None
 
 
 _PORTFOLIO_STATIC_OPT_EXECUTE = PortfolioStaticOptAssistantRunner.execute
@@ -3842,7 +3745,6 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         banks: Mapping[str, StaticBankArtifact],
         asset_catalog: AssetCatalog,
         qwen_call_start_waiter: Callable[[str], float] | None = None,
-        deterministic_action_contract_version: str | None = None,
     ) -> None:
         registry = require_portfolio_diagnostic_registry(registry)
         if not system_prompt or system_prompt != system_prompt.strip():
@@ -3872,14 +3774,6 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
         if qwen_call_start_waiter is not None and not callable(qwen_call_start_waiter):
             raise TypeError("qwen_call_start_waiter must be callable")
         self._qwen_call_start_waiter = qwen_call_start_waiter
-        if deterministic_action_contract_version not in {
-            None,
-            *SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
-        }:
-            raise ValueError("unknown Core Fast deterministic action contract")
-        self._deterministic_action_contract_version = (
-            deterministic_action_contract_version
-        )
         _require_evolution_bank_boundaries(held)
 
     def execute_body_replay(
@@ -3893,27 +3787,28 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
     ) -> RunnerOwnedAssistantExecution:
         """Regenerate only the answer while reusing the exact route/tool trace.
 
-        This is the narrow execution primitive required by Core Fast S3.  It
-        deliberately exposes no tool definitions and carries the parent's
-        already-sanitized visible evidence into one answer-only model call.
+        This is the narrow execution primitive shared by Core Fast S1
+        capability screens and S3.  It deliberately exposes no tool
+        definitions and carries the parent's already-sanitized visible
+        evidence into one answer-only model call.
         """
 
-        if request.config != "full":
-            raise AssistantBackendContractError("Body replay requires Full config")
+        if request.config not in {"s1", "full"}:
+            raise AssistantBackendContractError(
+                "Body replay requires S1 or Full config"
+            )
         if scorer_query.query_id != request.query.query_id:
             raise AssistantBackendContractError("Body replay query binding differs")
         if (
-            parent_response.error_code is not None
-            or parent_response.selected_capability is None
+            parent_response.selected_capability is None
             or parent_response.skill_slug is None
             or parent_response.route_trace_sha256 is None
-            or parent_receipt.outcome != "success"
             or parent_receipt.tool_trace != parent_response.tool_trace
             or parent_receipt.route_attempt is None
             or parent_receipt.route_attempt.status != "selected"
         ):
             raise AssistantBackendContractError(
-                "Body replay requires one successful routed parent execution"
+                "Body replay requires one routed parent execution"
             )
         successful_parent = tuple(
             (
@@ -4090,207 +3985,46 @@ class CoreFastAssistantRunner(ProductionAssistantRunner):
             scorer_capture_policy_version=GCS_SCORER_EVIDENCE_V2_POLICY_VERSION,
         )
 
-    def execute_deterministic_body_replay(
+    def execute_action_replay(
         self,
         request: AssistantRequestSnapshot,
         *,
         parent_response: AssistantBackendResponse,
         parent_receipt: AssistantExecutionReceipt,
-        parent_scorer_calls: tuple[PublicScorerCallEvidenceV2, ...],
         scorer_query: Query,
     ) -> RunnerOwnedAssistantExecution:
-        """Recompile one candidate policy over an exact parent route/tool trace."""
+        """Reuse only the selected route and rerun the action/tool loop.
 
-        if (
-            self._deterministic_action_contract_version
-            not in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
-            or request.config == "noskill"
-        ):
+        The parent route is treated as immutable assignment evidence.  No
+        parent tool call, argument, stopping decision, card, evidence, or
+        answer is reused, so this primitive isolates the action-policy surface
+        while removing route sampling from the comparison.
+        """
+
+        if request.config not in {"llm_static", "s1"}:
             raise AssistantBackendContractError(
-                "deterministic Body replay requires an active routed contract"
+                "Action replay requires LLMStatic or S1 config"
             )
         if scorer_query.query_id != request.query.query_id:
-            raise AssistantBackendContractError(
-                "deterministic Body replay query binding differs"
-            )
+            raise AssistantBackendContractError("Action replay query binding differs")
+        route_attempt = parent_receipt.route_attempt
         if (
-            parent_response.error_code is not None
-            or parent_response.selected_capability is None
+            parent_response.selected_capability is None
             or parent_response.skill_slug is None
             or parent_response.route_trace_sha256 is None
-            or parent_receipt.outcome != "success"
-            or parent_receipt.tool_trace != parent_response.tool_trace
-            or parent_receipt.route_attempt is None
-            or parent_receipt.route_attempt.status != "selected"
+            or route_attempt is None
+            or route_attempt.status != "selected"
+            or route_attempt.selected_capability != parent_response.selected_capability
+            or route_attempt.skill_slug != parent_response.skill_slug
+            or route_attempt.route_trace_sha256 != parent_response.route_trace_sha256
         ):
             raise AssistantBackendContractError(
-                "deterministic Body replay requires one successful routed parent"
+                "Action replay requires one successful selected parent route"
             )
-        successful_parent = tuple(
-            (
-                item.call_index,
-                item.tool_name,
-                item.arguments_sha256,
-                item.result_sha256,
-            )
-            for item in parent_response.tool_trace
-            if item.status == "success"
-        )
-        scorer_parent = tuple(
-            (
-                item.call_index,
-                item.tool_name,
-                item.arguments_sha256,
-                item.result_sha256,
-            )
-            for item in parent_scorer_calls
-        )
-        if successful_parent != scorer_parent:
-            raise AssistantBackendContractError(
-                "deterministic Body replay scorer calls differ from parent tool trace"
-            )
-        bank = self._validate_prompt_and_bank(request)
-        assert bank is not None
-        selected = next(
-            (
-                item
-                for item in bank.skills
-                if item.capability_id == parent_response.selected_capability
-            ),
-            None,
-        )
-        if selected is None or selected.slug != parent_response.skill_slug:
-            raise AssistantBackendContractError(
-                "deterministic Body replay candidate changed selected Skill identity"
-            )
-        observations = tuple(
-            observation_from_public_scorer_payload(
-                tool_name=item.tool_name,
-                payload_kind=item.payload_kind,
-                payload=item.payload,
-            )
-            for item in parent_scorer_calls
-        )
-        response_text = compile_deterministic_response(
-            parent_response.selected_capability,
-            observations,
-            semantic_policy=parse_deterministic_semantic_policy(
-                selected.body,
-                capability_id=parent_response.selected_capability,
-            ),
-        )
-        if response_text is None:
-            raise AssistantBackendContractError(
-                "deterministic Body replay parent trace is not terminal"
-            )
-        contract_observations = tuple(
-            AssistantResponseToolObservation(
-                tool_name=item.tool_name,
-                status=item.status,
-                public_output=item.public_output,
-            )
-            for item in observations
-        )
-        validation = validate_assistant_response_contract(
-            response_text,
-            observations=contract_observations,
-            selected_capability=parent_response.selected_capability,
-            contract=_gcs_v2_model_response_contract_for_capability(
-                parent_response.selected_capability
-            ),
-        )
-        if (
-            not validation.valid
-            and self._deterministic_action_contract_version
-            != "core-fast-deterministic-action-response-v6"
-        ):
-            raise AssistantBackendContractError(
-                "deterministic Body replay compiled an invalid response"
-            )
-        # V6 aligns replay with the normal deterministic path: an empty detector
-        # may yield compiler-owned terminal fallback even though the legacy
-        # model-response preflight labels that sequence incomplete.  GCS then
-        # records an ordinary tool/card failure instead of an oracle gap.
-        response_cards = parent_response.visible_cards
-        if self._deterministic_action_contract_version == (
-            "core-fast-deterministic-action-response-v6"
-        ):
-            response_cards = _compiler_referenced_visible_cards(
-                parent_response.visible_cards, response_text
-            )
-        response_model = AssistantBackendResponse(
-            request_sha256=request.request_sha256,
-            backbone_provider=request.backbone.provider,
-            backbone_model=request.backbone.model,
-            backbone_endpoint=request.backbone.endpoint,
-            backbone_identity_sha256=request.backbone.identity_sha256,
-            registry_sha256=request.registry.registry_sha256,
-            registry_runtime_sha256=request.registry.registry_runtime_sha256,
-            budget_sha256=request.budget.budget_sha256,
-            response_text=response_text,
-            visible_cards=response_cards,
-            visible_tool_evidence=parent_response.visible_tool_evidence,
-            tool_trace=parent_response.tool_trace,
-            selected_capability=parent_response.selected_capability,
-            skill_slug=parent_response.skill_slug,
-            route_trace_sha256=parent_response.route_trace_sha256,
-            usage=LLMUsage(input_tokens=0, output_tokens=0),
-            turn_count=1,
-            latency_ms=0,
-        )
-        route_attempt = make_assistant_route_attempt(
-            status="selected",
-            selected_capability=parent_response.selected_capability,
-            skill_slug=parent_response.skill_slug,
-            route_trace_sha256=parent_response.route_trace_sha256,
-        )
-        unsigned_receipt = {
-            "schema_version": 1,
-            "policy_version": ASSISTANT_EXECUTION_RECEIPT_POLICY_VERSION,
-            "request_sha256": request.request_sha256,
-            "asset_catalog_sha256": parent_receipt.asset_catalog_sha256,
-            "query_asset_id": parent_receipt.query_asset_id,
-            "query_asset_sha256": parent_receipt.query_asset_sha256,
-            "model_calls": (),
-            "tool_trace": parent_response.tool_trace,
-            "route_attempt": route_attempt,
-            "aggregate_usage": LLMUsage(input_tokens=0, output_tokens=0),
-            "runner_latency_ms": 0,
-            "outcome": "success",
-            "response_sha256": sha256_bytes(
-                canonical_json_bytes(response_model.model_dump(mode="json"))
-            ),
-            "deterministic_replay_source_receipt_sha256": (
-                parent_receipt.receipt_sha256
-            ),
-        }
-        receipt_payload = {
-            key: (
-                value.model_dump(mode="json")
-                if isinstance(value, BaseModel)
-                else [
-                    item.model_dump(mode="json")
-                    if isinstance(item, BaseModel)
-                    else item
-                    for item in value
-                ]
-                if isinstance(value, tuple)
-                else value
-            )
-            for key, value in unsigned_receipt.items()
-        }
-        receipt = AssistantExecutionReceipt.model_validate(
-            {
-                **unsigned_receipt,
-                "receipt_sha256": sha256_bytes(canonical_json_bytes(receipt_payload)),
-            },
-            strict=True,
-        )
-        return _issue_runner_owned_assistant_execution(
-            response_model,
-            receipt,
-            scorer_calls=parent_scorer_calls,
-            scorer_capture_policy_version=GCS_SCORER_EVIDENCE_V2_POLICY_VERSION,
+        return self.execute(
+            request,
+            fixed_stage1_route=route_attempt,
+            scorer_query=scorer_query,
         )
 
 

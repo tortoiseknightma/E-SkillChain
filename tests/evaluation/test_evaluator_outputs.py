@@ -70,6 +70,7 @@ def _feedback_payload() -> dict:
         "rule_violations": [],
         "ideal_response_gaps": [],
         "skill_suggestions": [],
+        "evidence_quality_notes": None,
     }
 
 

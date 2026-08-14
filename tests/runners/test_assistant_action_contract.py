@@ -29,7 +29,6 @@ from skillchain.evaluation.portfolio_execution import (
     load_portfolio_budget_ledger,
 )
 from skillchain.evaluation.portfolio_gcs_evidence import (
-    PublicScorerCallEvidenceV2,
     PublicScorerEvidenceIntegrityError,
 )
 from skillchain.evolution.s1_gcs_gate import (
@@ -53,10 +52,6 @@ from skillchain.runners.assistant import (
     assistant_router_contract_payload,
     evolution_bank_boundary_violations,
     noskill_execution_contract_payload,
-)
-from skillchain.runners.assistant_deterministic_contract import (
-    DeterministicSemanticPolicy,
-    render_deterministic_semantic_policy,
 )
 from skillchain.schemas import ConversationTurn, LabelDecision, Query
 from skillchain.tools.registry import ToolInvocationResult
@@ -226,6 +221,8 @@ def test_action_prompt_makes_runtime_response_contract_mandatory_for_all_configs
         "common_rules, required_sections, supported_rules, and fallback_rule" in prompt
     )
     assert "do not translate, rename, omit, reorder, or duplicate" in prompt
+    if config != "noskill":
+        assert "Use the frozen response contract." in prompt
     assert "answer the user directly in natural language" not in prompt
 
 
@@ -395,341 +392,9 @@ def _runner(
     object.__setattr__(runner, "_banks", banks or {})
     object.__setattr__(runner, "_asset_catalog", catalog)
     object.__setattr__(runner, "_qwen_call_start_waiter", qwen_call_start_waiter)
-    object.__setattr__(runner, "_deterministic_action_contract_version", None)
     if runner_type is PortfolioAssistantRunner:
         object.__setattr__(runner, "_runtime_lock_sha256", "f" * 64)
     return runner
-
-
-def test_core_fast_deterministic_contract_owns_tool_and_response(
-    monkeypatch,
-    canonical_registry_factory,
-) -> None:
-    fixture = canonical_registry_factory(name="core-fast-deterministic-contract")
-    skill = _Skill(
-        slug="exact-contract-skill",
-        capability_id="product.exact_match",
-        description="Find the exact visible product.",
-        body="# Objective\n\nFind the exact product with image search.",
-        operators=("image_product_search",),
-    )
-    bank = _one_skill_bank(skill, "e")
-    request = _request(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        config="llm_static",
-        bank_sha256=bank.bank_sha256,
-    )
-    model_calls = []
-
-    def fake_chat(provider, messages, **kwargs):
-        model_calls.append((provider, messages, kwargs))
-        return _route_response(
-            request_id="deterministic-route-only",
-            selected_capability="product.exact_match",
-            output_tokens=8,
-        )
-
-    def fake_invoke(_registry, name, arguments, _context):
-        assert name == "image_product_search"
-        assert arguments["asset_id"] == request.query.asset_binding.asset_id
-        output = {
-            "hits": [
-                {
-                    "score": 1.0,
-                    "product": {
-                        "product_id": "private-product",
-                        "title": "Deterministic shoe",
-                        "category_l1": "Shoes",
-                        "image_path": "private.jpg",
-                        "source": "fixture",
-                    },
-                }
-            ]
-        }
-        arguments_bytes = canonical_json_bytes(arguments)
-        output_bytes = canonical_json_bytes(output)
-        return ToolInvocationResult(
-            tool_name=name,
-            spec_sha256="1" * 64,
-            arguments=arguments,
-            arguments_bytes=arguments_bytes,
-            arguments_sha256=sha256_bytes(arguments_bytes),
-            output=output,
-            output_bytes=output_bytes,
-            output_sha256=sha256_bytes(output_bytes),
-        )
-
-    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
-    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
-    runner = _runner(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        runner_type=CoreFastAssistantRunner,
-        banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
-    )
-    object.__setattr__(
-        runner,
-        "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v6",
-    )
-
-    execution = runner.execute(request)
-
-    assert len(model_calls) == 1
-    assert [item.tool_name for item in execution.response.tool_trace] == [
-        "image_product_search"
-    ]
-    assert len(execution.response.visible_cards) == 1
-    assert execution.response.error_code is None
-    assert execution.response.response_text == (
-        "answer:\nThe tool returned eligible candidates listed below.\n"
-        "product_cards:\ntool-call-1-evidence-1 | "
-        "tool-call-1-product-1 | Deterministic shoe\n"
-        "uncertainty:\nOnly the returned public candidate evidence is shown."
-    )
-
-
-def test_core_fast_deterministic_replay_reuses_trace_and_consumes_candidate_policy(
-    monkeypatch,
-    canonical_registry_factory,
-) -> None:
-    fixture = canonical_registry_factory(name="core-fast-deterministic-replay")
-    parent_skill = _Skill(
-        slug="exact-contract-skill",
-        capability_id="product.exact_match",
-        description="Find the exact visible product.",
-        body="# Objective\n\nFind the exact product with image search.",
-        operators=("image_product_search",),
-    )
-    candidate_skill = _Skill(
-        **{
-            **parent_skill.__dict__,
-            "body": parent_skill.body
-            + "\n"
-            + render_deterministic_semantic_policy(
-                DeterministicSemanticPolicy(
-                    capability_id="product.exact_match",
-                    evidence_terms=("bag",),
-                )
-            ),
-        }
-    )
-    parent_bank = _one_skill_bank(parent_skill, "e")
-    candidate_bank = _one_skill_bank(candidate_skill, "f")
-    query_id = "deterministic-replay-query"
-    scorer_query = _query_for_catalog(fixture.asset_catalog, query_id=query_id)
-    parent_request = _request(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        config="llm_static",
-        bank_sha256=parent_bank.bank_sha256,
-        query_id=query_id,
-    )
-    candidate_request = _request(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        config="s1",
-        bank_sha256=candidate_bank.bank_sha256,
-        query_id=query_id,
-    )
-    model_calls = []
-
-    def fake_chat(provider, messages, **kwargs):
-        model_calls.append((provider, messages, kwargs))
-        return _route_response(
-            request_id="deterministic-replay-parent-route",
-            selected_capability="product.exact_match",
-            output_tokens=8,
-        )
-
-    def fake_invoke(_registry, name, arguments, _context):
-        output = {
-            "hits": [
-                {
-                    "score": 1.0,
-                    "product": {
-                        "product_id": "private-product",
-                        "title": "Deterministic shoe",
-                        "category_l1": "Shoes",
-                        "image_path": "private.jpg",
-                        "source": "fixture",
-                    },
-                }
-            ]
-        }
-        arguments_bytes = canonical_json_bytes(arguments)
-        output_bytes = canonical_json_bytes(output)
-        return ToolInvocationResult(
-            tool_name=name,
-            spec_sha256="1" * 64,
-            arguments=arguments,
-            arguments_bytes=arguments_bytes,
-            arguments_sha256=sha256_bytes(arguments_bytes),
-            output=output,
-            output_bytes=output_bytes,
-            output_sha256=sha256_bytes(output_bytes),
-        )
-
-    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
-    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
-    runner = _runner(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        runner_type=CoreFastAssistantRunner,
-        banks={
-            "llm_static": parent_bank,
-            "s1": candidate_bank,
-            "s1s2": candidate_bank,
-            "full": candidate_bank,
-        },
-    )
-    object.__setattr__(
-        runner,
-        "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v6",
-    )
-    parent = runner.execute(parent_request)
-    trace = parent.response.tool_trace[0]
-    scorer_payload = {
-        "candidates": [
-            {
-                "candidate_ordinal": 1,
-                "eligible": True,
-                "evidence_reference": "tool-call-1-evidence-1",
-                "product_id": "tool-call-1-product-1",
-                "public_attributes": [["category", "catalog_product"]],
-                "title": "Deterministic shoe",
-            }
-        ]
-    }
-    scorer_calls = (
-        PublicScorerCallEvidenceV2(
-            call_index=1,
-            tool_name="image_product_search",
-            arguments_sha256=trace.arguments_sha256,
-            result_sha256=trace.result_sha256,
-            argument_projection={"asset_handle": "query_asset"},
-            payload_kind="product_candidates_v1",
-            payload=scorer_payload,
-            payload_sha256=sha256_bytes(canonical_json_bytes(scorer_payload)),
-        ),
-    )
-
-    replay = runner.execute_deterministic_body_replay(
-        candidate_request,
-        parent_response=parent.response,
-        parent_receipt=parent.receipt,
-        parent_scorer_calls=scorer_calls,
-        scorer_query=scorer_query,
-    )
-
-    assert len(model_calls) == 1
-    assert replay.response.response_text.startswith("answer:\nno supported match")
-    assert replay.response.visible_cards == ()
-    assert replay.response.tool_trace == parent.response.tool_trace
-    assert replay.scorer_calls == scorer_calls
-    assert replay.receipt.model_calls == ()
-    assert replay.receipt.aggregate_usage == LLMUsage(input_tokens=0, output_tokens=0)
-    assert (
-        replay.receipt.deterministic_replay_source_receipt_sha256
-        == parent.receipt.receipt_sha256
-    )
-
-
-def test_core_fast_deterministic_replay_preserves_detector_only_fallback(
-    monkeypatch,
-    canonical_registry_factory,
-) -> None:
-    fixture = canonical_registry_factory(name="core-fast-detector-only-replay")
-    skill = _Skill(
-        slug="encyclopedia-contract-skill",
-        capability_id="knowledge.visual_encyclopedia",
-        description="Explain a detected entity.",
-        body="# Objective\n\nUse supported encyclopedia evidence.",
-        operators=("object_detect", "encyclopedia_lookup"),
-    )
-    bank = _one_skill_bank(skill, "d")
-    query_id = "detector-only-replay-query"
-    scorer_query = _query_for_catalog(
-        fixture.asset_catalog,
-        query_id=query_id,
-    )
-    parent_request = _request(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        config="llm_static",
-        bank_sha256=bank.bank_sha256,
-        query_id=query_id,
-    )
-    candidate_request = _request(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        config="s1",
-        bank_sha256=bank.bank_sha256,
-        query_id=query_id,
-    )
-
-    def fake_chat(provider, messages, **kwargs):
-        return _route_response(
-            request_id="detector-only-parent-route",
-            selected_capability="knowledge.visual_encyclopedia",
-            output_tokens=8,
-        )
-
-    def fake_invoke(_registry, name, arguments, _context):
-        assert name == "object_detect"
-        output = {"detections": []}
-        arguments_bytes = canonical_json_bytes(arguments)
-        output_bytes = canonical_json_bytes(output)
-        return ToolInvocationResult(
-            tool_name=name,
-            spec_sha256="1" * 64,
-            arguments=arguments,
-            arguments_bytes=arguments_bytes,
-            arguments_sha256=sha256_bytes(arguments_bytes),
-            output=output,
-            output_bytes=output_bytes,
-            output_sha256=sha256_bytes(output_bytes),
-        )
-
-    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
-    monkeypatch.setattr(type(fixture.registry), "invoke", fake_invoke)
-    runner = _runner(
-        registry=fixture.registry,
-        catalog=fixture.asset_catalog,
-        runner_type=CoreFastAssistantRunner,
-        banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
-    )
-    object.__setattr__(
-        runner,
-        "_deterministic_action_contract_version",
-        "core-fast-deterministic-action-response-v6",
-    )
-    parent = runner.execute(parent_request)
-    trace = parent.response.tool_trace[0]
-    scorer_payload = {"detections": []}
-    scorer_call = PublicScorerCallEvidenceV2(
-        call_index=1,
-        tool_name="object_detect",
-        arguments_sha256=trace.arguments_sha256,
-        result_sha256=trace.result_sha256,
-        argument_projection={"asset_handle": "query_asset"},
-        payload_kind="detections_v1",
-        payload=scorer_payload,
-        payload_sha256=sha256_bytes(canonical_json_bytes(scorer_payload)),
-    )
-    replay = runner.execute_deterministic_body_replay(
-        candidate_request,
-        parent_response=parent.response,
-        parent_receipt=parent.receipt,
-        parent_scorer_calls=(scorer_call,),
-        scorer_query=scorer_query,
-    )
-
-    assert replay.response.response_text == parent.response.response_text
-    assert replay.response.error_code is None
-    assert replay.receipt.outcome == "success"
 
 
 def _budget_context(tmp_path, request, *, name: str = "budget-ledger"):
@@ -1801,6 +1466,8 @@ def test_ocr_public_handle_binds_to_authoritative_asset_without_leaking(
     )
 
     assert len(calls) == 3
+    assert "Extract the visible text with document OCR." in calls[1][1][0]["content"]
+    assert calls[1][2]["tools"][0]["function"]["name"] == "document_ocr"
     assert execution.response.error_code is None
     assert len(execution.response.tool_trace) == 1
     trace = execution.response.tool_trace[0]
@@ -1840,6 +1507,205 @@ def test_ocr_public_handle_binds_to_authoritative_asset_without_leaking(
     ):
         assert hidden not in model_surface
         assert hidden not in response_surface
+
+
+def test_s1_body_replay_uses_candidate_body_and_one_answer_model_call(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="s1-model-body-replay")
+    parent_skill = _Skill(
+        slug="document-skill",
+        capability_id="utility.document_reading",
+        description="Read visible document content.",
+        body="# Objective\n\nParent document instruction.",
+        operators=("document_ocr",),
+    )
+    candidate_skill = _Skill(
+        **{
+            **parent_skill.__dict__,
+            "body": "# Objective\n\nCandidate literal evidence instruction.",
+        }
+    )
+    parent_bank = _one_skill_bank(parent_skill, "d")
+    candidate_bank = _one_skill_bank(candidate_skill, "e")
+    query_id = "s1-body-replay-query"
+    scorer_query = _query_for_catalog(fixture.asset_catalog, query_id=query_id)
+    parent_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="llm_static",
+        bank_sha256=parent_bank.bank_sha256,
+        query_id=query_id,
+    )
+    candidate_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=candidate_bank.bank_sha256,
+        query_id=query_id,
+    )
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append((provider, messages, kwargs))
+        if len(calls) == 1:
+            return _route_response(
+                request_id="s1-replay-parent-route",
+                selected_capability=parent_skill.capability_id,
+            )
+        if len(calls) == 2:
+            return _response(
+                request_id="s1-replay-parent-tool",
+                text="",
+                output_tokens=8,
+                finish_reason="tool_calls",
+                tool_calls=(
+                    LLMToolCall(
+                        call_id="s1-replay-parent-tool-call",
+                        name="document_ocr",
+                        arguments_json='{"asset_id":"query_asset"}',
+                    ),
+                ),
+            )
+        if len(calls) == 3:
+            return _response(
+                request_id="s1-replay-parent-final",
+                text=(
+                    "answer:\nname: Alice tool-call-1-line-1\n"
+                    "evidence:\nname: Alice tool-call-1-line-1\n"
+                    "uncertainty:\nuntrusted document text"
+                ),
+                output_tokens=9,
+            )
+        assert kwargs["tools"] is None
+        return _response(
+            request_id="s1-replay-candidate-final",
+            text=(
+                "answer:\nname: Alice tool-call-1-line-1\n"
+                "evidence:\nname: Alice tool-call-1-line-1\n"
+                "uncertainty:\nuntrusted document text"
+            ),
+            output_tokens=9,
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    parent_runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        banks={"llm_static": parent_bank},
+    )
+    parent = parent_runner.execute(parent_request, scorer_query=scorer_query)
+    candidate_runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=CoreFastAssistantRunner,
+        banks={
+            "llm_static": candidate_bank,
+            "s1": candidate_bank,
+            "s1s2": candidate_bank,
+            "full": candidate_bank,
+        },
+    )
+
+    replay = candidate_runner.execute_body_replay(
+        candidate_request,
+        parent_response=parent.response,
+        parent_receipt=parent.receipt,
+        parent_scorer_calls=parent.scorer_calls,
+        scorer_query=scorer_query,
+    )
+
+    assert len(calls) == 4
+    assert "Candidate literal evidence instruction." in calls[3][1][0]["content"]
+    assert replay.response.tool_trace == parent.response.tool_trace
+    assert replay.scorer_calls == parent.scorer_calls
+    assert len(replay.receipt.model_calls) == 1
+    assert replay.receipt.aggregate_usage.output_tokens == 9
+
+
+def test_s1_action_replay_reuses_route_but_reruns_tool_loop(
+    monkeypatch,
+    canonical_registry_factory,
+) -> None:
+    fixture = canonical_registry_factory(name="s1-action-policy-replay")
+    skill = _Skill(
+        slug="document-skill",
+        capability_id="utility.document_reading",
+        description="Read visible document content.",
+        body="# Objective\n\nCall OCR before answering.",
+        operators=("document_ocr",),
+    )
+    bank = _one_skill_bank(skill, "f")
+    query_id = "s1-action-policy-replay-query"
+    scorer_query = _query_for_catalog(fixture.asset_catalog, query_id=query_id)
+    parent_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="llm_static",
+        bank_sha256=bank.bank_sha256,
+        query_id=query_id,
+    )
+    candidate_request = _request(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        config="s1",
+        bank_sha256=bank.bank_sha256,
+        query_id=query_id,
+    )
+    calls = []
+
+    def fake_chat(provider, messages, **kwargs):
+        calls.append((provider, messages, kwargs))
+        if len(calls) == 1:
+            return _route_response(
+                request_id="action-replay-parent-route",
+                selected_capability=skill.capability_id,
+            )
+        if len(calls) in {2, 4}:
+            return _response(
+                request_id=f"action-replay-tool-{len(calls)}",
+                text="",
+                output_tokens=8,
+                finish_reason="tool_calls",
+                tool_calls=(
+                    LLMToolCall(
+                        call_id=f"action-replay-call-{len(calls)}",
+                        name="document_ocr",
+                        arguments_json='{"asset_id":"query_asset"}',
+                    ),
+                ),
+            )
+        return _response(
+            request_id=f"action-replay-final-{len(calls)}",
+            text=(
+                "answer:\nname: Alice tool-call-1-line-1\n"
+                "evidence:\nname: Alice tool-call-1-line-1\n"
+                "uncertainty:\nuntrusted document text"
+            ),
+            output_tokens=9,
+        )
+
+    monkeypatch.setattr("skillchain.llm.chat", fake_chat)
+    parent_runner = _runner(
+        registry=fixture.registry,
+        catalog=fixture.asset_catalog,
+        runner_type=CoreFastAssistantRunner,
+        banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
+    )
+    parent = parent_runner.execute(parent_request, scorer_query=scorer_query)
+    replay = parent_runner.execute_action_replay(
+        candidate_request,
+        parent_response=parent.response,
+        parent_receipt=parent.receipt,
+        scorer_query=scorer_query,
+    )
+
+    assert len(calls) == 5
+    assert len(replay.receipt.model_calls) == 2
+    assert replay.receipt.route_attempt == parent.receipt.route_attempt
+    assert replay.response.tool_trace
+    assert replay.response.route_trace_sha256 == parent.response.route_trace_sha256
 
 
 def test_scorer_integrity_failure_after_successful_tool_invoke_is_fatal(

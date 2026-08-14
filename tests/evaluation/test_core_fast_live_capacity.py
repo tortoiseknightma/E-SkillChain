@@ -10,6 +10,9 @@ from skillchain import config, llm
 from skillchain.evaluation.core_fast import live_adapter as live_module
 from skillchain.evaluation.core_fast.engine import CoreFastEngine
 from skillchain.evaluation.core_fast.live_adapter import LiveCoreFastAdapter
+from skillchain.evaluation.core_fast.live_adapter import (
+    _normalize_dual_policy_feedback_labels,
+)
 from skillchain.evaluation.core_fast.models import (
     AssistantObservation,
     CallIntent,
@@ -19,6 +22,7 @@ from skillchain.evaluation.core_fast.models import (
 from skillchain.evaluation.core_fast.pacing import StartPacer
 from skillchain.evaluation.core_fast.store import CallStore
 from skillchain.evaluation.feedback_runtime import visual_feedback_response_format_v1
+from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
 from skillchain.runners.assistant import CoreFastAssistantRunner
 from skillchain.schemas import Query
 
@@ -34,6 +38,42 @@ class _FakeClock:
     def sleep(self, delay: float) -> None:
         self.sleeps.append(delay)
         self.now += delay
+
+
+def test_dual_policy_feedback_labels_normalize_order_without_changing_text() -> None:
+    feedback = VisualFeedbackOutput(
+        schema_version=1,
+        summary="summary",
+        rule_violations=(),
+        ideal_response_gaps=(),
+        skill_suggestions=(
+            "[response-policy] preserve the fixed evidence",
+            "[response-policy] [policy_compatible] keep the answer bounded",
+            "[requires_new_evidence] [action-policy] request a new source",
+        ),
+    )
+
+    normalized = _normalize_dual_policy_feedback_labels(feedback)
+
+    assert normalized.skill_suggestions == (
+        "[rejected] [response-policy] preserve the fixed evidence",
+        "[policy_compatible] [response-policy] keep the answer bounded",
+        "[requires_new_evidence] [action-policy] request a new source",
+    )
+
+
+def test_live_feedback_reads_the_bound_s1_parent_observations(tmp_path: Path) -> None:
+    parent_opt = tmp_path / "r12-parent-opt800.jsonl"
+    adapter = LiveCoreFastAdapter(
+        spec=SimpleNamespace(
+            concurrency=SimpleNamespace(assistant_requests_per_second=0.5),
+            s1_parent=SimpleNamespace(opt_results_path=str(parent_opt)),
+        ),
+        cwd=tmp_path,
+        base_dir=tmp_path,
+    )
+
+    assert adapter._feedback_baseline_path() == parent_opt
 
 
 def test_windows_creator_prefers_independently_updated_npm_codex_shim(
@@ -182,9 +222,6 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
     adapter = LiveCoreFastAdapter(
         spec=SimpleNamespace(
             concurrency=SimpleNamespace(assistant_requests_per_second=0.5),
-            runtime=SimpleNamespace(
-                assistant_contract="core-fast-deterministic-action-response-v5"
-            ),
         ),
         cwd=tmp_path,
         base_dir=tmp_path,
@@ -214,10 +251,6 @@ def test_live_adapter_injects_one_global_pacer_into_cached_assistant_runners(
     assert adapter._runner(bank) is runner
     assert adapter._runner(bank) is runner
     assert len(captured) == 1
-    assert (
-        captured[0]["deterministic_action_contract_version"]
-        == "core-fast-deterministic-action-response-v5"
-    )
     waiter = captured[0]["qwen_call_start_waiter"]
     assert callable(waiter)
     assert waiter("provider-call") == 42.0

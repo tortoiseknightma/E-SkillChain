@@ -25,13 +25,7 @@ CAPABILITIES = (
     "utility.recipe_guidance",
 )
 CONFIGS = ("noskill", "llm_static", "s1", "s1s2", "full")
-S1_SEMANTIC_POLICY_TARGETS = CAPABILITIES
-S1_V4_SEMANTIC_POLICY_TARGETS = (
-    "knowledge.visual_encyclopedia",
-    "product.style_recommendation",
-    "utility.document_reading",
-    "utility.recipe_guidance",
-)
+S1_BODY_PATCH_TARGETS = CAPABILITIES
 EVOLUTION_STAGES = ("s1", "s2", "full")
 SPLIT_COUNTS = {
     "dev_mini": 200,
@@ -143,14 +137,51 @@ class FixedSamples(FrozenStrictModel):
         return self
 
 
+class S1ParentBinding(FrozenStrictModel):
+    """Forward-only accepted S1 parent and its own opt800 evidence."""
+
+    source_round_id: str = Field(pattern=r"^r[1-9][0-9]*$")
+    bank_path: str
+    bank_file_sha256: Sha256
+    bank_sha256: Sha256
+    decision_path: str
+    decision_file_sha256: Sha256
+    manifest_path: str
+    manifest_file_sha256: Sha256
+    opt_results_path: str
+    # ``None`` is allowed only while the create-only s1-parent-opt800 command
+    # is producing its bootstrap receipt.  A counterfactual S1 run rejects an
+    # unfrozen parent observation file in ``CoreFastEngine.validate``.
+    opt_results_sha256: Sha256 | None = None
+    parent_protection_query_ids: tuple[str, ...]
+    protected_skill_sha256: dict[str, Sha256]
+
+    @field_validator("parent_protection_query_ids", mode="before")
+    @classmethod
+    def coerce_parent_protection_ids(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def validate_binding(self) -> Self:
+        if self.parent_protection_query_ids != tuple(
+            sorted(set(self.parent_protection_query_ids))
+        ):
+            raise ValueError("S1 parent protection IDs must be sorted and unique")
+        if not self.parent_protection_query_ids:
+            raise ValueError("S1 parent binding requires protected parent-success IDs")
+        if not self.protected_skill_sha256 or not set(
+            self.protected_skill_sha256
+        ) <= set(CAPABILITIES):
+            raise ValueError("S1 parent protected Skill bindings are invalid")
+        return self
+
+
 class GateRules(FrozenStrictModel):
     s1_replay_macro_delta_pp_min: Literal[0.0] = 0.0
     s1_system_macro_delta_pp_min: Literal[2.0] = 2.0
     s1_bootstrap_ci95_lower_pp_min: Literal[0.0] = 0.0
     s1_hard_error_delta_pp_max: Literal[1.0] = 1.0
-    # v4 is retained only so the accepted backup lineage remains readable.
-    # New deterministic-runtime v5 lineages use the forward-only -5pp floor.
-    s1_max_capability_drop_pp: Literal[3.0, 5.0] = 5.0
+    s1_max_capability_drop_pp: Literal[5.0] = 5.0
     s2_broken_penalty: Literal[2.5] = 2.5
     s3_judge_subset_per_affected_capability: Literal[4] = 4
     s3_judge_subset_max: Literal[24] = 24
@@ -161,22 +192,50 @@ class S1Settings(FrozenStrictModel):
     feedback_mode: Literal["fresh-per-round"] = "fresh-per-round"
     feedback_total_count: int = Field(default=48, ge=1, le=60)
     feedback_canary_count: int = Field(default=6, ge=1, le=60)
+    feedback_format_retry_limit: Literal[0, 1] = 0
     feedback_selection_policy: Literal[
         "discovery-stratified-v1",
         "discovery-contrastive-v2",
+        "discovery-supported-clusters-v3",
+        "discovery-attributed-v4",
+        "discovery-dual-policy-v5",
+        "parent-counterfactual-v6",
     ] = "discovery-stratified-v1"
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
     )
-    target_capabilities: tuple[str, ...] = S1_SEMANTIC_POLICY_TARGETS
+    target_capabilities: tuple[str, ...] = S1_BODY_PATCH_TARGETS
     proposal_mode: Literal[
         "sparse-parent-patch-v1",
         "six-capability-fanout-fanin-v2",
+        "six-capability-dual-policy-fanout-fanin-v3",
+        "single-surface-counterfactual-fanout-v4",
     ] = "sparse-parent-patch-v1"
     max_patched_capabilities: int = Field(default=3, ge=1, le=6)
     protected_capabilities: tuple[str, ...] = ()
     creator_directives: tuple[str, ...] = ()
     required_patch_phrases: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    bounded_edit_surface: Literal["author-fields", "single-step-replace"] = (
+        "author-fields"
+    )
+    prior_experiment_memory: dict[str, tuple[dict[str, object], ...]] = Field(
+        default_factory=dict
+    )
+    cycle_id: str | None = None
+    target_surface: Literal["action-policy", "response-policy"] | None = None
+    counterfactual_gain_seed_query_ids: tuple[str, ...] = ()
+    counterfactual_regression_query_ids: tuple[str, ...] = ()
+    parent_protection_query_ids: tuple[str, ...] = ()
+
+    @field_validator(
+        "counterfactual_gain_seed_query_ids",
+        "counterfactual_regression_query_ids",
+        "parent_protection_query_ids",
+        mode="before",
+    )
+    @classmethod
+    def coerce_counterfactual_ids(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
 
     @model_validator(mode="after")
     def validate_protected_capabilities(self) -> Self:
@@ -202,6 +261,13 @@ class S1Settings(FrozenStrictModel):
                 raise ValueError(
                     "required S1 patch phrases must be trimmed, sorted, and unique"
                 )
+        if not set(self.prior_experiment_memory) <= set(CAPABILITIES):
+            raise ValueError("S1 prior experiment memory has an unknown capability")
+        for capability, entries in self.prior_experiment_memory.items():
+            if not entries or any(
+                entry.get("capability") != capability for entry in entries
+            ):
+                raise ValueError("S1 prior experiment memory identity differs")
         if self.feedback_canary_count > self.feedback_total_count:
             raise ValueError("Feedback canary count cannot exceed total count")
         targets = self.target_capabilities
@@ -214,29 +280,69 @@ class S1Settings(FrozenStrictModel):
             )
         if not set(targets) <= set(CAPABILITIES) - set(protected):
             raise ValueError("S1 target capabilities must be patchable capabilities")
-        if not set(targets) <= set(S1_SEMANTIC_POLICY_TARGETS):
-            raise ValueError(
-                "S1 targets must expose a deterministic-runtime semantic policy"
-            )
+        if not set(targets) <= set(S1_BODY_PATCH_TARGETS):
+            raise ValueError("S1 targets must expose a model-generated Body surface")
         if self.feedback_allocation == "target-focused" and (
             len(targets) != 1 or self.max_patched_capabilities != 1
         ):
             raise ValueError(
                 "target-focused Feedback requires one target and one patched capability"
             )
-        if self.proposal_mode == "six-capability-fanout-fanin-v2" and (
+        if self.proposal_mode in {
+            "six-capability-fanout-fanin-v2",
+            "six-capability-dual-policy-fanout-fanin-v3",
+        } and (
             self.feedback_allocation != "balanced-six-capability"
-            or targets != tuple(S1_SEMANTIC_POLICY_TARGETS)
-            or self.max_patched_capabilities != len(S1_SEMANTIC_POLICY_TARGETS)
+            or targets != tuple(S1_BODY_PATCH_TARGETS)
+            or self.max_patched_capabilities != len(S1_BODY_PATCH_TARGETS)
             or protected
         ):
             raise ValueError(
-                "fan-out/fan-in S1 requires balanced Feedback, all typed semantic "
-                "targets, one branch per typed capability, and no protected branch"
+                "fan-out/fan-in S1 requires balanced Feedback, all Body targets, "
+                "one branch per capability, and no protected branch"
             )
         if self.max_patched_capabilities > len(targets):
             raise ValueError(
                 "S1 cannot patch more capabilities than its frozen targets"
+            )
+        counterfactual = self.proposal_mode == "single-surface-counterfactual-fanout-v4"
+        if counterfactual:
+            if (
+                self.feedback_selection_policy != "parent-counterfactual-v6"
+                or self.feedback_allocation != "target-focused"
+                or len(targets) != 1
+                or self.max_patched_capabilities != 1
+                or set(protected) != set(CAPABILITIES) - set(targets)
+                or self.target_surface is None
+                or self.feedback_total_count != 9
+                or self.feedback_canary_count != 3
+                or self.feedback_format_retry_limit != 1
+                or not self.cycle_id
+            ):
+                raise ValueError(
+                    "counterfactual S1 requires one target/surface, five protected "
+                    "capabilities, target-focused 9-row Feedback with canary3"
+                )
+            for label, values, minimum in (
+                ("gain seeds", self.counterfactual_gain_seed_query_ids, 2),
+                ("regression IDs", self.counterfactual_regression_query_ids, 3),
+                ("parent protection IDs", self.parent_protection_query_ids, 1),
+            ):
+                if values != tuple(sorted(set(values))) or len(values) < minimum:
+                    raise ValueError(
+                        f"counterfactual {label} must be sorted, unique, and complete"
+                    )
+        elif any(
+            (
+                self.cycle_id,
+                self.target_surface,
+                self.counterfactual_gain_seed_query_ids,
+                self.counterfactual_regression_query_ids,
+                self.parent_protection_query_ids,
+            )
+        ):
+            raise ValueError(
+                "counterfactual settings require the counterfactual proposal mode"
             )
         return self
 
@@ -283,8 +389,10 @@ class Concurrency(FrozenStrictModel):
 
 
 class Limits(FrozenStrictModel):
-    max_feedback_calls: int = Field(default=48, ge=1, le=60)
-    max_creator_calls: int = Field(default=8, ge=3, le=8)
+    max_feedback_calls: int = Field(default=48, ge=1, le=120)
+    # Dual-policy S1 uses one structured Creator session per capability; each
+    # response contains independently screenable action and response patches.
+    max_creator_calls: int = Field(default=8, ge=3, le=100)
     external_cost_cny: Literal[250.0] = 250.0
     final_judge_format_retries: Literal[1] = 1
 
@@ -305,11 +413,9 @@ class RuntimeSettings(FrozenStrictModel):
     python_factory: str | None = None
     commands: CommandSet = CommandSet()
     command_timeout_seconds: int = Field(default=1800, ge=1)
-    assistant_contract: Literal[
-        "core-fast-deterministic-action-response-v4",
-        "core-fast-deterministic-action-response-v5",
-        "core-fast-deterministic-action-response-v6",
-    ] = "core-fast-deterministic-action-response-v6"
+    assistant_contract: Literal["core-fast-model-generated-action-response-v1"] = (
+        "core-fast-model-generated-action-response-v1"
+    )
 
     @model_validator(mode="after")
     def validate_adapter(self) -> Self:
@@ -329,6 +435,7 @@ class CoreFastSpec(FrozenStrictModel):
     opt_fold_mapping_sha256: Sha256
     val_gate_assignments_sha256: Sha256
     s1_authoring_input_file_sha256: Sha256
+    s1_parent: S1ParentBinding | None = None
     split_counts: dict[str, int]
     capabilities: tuple[str, ...]
     configs: tuple[str, ...]
@@ -359,9 +466,12 @@ class CoreFastSpec(FrozenStrictModel):
             "route_only",
         }:
             raise ValueError("all five model/execution roles must be configured")
-        if self.limits.max_feedback_calls != self.s1_settings.feedback_total_count:
+        expected_feedback_calls = self.s1_settings.feedback_total_count * (
+            1 + self.s1_settings.feedback_format_retry_limit
+        )
+        if self.limits.max_feedback_calls != expected_feedback_calls:
             raise ValueError(
-                "Feedback call limit must equal the pre-frozen S1 Feedback count"
+                "Feedback call limit must equal the pre-frozen S1 Feedback attempts"
             )
         feedback = self.models["feedback"]
         if (
@@ -375,25 +485,21 @@ class CoreFastSpec(FrozenStrictModel):
             "high",
         ):
             raise ValueError("Creator/optimizers must use gpt-5.6-sol/high")
-        if (
-            self.runtime.assistant_contract
-            == "core-fast-deterministic-action-response-v4"
-            and not set(self.s1_settings.target_capabilities)
-            <= set(S1_V4_SEMANTIC_POLICY_TARGETS)
-        ):
+        if self.s1_settings.proposal_mode == "single-surface-counterfactual-fanout-v4":
+            if self.s1_parent is None:
+                raise ValueError(
+                    "counterfactual S1 requires an accepted parent binding"
+                )
+            if (
+                self.s1_settings.parent_protection_query_ids
+                != self.s1_parent.parent_protection_query_ids
+            ):
+                raise ValueError(
+                    "counterfactual parent protection IDs differ from the parent binding"
+                )
+        elif self.s1_parent is not None:
             raise ValueError(
-                "v4 runtime cannot evaluate Exact/Multi typed semantic policies"
-            )
-        expected_drop_floor = (
-            3.0
-            if self.runtime.assistant_contract
-            == "core-fast-deterministic-action-response-v4"
-            else 5.0
-        )
-        if self.gates.s1_max_capability_drop_pp != expected_drop_floor:
-            raise ValueError(
-                "S1 capability-drop floor must match the Assistant runtime "
-                f"contract ({expected_drop_floor:g}pp)"
+                "an accepted S1 parent is only valid for counterfactual S1"
             )
         return self
 
@@ -545,6 +651,7 @@ __all__ = [
     "EVOLUTION_STAGES",
     "JudgeObservation",
     "SPLIT_COUNTS",
+    "S1ParentBinding",
     "StageDecision",
     "load_core_fast_spec",
 ]

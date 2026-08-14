@@ -204,6 +204,7 @@ def test_qwen_provider_schema_has_exact_visual_feedback_shape() -> None:
         "rule_violations",
         "ideal_response_gaps",
         "skill_suggestions",
+        "evidence_quality_notes",
     }
     assert schema["type"] == "object"
     assert schema["additionalProperties"] is False
@@ -580,7 +581,9 @@ def test_fresh_v3_feedback_defaults_to_result6_cache_v12_and_wire6144(
     assert result.schema_version == 6
     assert result.cache_namespace == "feedback-evaluator-v12"
     assert result.max_completion_tokens == 6144
-    assert result.transport_policy_version == VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
+    assert (
+        result.transport_policy_version == VISUAL_FEEDBACK_TRANSPORT_POLICY_VERSION_V7
+    )
     assert result.transport_policy_sha256 == VISUAL_FEEDBACK_TRANSPORT_POLICY_SHA256_V7
     assert observed[0]["max_completion_tokens"] == 6144
 

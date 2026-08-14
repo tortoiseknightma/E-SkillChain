@@ -10,7 +10,7 @@ metadata and body sections.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -40,13 +40,6 @@ from skillchain.static_authoring import (
     StrictSkillArtifact,
     normalize_authoring_content_payload,
 )
-from skillchain.runners.assistant_deterministic_contract import (
-    DETERMINISTIC_SEMANTIC_POLICY_VERSION,
-    SEMANTIC_POLICY_CAPABILITIES,
-    DeterministicSemanticPolicy,
-    parse_deterministic_semantic_policy,
-    render_deterministic_semantic_policy,
-)
 from skillchain.tools.serialization import (
     ArtifactFormatError,
     canonical_json_bytes,
@@ -60,6 +53,9 @@ from skillchain.tools.serialization import (
 S1_SPARSE_PATCH_POLICY_VERSION = "portfolio-s1-sparse-patch-v1"
 S1_SPARSE_COMPILATION_POLICY_VERSION = "portfolio-s1-sparse-compilation-v1"
 S1_SPARSE_SCREENED_BANK_POLICY_VERSION = "portfolio-s1-screened-sparse-bank-v1"
+S1_DUAL_POLICY_PATCH_VERSION = "portfolio-s1-dual-policy-patch-v1"
+S1_COUNTERFACTUAL_POLICY_VERSION = "single-surface-counterfactual-fanout-v4"
+S1_POLICY_SURFACES = ("action-policy", "response-policy")
 ENCYCLOPEDIA_CAPABILITY = "knowledge.visual_encyclopedia"
 ENCYCLOPEDIA_FALLBACK_MARKER = "not enough evidence"
 ENCYCLOPEDIA_TOOL_SEQUENCE = ("object_detect", "encyclopedia_lookup")
@@ -129,39 +125,6 @@ def sparse_author_content_lexical_guard() -> dict[str, object]:
     }
 
 
-class SparseSemanticPolicyV1(_StrictFrozenModel):
-    """Creator-owned semantic selector consumed by deterministic runtime."""
-
-    schema_version: Literal[1] = 1
-    policy_version: Literal["core-fast-semantic-policy-v2"] = (
-        DETERMINISTIC_SEMANTIC_POLICY_VERSION
-    )
-    evidence_terms: tuple[str, ...] = Field(default=(), max_length=16)
-    require_all_terms: bool = False
-    abstain_when_no_evidence: Literal[True] = True
-    ocr_extraction_plan: Literal["all-lines", "literal-material-spans"] = "all-lines"
-
-    @field_validator("evidence_terms", mode="before")
-    @classmethod
-    def _coerce_terms(cls, value: object) -> object:
-        if isinstance(value, (list, tuple)) and all(
-            isinstance(item, str) for item in value
-        ):
-            # Ordering is representation-only for a term set and cannot be
-            # expressed by JSON Schema. Canonicalize it at the compiler edge;
-            # the validator below still rejects duplicates and malformed terms.
-            return tuple(sorted(value, key=str.casefold))
-        return value
-
-    @model_validator(mode="after")
-    def _validate_terms(self) -> Self:
-        if self.evidence_terms != tuple(
-            sorted(set(self.evidence_terms), key=str.casefold)
-        ) or any(not item or item != item.strip() for item in self.evidence_terms):
-            raise ValueError("semantic evidence terms must be canonical and unique")
-        return self
-
-
 class SparseSkillContentPatchV1(_StrictFrozenModel):
     """Only the author-judgment fields accepted for one patched Skill."""
 
@@ -169,7 +132,6 @@ class SparseSkillContentPatchV1(_StrictFrozenModel):
     steps: tuple[DraftToolStepContent, ...] = Field(min_length=1, max_length=16)
     fallback_instruction: str
     citation_source_ids: tuple[str, ...]
-    semantic_policy: SparseSemanticPolicyV1
 
     @field_validator("steps", "citation_source_ids", mode="before")
     @classmethod
@@ -221,6 +183,181 @@ class SparsePatchDraftPayloadV1(_StrictFrozenModel):
         if not any(item.action == "patch" for item in self.skills):
             raise ValueError("a sparse S1 proposal must patch at least one Skill")
         return self
+
+
+class PolicySurfaceDraftV1(_StrictFrozenModel):
+    action: Literal["inherit", "patch"]
+    policy_text: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_action(self) -> Self:
+        if self.action == "inherit":
+            if self.policy_text is not None:
+                raise ValueError("inherited policy surface must have null text")
+            return self
+        if self.policy_text is None or not self.policy_text.strip():
+            raise ValueError("patched policy surface requires non-blank text")
+        if self.policy_text != self.policy_text.strip():
+            raise ValueError("policy text must be trimmed")
+        static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+            self.policy_text, "S1 policy surface"
+        )
+        token = _CONTROL_TOKEN_RE.search(self.policy_text)
+        if token is not None:
+            raise ValueError(f"forbidden control token: {token.group(0)}")
+        return self
+
+
+class DualPolicyPatchPayloadV1(_StrictFrozenModel):
+    """One capability proposal with two independently screenable surfaces."""
+
+    schema_version: Literal[1] = 1
+    capability_id: str
+    parent_skill_sha256: Sha256
+    action_policy: PolicySurfaceDraftV1
+    response_policy: PolicySurfaceDraftV1
+
+    @model_validator(mode="after")
+    def _require_treatment(self) -> Self:
+        if (
+            self.action_policy.action == "inherit"
+            and self.response_policy.action == "inherit"
+        ):
+            raise ValueError("dual-policy proposal must patch at least one surface")
+        return self
+
+
+class CounterfactualPreservationV1(_StrictFrozenModel):
+    query_id: str
+    provider_visible_state: str
+
+    @field_validator("provider_visible_state")
+    @classmethod
+    def _validate_state(cls, value: str) -> str:
+        if value != value.strip() or not value or "\n" in value or ";" in value:
+            raise ValueError("counterfactual preservation state must be one clause")
+        static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+            value, "S1 counterfactual preservation state"
+        )
+        return value
+
+
+class SingleSurfaceCounterfactualPatchV1(_StrictFrozenModel):
+    schema_version: Literal[1] = 1
+    capability_id: str
+    parent_skill_sha256: Sha256
+    target_surface: Literal["action-policy", "response-policy"]
+    non_target_surface_action: Literal["inherit"]
+    when: str
+    then: str
+    must_preserve: tuple[CounterfactualPreservationV1, ...] = Field(
+        min_length=3, max_length=3
+    )
+
+    @field_validator("must_preserve", mode="before")
+    @classmethod
+    def _coerce_preserve(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("when", "then")
+    @classmethod
+    def _validate_clause(cls, value: str) -> str:
+        if (
+            value != value.strip()
+            or not value
+            or "\n" in value
+            or ";" in value
+            or value.startswith(("-", "*", "1."))
+        ):
+            raise ValueError("counterfactual rule fields must each be one clause")
+        lowered = value.casefold()
+        if any(
+            marker in lowered
+            for marker in (
+                "ground truth",
+                "canonical capability",
+                "gcs",
+                "score label",
+                "evaluation label",
+                "private path",
+            )
+        ):
+            raise ValueError("counterfactual rule references evaluation-only state")
+        static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+            value, "S1 counterfactual rule"
+        )
+        return value
+
+    @model_validator(mode="after")
+    def _validate_preservation_ids(self) -> Self:
+        ids = tuple(item.query_id for item in self.must_preserve)
+        if ids != tuple(sorted(set(ids))):
+            raise ValueError("must_preserve query IDs must be sorted and unique")
+        return self
+
+
+class PolicySurfaceCompilationReceiptV1(_StrictFrozenModel):
+    schema_version: Literal[1] = 1
+    policy_version: Literal[S1_DUAL_POLICY_PATCH_VERSION] = S1_DUAL_POLICY_PATCH_VERSION
+    capability_id: str
+    surface: Literal["action-policy", "response-policy"]
+    parent_bank_sha256: Sha256
+    parent_skill_sha256: Sha256
+    policy_text_sha256: Sha256
+    candidate_skill_sha256: Sha256
+    candidate_bank_sha256: Sha256
+    receipt_sha256: Sha256
+
+    @model_validator(mode="after")
+    def _validate_hash(self) -> Self:
+        payload = self.model_dump(mode="json", exclude={"receipt_sha256"})
+        if self.receipt_sha256 != sha256_bytes(canonical_json_bytes(payload)):
+            raise ValueError("policy surface receipt SHA-256 mismatch")
+        return self
+
+
+class PolicySurfaceCompositionReceiptV1(_StrictFrozenModel):
+    schema_version: Literal[1] = 1
+    policy_version: Literal["portfolio-s1-policy-surface-composition-v1"] = (
+        "portfolio-s1-policy-surface-composition-v1"
+    )
+    capability_id: str
+    surfaces: tuple[Literal["action-policy", "response-policy"], ...]
+    parent_bank_sha256: Sha256
+    candidate_bank_sha256: Sha256
+    component_receipt_sha256s: tuple[Sha256, ...]
+    receipt_sha256: Sha256
+
+    @field_validator("surfaces", "component_receipt_sha256s", mode="before")
+    @classmethod
+    def _coerce_tuples(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def _validate_composition(self) -> Self:
+        if self.surfaces != tuple(
+            surface for surface in S1_POLICY_SURFACES if surface in self.surfaces
+        ) or len(self.surfaces) != len(set(self.surfaces)):
+            raise ValueError("policy surfaces are not canonical and unique")
+        if len(self.component_receipt_sha256s) != len(self.surfaces):
+            raise ValueError("policy surface receipt coverage differs")
+        payload = self.model_dump(mode="json", exclude={"receipt_sha256"})
+        if self.receipt_sha256 != sha256_bytes(canonical_json_bytes(payload)):
+            raise ValueError("policy surface composition receipt SHA-256 mismatch")
+        return self
+
+
+@dataclass(frozen=True)
+class CompiledPolicySurfaceBranch:
+    bank: StaticBankArtifact
+    receipt: PolicySurfaceCompilationReceiptV1
+    policy_text: str
+
+
+@dataclass(frozen=True)
+class ComposedPolicySurfaceBranch:
+    bank: StaticBankArtifact
+    receipt: PolicySurfaceCompositionReceiptV1
 
 
 class SparsePatchDraftV1(_StrictFrozenModel):
@@ -425,16 +562,12 @@ def sparse_patch_output_json_schema(
     ):
         raise S1SparsePatchError("parent Skill SHA-256 mapping is invalid")
     allowed_patches = (
-        tuple(sorted(SEMANTIC_POLICY_CAPABILITIES))
-        if patch_capabilities is None
-        else patch_capabilities
+        capability_ids if patch_capabilities is None else patch_capabilities
     )
-    if (
-        allowed_patches != tuple(sorted(set(allowed_patches)))
-        or not set(allowed_patches) <= set(capability_ids)
-        or not set(allowed_patches) <= set(SEMANTIC_POLICY_CAPABILITIES)
-    ):
-        raise S1SparsePatchError("semantic patch capabilities are invalid")
+    if allowed_patches != tuple(sorted(set(allowed_patches))) or not set(
+        allowed_patches
+    ) <= set(capability_ids):
+        raise S1SparsePatchError("Body patch capabilities are invalid")
     if frozen_objective_by_capability is not None and (
         set(frozen_objective_by_capability) != set(capability_ids)
         or any(
@@ -480,7 +613,6 @@ def sparse_patch_output_json_schema(
             "steps",
             "fallback_instruction",
             "citation_source_ids",
-            "semantic_policy",
         ],
         "properties": {
             "objective": {"type": "string"},
@@ -494,36 +626,6 @@ def sparse_patch_output_json_schema(
             "citation_source_ids": {
                 "type": "array",
                 "items": {"type": "string"},
-            },
-            "semantic_policy": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "schema_version",
-                    "policy_version",
-                    "evidence_terms",
-                    "require_all_terms",
-                    "abstain_when_no_evidence",
-                    "ocr_extraction_plan",
-                ],
-                "properties": {
-                    "schema_version": {"type": "integer", "enum": [1]},
-                    "policy_version": {
-                        "type": "string",
-                        "enum": [DETERMINISTIC_SEMANTIC_POLICY_VERSION],
-                    },
-                    "evidence_terms": {
-                        "type": "array",
-                        "maxItems": 16,
-                        "items": {"type": "string", "minLength": 1, "maxLength": 80},
-                    },
-                    "require_all_terms": {"type": "boolean"},
-                    "abstain_when_no_evidence": {"type": "boolean", "enum": [True]},
-                    "ocr_extraction_plan": {
-                        "type": "string",
-                        "enum": ["all-lines", "literal-material-spans"],
-                    },
-                },
             },
         },
     }
@@ -623,6 +725,355 @@ def sparse_patch_output_json_schema(
         },
     }
     return schema
+
+
+def dual_policy_patch_output_json_schema(
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+) -> dict[str, object]:
+    """Return the strict one-capability/two-surface Creator schema."""
+
+    if not capability_id or not _SHA_RE.fullmatch(parent_skill_sha256):
+        raise S1SparsePatchError("dual-policy schema identity is invalid")
+
+    def surface_schema() -> dict[str, object]:
+        return {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["action", "policy_text"],
+                    "properties": {
+                        "action": {"type": "string", "enum": ["inherit"]},
+                        "policy_text": {"type": "null"},
+                    },
+                },
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["action", "policy_text"],
+                    "properties": {
+                        "action": {"type": "string", "enum": ["patch"]},
+                        "policy_text": {"type": "string", "minLength": 1},
+                    },
+                },
+            ]
+        }
+
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "capability_id",
+            "parent_skill_sha256",
+            "action_policy",
+            "response_policy",
+        ],
+        "properties": {
+            "schema_version": {"type": "integer", "enum": [1]},
+            "capability_id": {"type": "string", "enum": [capability_id]},
+            "parent_skill_sha256": {
+                "type": "string",
+                "enum": [parent_skill_sha256],
+            },
+            "action_policy": surface_schema(),
+            "response_policy": surface_schema(),
+        },
+    }
+
+
+def counterfactual_policy_patch_output_json_schema(
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+) -> dict[str, object]:
+    if (
+        not capability_id
+        or not _SHA_RE.fullmatch(parent_skill_sha256)
+        or len(parent_success_query_ids) != 3
+        or parent_success_query_ids != tuple(sorted(set(parent_success_query_ids)))
+    ):
+        raise S1SparsePatchError("counterfactual Creator schema identity is invalid")
+    preservation_variants = [
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["query_id", "provider_visible_state"],
+            "properties": {
+                "query_id": {"type": "string", "enum": [query_id]},
+                "provider_visible_state": {"type": "string", "minLength": 1},
+            },
+        }
+        for query_id in parent_success_query_ids
+    ]
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "capability_id",
+            "parent_skill_sha256",
+            "target_surface",
+            "non_target_surface_action",
+            "when",
+            "then",
+            "must_preserve",
+        ],
+        "properties": {
+            "schema_version": {"type": "integer", "enum": [1]},
+            "capability_id": {"type": "string", "enum": [capability_id]},
+            "parent_skill_sha256": {
+                "type": "string",
+                "enum": [parent_skill_sha256],
+            },
+            "target_surface": {"type": "string", "enum": [target_surface]},
+            "non_target_surface_action": {"type": "string", "enum": ["inherit"]},
+            "when": {"type": "string", "minLength": 1},
+            "then": {"type": "string", "minLength": 1},
+            "must_preserve": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {"anyOf": preservation_variants},
+            },
+        },
+    }
+
+
+def parse_counterfactual_policy_patch(
+    raw_final: bytes,
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+) -> SingleSurfaceCounterfactualPatchV1:
+    try:
+        raw = parse_strict_json(raw_final, label="S1 counterfactual Creator output")
+        proposal = SingleSurfaceCounterfactualPatchV1.model_validate(raw, strict=True)
+    except (ArtifactFormatError, ValidationError) as error:
+        raise S1SparsePatchError(
+            "S1 counterfactual Creator output is invalid"
+        ) from error
+    if (
+        proposal.capability_id != capability_id
+        or proposal.parent_skill_sha256 != parent_skill_sha256
+        or proposal.target_surface != target_surface
+        or tuple(item.query_id for item in proposal.must_preserve)
+        != parent_success_query_ids
+    ):
+        raise S1SparsePatchError("S1 counterfactual proposal binding drifted")
+    return proposal
+
+
+def compile_counterfactual_policy_branch(
+    *,
+    parent_bank: StaticBankArtifact,
+    proposal: SingleSurfaceCounterfactualPatchV1,
+) -> CompiledPolicySurfaceBranch:
+    preserved = ", ".join(
+        item.provider_visible_state for item in proposal.must_preserve
+    )
+    policy_text = (
+        f"If and only if {proposal.when}, {proposal.then}. Otherwise preserve "
+        f"the parent behavior, including {preserved}."
+    )
+    surface_payload = PolicySurfaceDraftV1(action="patch", policy_text=policy_text)
+    dual = DualPolicyPatchPayloadV1(
+        capability_id=proposal.capability_id,
+        parent_skill_sha256=proposal.parent_skill_sha256,
+        action_policy=(
+            surface_payload
+            if proposal.target_surface == "action-policy"
+            else PolicySurfaceDraftV1(action="inherit", policy_text=None)
+        ),
+        response_policy=(
+            surface_payload
+            if proposal.target_surface == "response-policy"
+            else PolicySurfaceDraftV1(action="inherit", policy_text=None)
+        ),
+    )
+    compiled = compile_policy_surface_branch(
+        parent_bank=parent_bank,
+        proposal=dual,
+        surface=proposal.target_surface,
+    )
+    assert compiled is not None
+    return compiled
+
+
+def parse_dual_policy_patch(
+    raw_final: bytes,
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+) -> DualPolicyPatchPayloadV1:
+    try:
+        raw = parse_strict_json(raw_final, label="S1 dual-policy Creator output")
+        proposal = DualPolicyPatchPayloadV1.model_validate(raw, strict=True)
+    except (ArtifactFormatError, ValidationError) as error:
+        raise S1SparsePatchError("S1 dual-policy Creator output is invalid") from error
+    if (
+        proposal.capability_id != capability_id
+        or proposal.parent_skill_sha256 != parent_skill_sha256
+    ):
+        raise S1SparsePatchError("S1 dual-policy parent binding drifted")
+    return proposal
+
+
+def _policy_overlay_heading(
+    surface: Literal["action-policy", "response-policy"],
+) -> str:
+    return {
+        "action-policy": "## S1 action policy overlay",
+        "response-policy": "## S1 response policy overlay",
+    }[surface]
+
+
+def _bank_with_policy_overlays(
+    *,
+    parent_bank: StaticBankArtifact,
+    capability_id: str,
+    overlays: Mapping[Literal["action-policy", "response-policy"], str],
+) -> StaticBankArtifact:
+    skills: list[StrictSkillArtifact] = []
+    for source in parent_bank.skills:
+        if source.capability_id != capability_id:
+            skills.append(source)
+            continue
+        suffix = "".join(
+            f"\n{_policy_overlay_heading(surface)}\n{text}\n"
+            for surface, text in (
+                (surface, overlays[surface])
+                for surface in S1_POLICY_SURFACES
+                if surface in overlays
+            )
+        )
+        payload = source.model_dump(mode="json")
+        payload.update(
+            {
+                "version": source.version + 1,
+                "body": source.body.rstrip("\n") + "\n" + suffix,
+                "parent_skill_sha256": source.skill_sha256,
+            }
+        )
+        payload["skill_sha256"] = sha256_bytes(
+            canonical_json_bytes(
+                {key: value for key, value in payload.items() if key != "skill_sha256"}
+            )
+        )
+        skills.append(StrictSkillArtifact.model_validate(payload, strict=True))
+    if not any(item.capability_id == capability_id for item in skills):
+        raise S1SparsePatchError("dual-policy capability is absent from parent Bank")
+    bank_payload = parent_bank.model_dump(mode="json")
+    bank_payload["skills"] = [
+        item.model_dump(mode="json")
+        for item in sorted(skills, key=lambda item: item.slug)
+    ]
+    bank_payload["bank_sha256"] = sha256_bytes(
+        canonical_json_bytes(
+            {key: value for key, value in bank_payload.items() if key != "bank_sha256"}
+        )
+    )
+    try:
+        return StaticBankArtifact.model_validate(bank_payload, strict=True)
+    except ValidationError as error:
+        raise S1SparsePatchError("dual-policy Bank compilation failed") from error
+
+
+def compile_policy_surface_branch(
+    *,
+    parent_bank: StaticBankArtifact,
+    proposal: DualPolicyPatchPayloadV1,
+    surface: Literal["action-policy", "response-policy"],
+) -> CompiledPolicySurfaceBranch | None:
+    surface_patch = getattr(proposal, surface.replace("-", "_"))
+    if surface_patch.action == "inherit":
+        return None
+    assert surface_patch.policy_text is not None
+    bank = _bank_with_policy_overlays(
+        parent_bank=parent_bank,
+        capability_id=proposal.capability_id,
+        overlays={surface: surface_patch.policy_text},
+    )
+    skill = next(
+        item for item in bank.skills if item.capability_id == proposal.capability_id
+    )
+    unsigned = {
+        "schema_version": 1,
+        "policy_version": S1_DUAL_POLICY_PATCH_VERSION,
+        "capability_id": proposal.capability_id,
+        "surface": surface,
+        "parent_bank_sha256": parent_bank.bank_sha256,
+        "parent_skill_sha256": proposal.parent_skill_sha256,
+        "policy_text_sha256": sha256_bytes(surface_patch.policy_text.encode("utf-8")),
+        "candidate_skill_sha256": skill.skill_sha256,
+        "candidate_bank_sha256": bank.bank_sha256,
+    }
+    receipt = PolicySurfaceCompilationReceiptV1.model_validate(
+        {
+            **unsigned,
+            "receipt_sha256": sha256_bytes(canonical_json_bytes(unsigned)),
+        },
+        strict=True,
+    )
+    return CompiledPolicySurfaceBranch(
+        bank=bank,
+        receipt=receipt,
+        policy_text=surface_patch.policy_text,
+    )
+
+
+def compose_policy_surface_branches(
+    *,
+    parent_bank: StaticBankArtifact,
+    capability_id: str,
+    branches: Sequence[CompiledPolicySurfaceBranch],
+) -> ComposedPolicySurfaceBranch:
+    overlays = {item.receipt.surface: item.policy_text for item in branches}
+    if len(overlays) != len(branches) or not overlays:
+        raise S1SparsePatchError("policy surface composition is empty or duplicated")
+    if any(
+        item.receipt.parent_bank_sha256 != parent_bank.bank_sha256
+        or item.receipt.capability_id != capability_id
+        for item in branches
+    ):
+        raise S1SparsePatchError("policy surface composition lineage drifted")
+    bank = _bank_with_policy_overlays(
+        parent_bank=parent_bank,
+        capability_id=capability_id,
+        overlays=overlays,
+    )
+    surfaces = tuple(surface for surface in S1_POLICY_SURFACES if surface in overlays)
+    component_receipts = tuple(
+        next(
+            item.receipt.receipt_sha256
+            for item in branches
+            if item.receipt.surface == surface
+        )
+        for surface in surfaces
+    )
+    unsigned = {
+        "schema_version": 1,
+        "policy_version": "portfolio-s1-policy-surface-composition-v1",
+        "capability_id": capability_id,
+        "surfaces": list(surfaces),
+        "parent_bank_sha256": parent_bank.bank_sha256,
+        "candidate_bank_sha256": bank.bank_sha256,
+        "component_receipt_sha256s": list(component_receipts),
+    }
+    receipt = PolicySurfaceCompositionReceiptV1.model_validate(
+        {
+            **unsigned,
+            "receipt_sha256": sha256_bytes(canonical_json_bytes(unsigned)),
+        },
+        strict=True,
+    )
+    return ComposedPolicySurfaceBranch(bank=bank, receipt=receipt)
 
 
 def decode_sparse_parent_content(
@@ -822,52 +1273,11 @@ def compile_sparse_s1_candidate(
                 )
         else:
             _assert_patch_only_changed_mutable_fields(parent, compiled)
-            assert entry.patch is not None
-            parent_content_item = next(
-                item for item in parent_content if item.capability_id == capability_id
-            )
-            if (
-                entry.patch.objective != parent_content_item.objective
-                or entry.patch.steps != parent_content_item.steps
-                or entry.patch.fallback_instruction
-                != parent_content_item.fallback_instruction
-                or entry.patch.citation_source_ids
-                != parent_content_item.citation_source_ids
-            ):
+            selected = compiled
+            if selected.skill_sha256 == parent.skill_sha256:
                 raise S1SparsePatchError(
-                    f"patch changed runtime-owned prose: {capability_id}"
+                    f"patch produced no Skill change: {capability_id}"
                 )
-            parent_policy = parse_deterministic_semantic_policy(
-                parent.body, capability_id=capability_id
-            )
-            if (
-                parent_policy.evidence_terms
-                or parent_policy.ocr_extraction_plan != "all-lines"
-            ):
-                raise S1SparsePatchError(
-                    f"parent already contains a semantic treatment: {capability_id}"
-                )
-            policy = _semantic_policy_for_patch(capability_id, entry.patch)
-            if not policy.evidence_terms and policy.ocr_extraction_plan == "all-lines":
-                raise S1SparsePatchError(
-                    f"patch semantic policy is a no-op: {capability_id}"
-                )
-            selected_payload = parent.model_dump(mode="json")
-            selected_payload["version"] = parent.version + 1
-            selected_payload["parent_skill_sha256"] = parent.skill_sha256
-            selected_payload["body"] = (
-                parent.body + render_deterministic_semantic_policy(policy)
-            )
-            selected_payload["skill_sha256"] = sha256_bytes(
-                canonical_json_bytes(
-                    {
-                        key: value
-                        for key, value in selected_payload.items()
-                        if key != "skill_sha256"
-                    }
-                )
-            )
-            selected = StrictSkillArtifact.model_validate(selected_payload, strict=True)
         selected_bytes = canonical_json_bytes(selected.model_dump(mode="json"))
         frozen_sections = _body_sections(parent.body)
         frozen_section_records.append(
@@ -1122,15 +1532,18 @@ def _validate_patch_contract(
     patch: SparseSkillContentPatchV1,
     parent: StrictSkillArtifact,
 ) -> None:
-    _semantic_policy_for_patch(capability_id, patch)
     try:
         static_authoring_module._scan_untrusted_text(
-            patch.semantic_policy.evidence_terms,
-            "S1 typed semantic policy",
+            (
+                patch.objective,
+                *(step.instruction for step in patch.steps),
+                patch.fallback_instruction,
+            ),
+            "S1 model-generated Body patch",
         )
     except static_authoring_module.AuthoringContractError as error:
         raise S1SparsePatchError(
-            "typed semantic policy references forbidden experiment information"
+            "Body patch references forbidden experiment information"
         ) from error
     sequence = tuple(item.tool_name for item in patch.steps)
     parent_sequence = tuple(_parse_tool_steps(parent.body)[0])
@@ -1141,30 +1554,10 @@ def _validate_patch_contract(
     if capability_id == ENCYCLOPEDIA_CAPABILITY:
         if sequence != ENCYCLOPEDIA_TOOL_SEQUENCE:
             raise S1SparsePatchError("Encyclopedia tool sequence is not fail-closed")
-        # The deterministic response compiler, not authored prose, owns the
-        # exact fallback marker.  Sparse S1 freezes the parent prose byte for
-        # byte, so requiring a legacy marker here would make an otherwise
-        # valid typed semantic-policy branch impossible to compile.
-
-
-def _semantic_policy_for_patch(
-    capability_id: str,
-    patch: SparseSkillContentPatchV1,
-) -> DeterministicSemanticPolicy:
-    if capability_id not in SEMANTIC_POLICY_CAPABILITIES:
-        raise S1SparsePatchError(
-            f"capability has no S1-consumed semantic policy: {capability_id}"
-        )
-    try:
-        return DeterministicSemanticPolicy(
-            capability_id=capability_id,  # type: ignore[arg-type]
-            evidence_terms=patch.semantic_policy.evidence_terms,
-            require_all_terms=patch.semantic_policy.require_all_terms,
-            abstain_when_no_evidence=patch.semantic_policy.abstain_when_no_evidence,
-            ocr_extraction_plan=patch.semantic_policy.ocr_extraction_plan,
-        )
-    except (TypeError, ValueError) as error:
-        raise S1SparsePatchError("typed semantic policy is invalid") from error
+        if ENCYCLOPEDIA_FALLBACK_MARKER not in patch.fallback_instruction.lower():
+            raise S1SparsePatchError(
+                "Encyclopedia patch lacks the exact fallback evidence marker"
+            )
 
 
 def _validate_parent_lineage(
@@ -1387,7 +1780,6 @@ __all__ = [
     "SparsePatchDraftPayloadV1",
     "SparsePatchDraftV1",
     "SparseScreenedBankReceiptV1",
-    "SparseSemanticPolicyV1",
     "SparseSkillContentPatchV1",
     "SparseSkillDraftV1",
     "bind_sparse_patch_draft",
@@ -1397,5 +1789,21 @@ __all__ = [
     "load_sparse_compilation_receipt",
     "load_sparse_patch_draft",
     "sparse_author_content_lexical_guard",
+    "S1_DUAL_POLICY_PATCH_VERSION",
+    "S1_COUNTERFACTUAL_POLICY_VERSION",
+    "S1_POLICY_SURFACES",
+    "CompiledPolicySurfaceBranch",
+    "SingleSurfaceCounterfactualPatchV1",
+    "DualPolicyPatchPayloadV1",
+    "PolicySurfaceCompilationReceiptV1",
+    "PolicySurfaceCompositionReceiptV1",
+    "ComposedPolicySurfaceBranch",
+    "compile_policy_surface_branch",
+    "compile_counterfactual_policy_branch",
+    "compose_policy_surface_branches",
+    "dual_policy_patch_output_json_schema",
+    "counterfactual_policy_patch_output_json_schema",
+    "parse_dual_policy_patch",
+    "parse_counterfactual_policy_patch",
     "sparse_patch_output_json_schema",
 ]

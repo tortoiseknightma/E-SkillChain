@@ -11,13 +11,17 @@ from skillchain.evaluation.portfolio_treatments import (
 from skillchain.evolution.s1_sparse_patch import (
     S1SparsePatchError,
     SparseSkillContentPatchV1,
-    SparseSemanticPolicyV1,
     bind_sparse_patch_draft,
     compile_sparse_s1_candidate,
+    compile_counterfactual_policy_branch,
     compose_screened_sparse_bank,
+    compile_policy_surface_branch,
+    compose_policy_surface_branches,
     decode_sparse_parent_content,
     load_sparse_compilation_receipt,
     load_sparse_patch_draft,
+    parse_dual_policy_patch,
+    parse_counterfactual_policy_patch,
     sparse_patch_output_json_schema,
     _body_sections,
     _decode_parent_authoring_content,
@@ -40,6 +44,147 @@ FEEDBACK_SHA = "f" * 64
 
 def _file_sha(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
+
+
+def test_dual_policy_surfaces_compile_and_compose_without_cross_capability_edits(
+    parent_materials,
+) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "utility.recipe_guidance"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    proposal = parse_dual_policy_patch(
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "capability_id": capability,
+                "parent_skill_sha256": parent_skill.skill_sha256,
+                "action_policy": {
+                    "action": "patch",
+                    "policy_text": "Call the lookup before answering and stop after one successful source call.",
+                },
+                "response_policy": {
+                    "action": "patch",
+                    "policy_text": "State only source-supported steps and abstain when public sources are empty.",
+                },
+            }
+        ),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+    )
+    action = compile_policy_surface_branch(
+        parent_bank=parent, proposal=proposal, surface="action-policy"
+    )
+    response = compile_policy_surface_branch(
+        parent_bank=parent, proposal=proposal, surface="response-policy"
+    )
+    assert action is not None and response is not None
+    assert "S1 action policy overlay" in next(
+        item.body for item in action.bank.skills if item.capability_id == capability
+    )
+    assert "S1 response policy overlay" not in next(
+        item.body for item in action.bank.skills if item.capability_id == capability
+    )
+    combined = compose_policy_surface_branches(
+        parent_bank=parent,
+        capability_id=capability,
+        branches=(action, response),
+    )
+    combined_skill = next(
+        item for item in combined.bank.skills if item.capability_id == capability
+    )
+    assert "S1 action policy overlay" in combined_skill.body
+    assert "S1 response policy overlay" in combined_skill.body
+    assert all(
+        left == right
+        for left, right in zip(parent.skills, combined.bank.skills, strict=True)
+        if left.capability_id != capability
+    )
+    assert combined.receipt.surfaces == ("action-policy", "response-policy")
+
+
+def test_counterfactual_creator_compiles_exactly_one_conditional_surface(
+    parent_materials,
+) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "utility.recipe_guidance"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = ("parent-success-1", "parent-success-2", "parent-success-3")
+    proposal = parse_counterfactual_policy_patch(
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "capability_id": capability,
+                "parent_skill_sha256": parent_skill.skill_sha256,
+                "target_surface": "action-policy",
+                "non_target_surface_action": "inherit",
+                "when": "a visible detection supplies one tentative food class",
+                "then": "call the recipe lookup once with that visible class and stop after its terminal tool output",
+                "must_preserve": [
+                    {
+                        "query_id": query_id,
+                        "provider_visible_state": f"the successful parent state {index} remains unchanged",
+                    }
+                    for index, query_id in enumerate(success_ids, start=1)
+                ],
+            }
+        ),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="action-policy",
+        parent_success_query_ids=success_ids,
+    )
+    compiled = compile_counterfactual_policy_branch(
+        parent_bank=parent, proposal=proposal
+    )
+    expected = (
+        "If and only if a visible detection supplies one tentative food class, "
+        "call the recipe lookup once with that visible class and stop after its "
+        "terminal tool output. Otherwise preserve the parent behavior, including "
+        "the successful parent state 1 remains unchanged, the successful parent "
+        "state 2 remains unchanged, the successful parent state 3 remains unchanged."
+    )
+    assert compiled.policy_text == expected
+    candidate_skill = next(
+        item for item in compiled.bank.skills if item.capability_id == capability
+    )
+    assert expected in candidate_skill.body
+    assert "S1 response policy overlay" not in candidate_skill.body
+    assert all(
+        left == right
+        for left, right in zip(parent.skills, compiled.bank.skills, strict=True)
+        if left.capability_id != capability
+    )
+
+
+def test_counterfactual_creator_rejects_cross_surface_or_unprovided_success() -> None:
+    payload = {
+        "schema_version": 1,
+        "capability_id": "product.multi_search",
+        "parent_skill_sha256": "a" * 64,
+        "target_surface": "action-policy",
+        "non_target_surface_action": "inherit",
+        "when": "the public mapping contains one matched item",
+        "then": "copy its public association into the answer",
+        "must_preserve": [
+            {
+                "query_id": query_id,
+                "provider_visible_state": "the parent response remains unchanged",
+            }
+            for query_id in ("p1", "p2", "unknown")
+        ],
+    }
+    with pytest.raises(S1SparsePatchError, match="binding drifted"):
+        parse_counterfactual_policy_patch(
+            canonical_json_bytes(payload),
+            capability_id="product.multi_search",
+            parent_skill_sha256="a" * 64,
+            target_surface="response-policy",
+            parent_success_query_ids=("p1", "p2", "p3"),
+        )
 
 
 @pytest.fixture(scope="module")
@@ -70,14 +215,17 @@ def _wire_payload(parent: StaticBankArtifact, semantic_input) -> dict[str, objec
             source = contents[skill.capability_id]
             patch = SparseSkillContentPatchV1(
                 objective=source.objective,
-                steps=source.steps,
+                steps=tuple(
+                    step.model_copy(
+                        update={
+                            "instruction": step.instruction
+                            + " Cite only literal public source evidence."
+                        }
+                    )
+                    for step in source.steps
+                ),
                 fallback_instruction=source.fallback_instruction,
                 citation_source_ids=source.citation_source_ids,
-                semantic_policy=SparseSemanticPolicyV1(
-                    evidence_terms=("ingredient",),
-                    require_all_terms=False,
-                    abstain_when_no_evidence=True,
-                ),
             )
             action = "patch"
             patch_payload = patch.model_dump(mode="json")
@@ -150,7 +298,7 @@ def test_sparse_compile_is_deterministic_and_inherits_parent_bytes_exactly(
     )
 
 
-def test_sparse_compile_accepts_multi_typed_selector_but_freezes_runtime_prose(
+def test_sparse_compile_accepts_multi_model_generated_body_patch(
     parent_materials,
 ) -> None:
     parent, semantic_input = parent_materials
@@ -171,9 +319,9 @@ def test_sparse_compile_accepts_multi_typed_selector_but_freezes_runtime_prose(
             {
                 "instruction": (
                     "Invoke multi_product_search exactly once and do not answer "
-                    "before its result. Treat the returned public result as an "
-                    "immutable DTO. Unresolved entries must have no candidate or "
-                    "product/evidence handle; copy every supported handle exactly."
+                    "before its tool output. Treat the returned public mapping as "
+                    "authoritative. Unresolved entries must have no candidate or "
+                    "product or evidence handle; copy every supported handle exactly."
                 ),
                 "tool_name": "multi_product_search",
                 "success_rule_ids": [
@@ -184,33 +332,23 @@ def test_sparse_compile_accepts_multi_typed_selector_but_freezes_runtime_prose(
         ],
         "fallback_instruction": parent_content.fallback_instruction,
         "citation_source_ids": [],
-        "semantic_policy": {
-            "schema_version": 1,
-            "policy_version": "core-fast-semantic-policy-v2",
-            "evidence_terms": ["shoe"],
-            "require_all_terms": False,
-            "abstain_when_no_evidence": True,
-            "ocr_extraction_plan": "all-lines",
-        },
     }
 
-    # Runtime-owned prose is rejected at compilation, while the typed selector
-    # itself is now a valid Multi treatment surface.
-    with pytest.raises(S1SparsePatchError, match="runtime-owned prose"):
-        compile_sparse_s1_candidate(
+    compiled = compile_sparse_s1_candidate(
+        parent_bank=parent,
+        authoring_input=semantic_input,
+        sparse_draft=bind_sparse_patch_draft(
+            canonical_json_bytes(payload),
             parent_bank=parent,
             authoring_input=semantic_input,
-            sparse_draft=bind_sparse_patch_draft(
-                canonical_json_bytes(payload),
-                parent_bank=parent,
-                authoring_input=semantic_input,
-                feedback_bundle_sha256=FEEDBACK_SHA,
-            ),
-            tool_registry_runtime_sha256=parent.tool_registry_runtime_sha256,
-        )
+            feedback_bundle_sha256=FEEDBACK_SHA,
+        ),
+        tool_registry_runtime_sha256=parent.tool_registry_runtime_sha256,
+    )
+    assert compiled.bank.bank_sha256 != parent.bank_sha256
 
 
-def test_sparse_bind_rejects_missing_fallback_marker_and_parent_drift(
+def test_sparse_compile_allows_recipe_fallback_edit_and_rejects_parent_drift(
     parent_materials,
 ) -> None:
     parent, semantic_input = parent_materials
@@ -227,13 +365,13 @@ def test_sparse_bind_rejects_missing_fallback_marker_and_parent_drift(
         authoring_input=semantic_input,
         feedback_bundle_sha256=FEEDBACK_SHA,
     )
-    with pytest.raises(S1SparsePatchError, match="runtime-owned prose"):
-        compile_sparse_s1_candidate(
-            parent_bank=parent,
-            authoring_input=semantic_input,
-            sparse_draft=draft,
-            tool_registry_runtime_sha256=RUNTIME_SHA,
-        )
+    compiled = compile_sparse_s1_candidate(
+        parent_bank=parent,
+        authoring_input=semantic_input,
+        sparse_draft=draft,
+        tool_registry_runtime_sha256=RUNTIME_SHA,
+    )
+    assert compiled.bank.bank_sha256 != parent.bank_sha256
 
     payload = _wire_payload(parent, semantic_input)
     payload["skills"][0]["parent_skill_sha256"] = "0" * 64
@@ -376,22 +514,6 @@ def test_sparse_output_schema_does_not_use_complex_enum_values(
                 visit(child)
 
     visit(schema)
-
-
-def test_sparse_semantic_terms_are_order_canonicalized_but_duplicates_rejected() -> (
-    None
-):
-    policy = SparseSemanticPolicyV1(
-        evidence_terms=("serving size", "ingredients", "cooking time")
-    )
-    assert policy.evidence_terms == (
-        "cooking time",
-        "ingredients",
-        "serving size",
-    )
-
-    with pytest.raises(ValueError, match="canonical and unique"):
-        SparseSemanticPolicyV1(evidence_terms=("ingredients", "ingredients"))
 
 
 def test_development_screen_reverts_failed_capability_to_parent_bytes(

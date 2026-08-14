@@ -88,7 +88,13 @@ class FakeCoreFastAdapter:
                 rule_violations=(),
                 ideal_response_gaps=(),
                 skill_suggestions=(
-                    "[policy_compatible] make the existing contract explicit",
+                    (
+                        "[policy_compatible] [action-policy] make tool-first and "
+                        "stopping conditions explicit"
+                        if intent.payload.get("attribution_policy")
+                        == "dual-policy-attribution-v1"
+                        else "[policy_compatible] make the existing contract explicit"
+                    ),
                 ),
             )
             return self._result(
@@ -102,7 +108,43 @@ class FakeCoreFastAdapter:
             assert isinstance(parent, dict)
             skills = parent["skills"]
             assert isinstance(skills, list)
-            if operation == "s1_creator":
+            if operation == "s1_single_surface_counterfactual_creator":
+                if "s1" in self.reject_stages:
+                    return self._result(intent, {"invalid": True})
+                capability = str(intent.payload["target_capability"])
+                surface = str(intent.payload["target_surface"])
+                requirements = intent.payload["requirements"]
+                assert isinstance(requirements, dict)
+                success_ids = requirements["must_preserve_exactly"]
+                assert isinstance(success_ids, list)
+                skill = next(
+                    item
+                    for item in skills
+                    if isinstance(item, dict)
+                    and item.get("capability_id") == capability
+                )
+                return self._result(
+                    intent,
+                    {
+                        "schema_version": 1,
+                        "capability_id": capability,
+                        "parent_skill_sha256": skill["skill_sha256"],
+                        "target_surface": surface,
+                        "non_target_surface_action": "inherit",
+                        "when": "the provider-visible target state matches the frozen failure cluster",
+                        "then": "apply only the requested policy-surface correction",
+                        "must_preserve": [
+                            {
+                                "query_id": query_id,
+                                "provider_visible_state": (
+                                    f"the provider-visible success state for {query_id} remains unchanged"
+                                ),
+                            }
+                            for query_id in success_ids
+                        ],
+                    },
+                )
+            if operation in {"s1_creator", "s1_dual_policy_creator"}:
                 if "s1" in self.reject_stages:
                     return self._result(intent, {"invalid": True})
                 templates = intent.payload["parent_authoring_content"]
@@ -121,6 +163,33 @@ class FakeCoreFastAdapter:
                 assert isinstance(requirements, dict)
                 targets = requirements["target_capabilities"]
                 assert isinstance(targets, list) and targets
+                dual_target = requirements.get("dual_policy_capability")
+                if isinstance(dual_target, str):
+                    skill = skill_by_capability[dual_target]
+                    return self._result(
+                        intent,
+                        {
+                            "schema_version": 1,
+                            "capability_id": dual_target,
+                            "parent_skill_sha256": skill["skill_sha256"],
+                            "action_policy": {
+                                "action": "patch",
+                                "policy_text": (
+                                    "Call the declared tool before answering, copy "
+                                    "only query-bound arguments, and stop after the "
+                                    "first successful terminal evidence call."
+                                ),
+                            },
+                            "response_policy": {
+                                "action": "patch",
+                                "policy_text": (
+                                    "Ground every answer claim in visible evidence, "
+                                    "copy exact public card handles, and use the "
+                                    "existing fallback only when evidence is empty."
+                                ),
+                            },
+                        },
+                    )
                 fanout_targets = requirements.get(
                     "fanout_capabilities_may_patch_or_inherit"
                 )
@@ -153,32 +222,25 @@ class FakeCoreFastAdapter:
                     }
                     if capability in selected_targets:
                         template = template_by_capability[capability]
+                        steps = [dict(item) for item in template["steps"]]
+                        addition = " Model-generated Body treatment."
+                        steps[0]["instruction"] = (
+                            str(steps[0]["instruction"]) + addition
+                        )
+                        fallback = str(template["fallback_instruction"])
+                        if (
+                            capability == "knowledge.visual_encyclopedia"
+                            and "not enough evidence" not in fallback.casefold()
+                        ):
+                            fallback += " State not enough evidence."
                         entry = {
                             **entry,
                             "action": "patch",
                             "patch": {
                                 "objective": template["objective"],
-                                "steps": template["steps"],
-                                "fallback_instruction": template[
-                                    "fallback_instruction"
-                                ],
+                                "steps": steps,
+                                "fallback_instruction": fallback,
                                 "citation_source_ids": template["citation_source_ids"],
-                                "semantic_policy": {
-                                    "schema_version": 1,
-                                    "policy_version": "core-fast-semantic-policy-v2",
-                                    "evidence_terms": (
-                                        []
-                                        if capability == "utility.document_reading"
-                                        else ["ingredient"]
-                                    ),
-                                    "require_all_terms": False,
-                                    "abstain_when_no_evidence": True,
-                                    "ocr_extraction_plan": (
-                                        "literal-material-spans"
-                                        if capability == "utility.document_reading"
-                                        else "all-lines"
-                                    ),
-                                },
                             },
                         }
                     generated.append(entry)
@@ -258,7 +320,14 @@ class FakeCoreFastAdapter:
                 evidence = True
                 output_ok = bucket >= 1
             reuse = intent.payload.get("reuse_parent_route_and_tool")
-            if isinstance(reuse, dict):
+            action_reuse = intent.payload.get("reuse_parent_route_only")
+            if isinstance(action_reuse, dict):
+                selected = action_reuse.get("selected_capability")
+                route_key = action_reuse.get("route_trace_key")
+                tool_key = f"tool:{query_id}:{selected}:action-replay"
+                trace = []
+                replay = action_reuse.get("replay_context", {})
+            elif isinstance(reuse, dict):
                 selected = reuse.get("selected_capability")
                 route_key = reuse.get("route_trace_key")
                 tool_key = str(reuse["tool_trace_key"])
@@ -331,6 +400,7 @@ class FakeCoreFastAdapter:
                 "style_submode": "fake"
                 if expected == "product.style_recommendation"
                 else None,
+                "assistant_contract": "core-fast-model-generated-action-response-v1",
             }
             return self._result(intent, {"observation": observation})
         if intent.role == "judge":

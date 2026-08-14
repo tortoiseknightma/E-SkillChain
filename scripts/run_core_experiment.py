@@ -43,6 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="run a fresh create-only Static opt800 baseline and emit bootstrap metadata",
     )
     commands.add_parser(
+        "s1-parent-opt800",
+        help="run create-only opt800 under a SHA-bound accepted S1 parent",
+    )
+    commands.add_parser(
         "prepare-feedback-selection",
         help="freeze or verify discovery600 Feedback summary/selection without provider calls",
     )
@@ -101,15 +105,27 @@ def main(argv: list[str] | None = None) -> int:
             result = engine.run_static_opt800()
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
+        if args.command == "s1-parent-opt800":
+            engine.initialize_s1_parent_opt800()
+            result = engine.run_s1_parent_opt800()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
         if args.command == "prepare-feedback-selection":
             result = engine.prepare_feedback_selection()
             manifest = result["selection_manifest"]
+            population_count = manifest.get(
+                "discovery_population_count", manifest.get("population_count")
+            )
+            if not isinstance(population_count, int):
+                raise FastPathError(
+                    "Feedback selection manifest lacks its population count"
+                )
             print(
                 json.dumps(
                     {
                         "status": "feedback_selection_prepared",
                         "output_root": str(engine.output_root),
-                        "discovery_count": manifest["discovery_population_count"],
+                        "discovery_count": population_count,
                         "replay_count": 200,
                         "feedback_count": manifest["effective_count"],
                         "selection_manifest_sha256": manifest["manifest_sha256"],

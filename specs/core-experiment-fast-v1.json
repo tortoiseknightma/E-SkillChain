@@ -30,55 +30,84 @@
     "Core images are used only for private model inference and are not published.",
     "Results are a Core Portfolio experiment, not a formal paper reproduction or production-traffic claim.",
     "No rejected S1 candidate from this lineage may enter S2; S2 requires a separately accepted S1 decision.",
-    "Static opt800 was freshly generated with qwen3.7-flash-2026-07-15; this spec binds its SHA and deterministic fixed sample roles.",
-    "Historical S1 R1-R10 remain rejected and read-only; this is a separately authorized semantic-policy lineage.",
-    "S1 R1 uses a spec-frozen discovery600 selection and 48 fresh Feedback calls with canary6 plus a full-batch terminal gate before Creator.",
-    "S1 may change only the typed semantic policy consumed by deterministic runtime; tool, DTO/card/evidence closure, sections, and fallback remain runtime-owned.",
-    "Fan-out R1-R10 completed on independent roots; R10 is the selected compact-contrastive finalist and no R11 is authorized.",
-    "This tracked spec mirrors the selected R10 design for validation and future reproduction; it must not resume or overwrite the canonical completed R10 root."
+    "Historical deterministic-runtime and S1 R1-R10 artifacts remain immutable evidence and are not valid inputs for a new model-generated comparison.",
+    "The action model reads the selected Skill Body, chooses function tools, and freely generates the final response text; runner preflight and fixed repair remain evaluation safeguards, not a response compiler.",
+    "S1 uses six isolated capability branches; each Creator proposal has independently screenable action-policy and response-policy treatments before capability composition and Bank fan-in.",
+    "Action-policy replay fixes the Static route and reruns the action/tool loop; response-policy replay fixes route and tools and regenerates only the evidence/cards/answer/fallback response.",
+    "The model-generated Static opt800 and fixed samples are frozen from the 2026-08-13 fresh lineage. Ten earlier exploratory rounds all rolled back; a later 30-round dual-policy campaign accepted only R12 in an independent run root, while this tracked spec remains a Static-parent experiment template."
   ],
-  "experiment_id": "portfolio-core-qwen37-fanout-v6-r10-selected-template-20260813",
+  "experiment_id": "portfolio-core-qwen37-model-generated-static-v1-selected-20260813",
   "fixed_samples": {
     "body48": [
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0220",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0295",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0345",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0346",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0394",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0816",
-        "role": "body_failure"
-      },
-      {
-        "capability": "knowledge.visual_encyclopedia",
         "query_id": "r2-core-0216",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "knowledge.visual_encyclopedia",
         "query_id": "r2-core-0217",
+        "role": "body_failure"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0218",
+        "role": "body_failure"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0241",
+        "role": "body_failure"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0242",
+        "role": "body_failure"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0243",
+        "role": "body_failure"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0220",
         "role": "body_anchor"
+      },
+      {
+        "capability": "knowledge.visual_encyclopedia",
+        "query_id": "r2-core-0244",
+        "role": "body_anchor"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0203",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0228",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0229",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0230",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0280",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0301",
+        "role": "body_failure"
       },
       {
         "capability": "product.exact_match",
@@ -91,68 +120,38 @@
         "role": "body_anchor"
       },
       {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0226",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0227",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0229",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0230",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0231",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0280",
-        "role": "body_anchor"
-      },
-      {
         "capability": "product.multi_search",
         "query_id": "r2-core-0207",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.multi_search",
-        "query_id": "r2-core-0208",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0209",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0210",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0232",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0233",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0234",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.multi_search",
+        "query_id": "r2-core-0208",
         "role": "body_anchor"
       },
       {
@@ -163,7 +162,32 @@
       {
         "capability": "product.style_recommendation",
         "query_id": "r2-core-0211",
-        "role": "body_anchor"
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0215",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0236",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0238",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0239",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0287",
+        "role": "body_failure"
       },
       {
         "capability": "product.style_recommendation",
@@ -176,33 +200,23 @@
         "role": "body_anchor"
       },
       {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0214",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0215",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0236",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0237",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0238",
-        "role": "body_anchor"
+        "capability": "utility.document_reading",
+        "query_id": "r2-core-0221",
+        "role": "body_failure"
       },
       {
         "capability": "utility.document_reading",
-        "query_id": "r2-core-0221",
+        "query_id": "r2-core-0246",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.document_reading",
+        "query_id": "r2-core-0297",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.document_reading",
+        "query_id": "r2-core-0321",
         "role": "body_failure"
       },
       {
@@ -212,43 +226,48 @@
       },
       {
         "capability": "utility.document_reading",
-        "query_id": "r2-core-0746",
-        "role": "body_failure"
-      },
-      {
-        "capability": "utility.document_reading",
-        "query_id": "r2-core-0897",
-        "role": "body_failure"
-      },
-      {
-        "capability": "utility.document_reading",
-        "query_id": "r2-core-0246",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.document_reading",
-        "query_id": "r2-core-0297",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.document_reading",
-        "query_id": "r2-core-0321",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.document_reading",
         "query_id": "r2-core-0396",
-        "role": "body_anchor"
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.document_reading",
+        "query_id": "r2-core-0422",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.document_reading",
+        "query_id": "r2-core-0471",
+        "role": "body_failure"
       },
       {
         "capability": "utility.recipe_guidance",
         "query_id": "r2-core-0222",
-        "role": "body_anchor"
+        "role": "body_failure"
       },
       {
         "capability": "utility.recipe_guidance",
         "query_id": "r2-core-0223",
-        "role": "body_anchor"
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.recipe_guidance",
+        "query_id": "r2-core-0225",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.recipe_guidance",
+        "query_id": "r2-core-0247",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.recipe_guidance",
+        "query_id": "r2-core-0248",
+        "role": "body_failure"
+      },
+      {
+        "capability": "utility.recipe_guidance",
+        "query_id": "r2-core-0249",
+        "role": "body_failure"
       },
       {
         "capability": "utility.recipe_guidance",
@@ -257,39 +276,19 @@
       },
       {
         "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0225",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0247",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0248",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0249",
-        "role": "body_anchor"
-      },
-      {
-        "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0250",
+        "query_id": "r2-core-0348",
         "role": "body_anchor"
       }
     ],
     "canary12": [
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0219",
+        "query_id": "r2-core-0216",
         "role": "failure"
       },
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0216",
+        "query_id": "r2-core-0220",
         "role": "anchor"
       },
       {
@@ -305,7 +304,7 @@
       {
         "capability": "product.multi_search",
         "query_id": "r2-core-0207",
-        "role": "anchor"
+        "role": "failure"
       },
       {
         "capability": "product.multi_search",
@@ -314,12 +313,12 @@
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0386",
+        "query_id": "r2-core-0211",
         "role": "failure"
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0211",
+        "query_id": "r2-core-0212",
         "role": "anchor"
       },
       {
@@ -330,16 +329,16 @@
       {
         "capability": "utility.document_reading",
         "query_id": "r2-core-0246",
-        "role": "anchor"
+        "role": "failure"
       },
       {
         "capability": "utility.recipe_guidance",
         "query_id": "r2-core-0222",
-        "role": "anchor"
+        "role": "failure"
       },
       {
         "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0223",
+        "query_id": "r2-core-0224",
         "role": "anchor"
       }
     ],
@@ -481,7 +480,7 @@
     "external_cost_cny": 250.0,
     "final_judge_format_retries": 1,
     "max_creator_calls": 8,
-    "max_feedback_calls": 48
+    "max_feedback_calls": 96
   },
   "models": {
     "assistant": {
@@ -526,7 +525,7 @@
     }
   },
   "opt_fold_mapping_sha256": "3b737f06539f409a69dbb71e90863cbddb7b6408aa753cd8d61074f4b0077b26",
-  "opt_static_results_sha256": "f2cd96ad94144d05a39657203f29f63472b37ba99b03a5ffdf7ba25bc87f3c97",
+  "opt_static_results_sha256": "a9949cd673fff54711053c0ce8b10b3999f4c71641ef6498706b03082c0805a7",
   "paths": {
     "asset_catalog_dir": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\remote-processing\\catalog",
     "asset_root": "E:\\skillchain-data\\clean\\portfolio-core-v9-multi-closure",
@@ -546,7 +545,7 @@
     "inaturalist_manifest": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\inaturalist-runtime.jsonl",
     "opt_fold_mapping": "E:\\skillchain-data\\runs\\portfolio-core-20260808-opt-offline-v1\\folds\\fold-mapping.jsonl",
     "opt_route_attribution": "E:\\skillchain-data\\runs\\portfolio-core-20260808-opt-offline-v1\\hybrid-router\\oof-rows.jsonl",
-    "opt_static_results": "D:\\athena\\experiment-runs\\portfolio-core-qwen37-fanout-v6-20260813\\artifacts\\static-opt800.jsonl",
+    "opt_static_results": "D:\\athena\\experiment-runs\\portfolio-core-qwen37-model-generated-v1-20260813\\artifacts\\static-opt800.jsonl",
     "queries": "E:\\skillchain-data\\runs\\portfolio-core-20260805-r3-materialized-v1\\queries.jsonl",
     "recipe_evidence": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\recipe-evidence-runtime.jsonl",
     "rpc_scenes": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\rpc-scenes.jsonl",
@@ -559,7 +558,7 @@
   },
   "runtime": {
     "adapter": "python",
-    "assistant_contract": "core-fast-deterministic-action-response-v6",
+    "assistant_contract": "core-fast-model-generated-action-response-v1",
     "command_timeout_seconds": 1800,
     "commands": {
       "assistant": [],
@@ -573,18 +572,21 @@
   "s1_authoring_input_file_sha256": "3dca02c57665b82806e7f1d8c30b8228557cdc0068b8308d81df4f18801ab6cf",
   "s1_settings": {
     "creator_directives": [
-      "High-precision contrastive Creator experiment with explicit rejected-edit memory. Run six isolated capability branches. For utility.document_reading reproduce the validated typed treatment exactly: evidence_terms empty, require_all_terms false, abstain_when_no_evidence true, ocr_extraction_plan literal-material-spans. For all other capabilities, R6 and R8 showed that schema words, headings, user-request words, and narrow arbitrary terms deleted correct public evidence; do not reuse those rejected term classes. Propose one literal evidence term only when the paired failure and protected-success packet provides direct support that the term selects a semantic branch without removing a protected success. Use require_all_terms false, abstain true, and all-lines. Never modify runtime-owned route, tools, arguments, DTO, card or evidence closure, sections, or fallback."
+      "Run six isolated capability branches. In each branch return separate action-policy and response-policy treatments; either surface may inherit independently. Keep the routing Description and the other five Skills byte-exact.",
+      "Action policy may change only tool-first choice, public argument construction, continuation, retry, and stopping. Response policy may change only visible-evidence claim selection, cards, answer sections, uncertainty, and fallback.",
+      "Do not add typed semantic-policy metadata. Do not refer to evaluation labels, held-out data, judges, or private runtime paths."
     ],
     "feedback_allocation": "balanced-six-capability",
     "feedback_canary_count": 6,
+    "feedback_format_retry_limit": 1,
     "feedback_mode": "fresh-per-round",
-    "feedback_selection_policy": "discovery-contrastive-v2",
+    "feedback_selection_policy": "discovery-dual-policy-v5",
     "feedback_total_count": 48,
     "max_patched_capabilities": 6,
-    "proposal_mode": "six-capability-fanout-fanin-v2",
+    "proposal_mode": "six-capability-dual-policy-fanout-fanin-v3",
     "protected_capabilities": [],
     "required_patch_phrases": {},
-    "round_id": "r10",
+    "round_id": "r1",
     "target_capabilities": [
       "knowledge.visual_encyclopedia",
       "product.exact_match",

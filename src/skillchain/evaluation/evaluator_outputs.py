@@ -324,11 +324,17 @@ class VisualFeedbackOutput(_StrictFrozenModel):
     rule_violations: tuple[GroundedFeedbackFinding, ...] = Field(max_length=20)
     ideal_response_gaps: tuple[GroundedFeedbackFinding, ...] = Field(max_length=20)
     skill_suggestions: tuple[str, ...] = Field(max_length=8)
+    evidence_quality_notes: str | None = None
 
     @field_validator("summary")
     @classmethod
     def validate_summary(cls, value: str) -> str:
         return _nonblank(value, "summary")
+
+    @field_validator("evidence_quality_notes")
+    @classmethod
+    def validate_evidence_quality_notes(cls, value: str | None) -> str | None:
+        return None if value is None else _nonblank(value, "evidence_quality_notes")
 
     @field_validator("skill_suggestions")
     @classmethod

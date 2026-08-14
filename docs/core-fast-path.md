@@ -19,10 +19,12 @@ parent 的精确 alias，不产生新的 Assistant、工具或 Judge 调用。�
 
 冻结配置位于 [`specs/core-experiment-fast-v1.json`](../specs/core-experiment-fast-v1.json)。
 其中包含字面 canary6、smoke24、body48 ID，固定模型角色、Gate、并发度和 CNY 250
-总费用上限。默认 spec 已绑定 deterministic action-response v6 下 fresh Qwen3.7 Static 的 800 条
-`AssistantObservation` 及其 SHA；旧 `export_core_fast_opt_static.py` 只用于迁移历史 Qwen-VL
-artifact，不能生成或替代当前 Qwen3.7 基线。重新生成新 Static 必须使用独立 bootstrap spec、
-fresh output root 与 `static-opt800` 命令，且会产生 provider 费用。
+总费用上限。默认 spec 已绑定 model-generated action-response 的 fresh Qwen3.7 Static opt800、
+bootstrap 生成的 fixed samples 与 SHA `a9949cd673fff547…2c0805a7`；`validate --inputs-only` 与完整
+`validate` 均通过。旧
+`export_core_fast_opt_static.py` 只用于迁移历史 artifact，不能生成或替代当前 runtime 基线。
+重新生成 Static 必须使用独立 bootstrap spec、fresh output root 与 `static-opt800` 命令，且会产生
+provider 费用。
 
 ### S1 的两段边界
 
@@ -38,16 +40,70 @@ Static opt800
 → 接受候选或 byte-exact 回滚到 Static parent
 ```
 
-### Deterministic runtime 与 S1 treatment surface
+### Model-generated runtime 与 S1 treatment surface
 
-当前 `core-fast-deterministic-action-response-v6` 在路由后由 runner 固定工具序列和参数，并由纯函数
-从 public DTO 编译 cards、evidence、section 与 fallback。机械 closure 不再属于 S1。
-Creator 必须逐字复制 parent objective、tool steps、fallback instruction 与 citations；唯一可变且
-被 runtime 消费的字段是 `core-fast-semantic-policy-v2`。最终 R10 只开放 Document 的
-`ocr_extraction_plan=literal-material-spans`，用于从公开 OCR 行选择 literal material span；
-Description 与其余五项 Skill 均冻结。空 policy 或对 Multi/Exact 等无消费面的 patch 会 fail closed。
+当前 `core-fast-model-generated-action-response-v1` 删除了 deterministic response compiler。冻结
+Description 完成路由后，runner 将所选 Skill Body 和允许的函数工具交给 action model；模型负责
+工具选择、参数以及最终回答文本，runner 负责真实工具执行、可见证据记录、格式预检与最多一次固定
+修复。DTO/card/evidence/fallback 不再由纯函数直接生成，也不再存在 `core-fast-semantic-policy-v2`
+的解析或渲染路径。
 
-v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
+S1 保留六个独立 Creator 会话，但每个 capability 的结构化提案拆成两个互斥 surface：
+
+- `action-policy`：只描述 tool-first、公共参数构造、继续/重试和停止条件。screen 复用 Static 的
+  selected route，不复用任何 tool/answer，重新执行完整 action/tool loop；成功指标是
+  `route_acceptable ∧ tool_contract_pass`，protected-success 也按这一谓词定义。回答格式错误不会污染
+  action 归因；tool error、action runtime/timeout 或固定 route 漂移仍属于严重度升级并硬拒绝。
+- `response-policy`：只描述 visible evidence、cards、answer sections、uncertainty 与 fallback。
+  screen 复用 Static route/tool/scorer evidence（包括固定的 tool-error 分支），只发起 answer model call；成功指标是
+  `no_hard_error ∧ evidence_grounded ∧ output_contract_pass`，protected-success 按该谓词定义。
+
+两类 surface 各自执行有界风险筛查并可独立回滚；只有通过的 surface 才在本 capability 内组合，随后
+六能力 fan-in。Description、工具集合、compiler-owned Body headings 和另外五个 Skill 保持冻结。完整
+fan-in replay 再恢复模型自主 route/action/tool/answer，因此最终接受仍覆盖两类 policy 的交互风险。
+
+default spec 不复用任何 deterministic v4/v5/v6 Static。新的 model-generated Static 已 800/800
+完成；no-op qualification 在 137 条 treatment-reached replay 上为 1 gain / 0 regression 并通过。
+旧 accepted Bank 仍不能跨 runtime 当作新 parent。
+
+### Model-generated fresh lineage 与 30 轮 S1 终态（2026-08-14）
+
+证据根为
+`D:\athena\experiment-runs\portfolio-core-qwen37-model-generated-v1-20260813`。fresh Static 为
+168/800 GCS success、135/800 hard error，成本 ¥1.2151480；authoritative no-op root 为
+`noop-qualification-v4`，成本 ¥0.2627260。新的 R1–R10 合计 456 Feedback result、42 个独立
+Codex Creator result 和 2,781 Assistant result，可追踪 DashScope 成本 ¥5.2082646；Creator
+人民币成本不可得。十轮都 `accepted=false`，selected Bank 均回滚为 Static
+`da5cfe1f…1348a`，没有访问 S2、Judge、val 其余分区或 test。
+
+| 轮次 | 机制增量 | 最深结果 | 结论 |
+|---|---|---|---|
+| R1 | contrastive 48 | canary 5/6 | parse gate 停止；0 Creator/Assistant |
+| R2 | adaptive confirmation v1 | Style 局部 +1/0；组合 replay −0.4065pp | 回滚 |
+| R3 | stable fan-in | full48 47/48，含 1 service error | full-batch gate 停止 |
+| R4 | role-separated packet | Multi + Style 局部保留；replay +0.9812pp；body 0 | 覆盖最广，仍回滚 |
+| R5 | failure-rich selection | canary 5/6 | JSON parse gate 停止 |
+| R6 | supported-cluster selection | 无保留分支 | 回滚 |
+| R7 | attributed Feedback | Multi replay +3.4483pp；body +10pp；总体 body +1.6667pp | 最接近接受，低于 +2pp，回滚 |
+| R8 | single-step replace | Multi replay +3.4483pp；body 0 | 回滚 |
+| R9 | rejected-edit memory | Multi +1/−1，净 0 | 回滚 |
+| R10 | attributed + single-step + memory | Multi +1/−2；无保留分支 | 回滚并停止 |
+
+上述 R1–R10 是 dual-policy campaign 之前的 model-generated 开发历史。随后新的 30 轮 campaign
+使用 48-row balanced Feedback、六个独立 Creator、action/response 两类 screen 与 capability fan-in，
+全部从 Static `da5cfe1f…1348a` 独立派生。R12 的 Style action-policy 是唯一 accepted 候选：
+replay macro +0.4065pp，body75 macro +2.0833pp，Style +12.5pp，hard error −1.3333pp，selected
+Bank `e70ed907…096cd`。其余 29 轮全部回滚或在 Feedback/local gate 停止。
+
+Balanced top 10 冻结为 R12/R17/R26/R29/R30/R4/R9/R13/R14/R21，覆盖 Encyclopedia、Exact、
+Multi、Style、Recipe 五项能力；Document 没有任何候选进入 body gate，不能靠纳入 invalid 轮次虚增覆盖。
+R15 虽访问 body，但 oracle coverage 不完整，因此保留在全量 ledger、排除出 eligible top 10。
+排名不是 acceptance override：只有 R12 deployable。R17/R26 的 Multi+Recipe body 增益更高，但
+hard-error 超限；R29 的 Multi+Style hard-error delta=0，body macro 仅 +1.6667pp。canonical 排名
+位于 `D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\campaign-top10.json`，
+完整逐轮事实、成本与边界见 [S1 实验日志](s1-experiment-log.html)。
+
+以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 
 以下 v4 Static SHA 只属于历史 qualification：
@@ -55,7 +111,7 @@ v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增
 root `D:\athena\experiment-runs\portfolio-core-qwen37-deterministic-v4-20260813\static-opt-run`。该 qualification
 为 800/800 outer success、0 hard error、676/800 GCS success。
 
-### 历史 accepted typed semantic-policy R1（v4，2026-08-13）
+### 历史 accepted typed semantic-policy R1（v4，2026-08-13；只读）
 
 唯一变量是 Document 的 `ocr_extraction_plan=literal-material-spans`。完整 48 Feedback 在 Creator
 前通过 terminal Gate；Creator 产出 parent-bound 单能力 patch。replay200 中 Document 从 `7/8`
@@ -93,10 +149,11 @@ balanced discovery Feedback
 
 这里的“并行”是独立的算法分支与证据账本；调度器仍可按共享 provider 并发/限速串并行执行，
 不能让六个分支分别绕过全局容量。Creator 不再输出 whole-bank 自由重写：每次调用只能 patch
-其分支的 typed policy，另外五项必须绑定同一 parent 且保持 byte-exact。fan-in 会复核 branch
+其分支的 model-generated Body authoring fields，另外五项必须绑定同一 parent 且保持 byte-exact。
+fan-in 会复核 branch
 Bank、编译 receipt、screen hash 与 parent identity，拒绝携带其他能力变化的分支。
 
-v5 对 Exact/Multi 新开放的是公开 DTO 上的 evidence-term selector：它可以把不满足语义条件的
+以下结果全部属于已删除的 deterministic v5/v6 runtime，只作历史证据。v5 对 Exact/Multi 新开放的是公开 DTO 上的 evidence-term selector：它可以把不满足语义条件的
 candidate 降为 unresolved/剔除，但不能改变 item coverage、card 字段、handle、工具顺序或
 fallback。空 selector 与 v4 行为等价。由于 runtime contract identity 已变化，新一轮必须使用
 `prepare_core_fast_qwen37_lineage.py bootstrap-spec` 生成 create-only fresh Static opt800，再用
@@ -220,6 +277,70 @@ R8 是最接近保留的候选：没有 Static-success→candidate-failure，但
 个新 contract occurrence，因此零新增规则必须拒绝。第二批五次 Creator 额度已耗尽，不追加
 R11。证据根为 `E:\skillchain-data\runs\portfolio-core-qwen37-20260812-v3`。
 
+## R12 parent 条件化单 Surface 周期
+
+30 轮 model-generated dual-policy campaign 已冻结；其中只有 R12 通过完整 replay200/body75
+正式门。新的 `s1-counterfactual-v1` 不恢复 whole-bank 自由重写，也不把 rejected Bank 拼回
+parent，而是显式绑定：
+
+- R12 Bank `e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd`；
+- Bank file SHA `edf83d288fcbb67b78b53a6390b713f845238836b7fc4f3378aca34c23bf9489`；
+- accepted decision SHA `1edc7fba7f05ee3deffc8a41907931a76e660fba5058262e3251156957923bc4`；
+- 来源 manifest、fresh R12 parent opt800 与各自 SHA；
+- R12 Style Skill SHA 与八个已改善的 parent-protection query。
+
+R31 与 R32 必须在任何 Feedback/Creator 调用前同时冻结。R31 只允许 Recipe action-policy，
+R32 只允许 Multi response-policy；每轮仍生成六个 BranchRecord，但只有目标 capability 调用一次
+Creator，其余五项均为 `protected_inherit`。输入 packet 固定为同一失败簇的 3 个 failure、状态
+最接近的 3 个 R12 parent-success，以及 3 个历史 regression。证据不足时直接以
+`insufficient_counterfactual_evidence` 终止，不允许缩小 packet 或改选规则重试。
+
+Creator 只能输出一条 provider-visible 条件规则：`when`、单 surface 的 `then`，以及恰好三个
+`must_preserve` 成功状态。compiler 只追加规范化文本：
+
+```text
+If and only if <when>, <then>. Otherwise preserve the parent behavior, including <must_preserve>.
+```
+
+局部 screen 沿用有界风险门，并额外要求三个 packet parent-success 0 regression、R12 Style 八个
+保护样本与 Style Skill byte-exact、failure→hard/runtime 0 次、action/response 固定边界不漂移。
+随后必须依次通过 replay200（macro ≥0pp）与 body75（macro ≥+2pp、CI95 lower ≥0）；两级
+hard-error delta 均 ≤+1pp、各能力 floor 均为 −5pp。普通 failure reason 迁移只记录，不自动拒绝。
+
+R33 不调用 Creator。零个 accepted branch 时停止；一个时直接成为 finalist；两个时才从 R12
+byte-exact fan-in Recipe/Multi，并重新执行 replay200/body75。组合失败时，只能在两个已经独立
+正式 accepted 的 Bank 中按预注册排序选一个 finalist。局部通过但 body75 未接受的分支永远不得
+组合。最后的 `s1-finalist-test` 仅允许一个已冻结 finalist 与 R12 在 test300 上成对执行一次，
+不调用 Judge/S2/S3；测试失败则 cycle-selected 仍为 R12。一旦执行，该 test300 不再是 untouched
+五配置测试，后续若需要无偏五配置比较必须建立新 holdout。
+
+运行顺序：
+
+```powershell
+uv run python scripts/prepare_s1_counterfactual_cycle.py bootstrap --cycle-root <cycle-root>
+uv run python scripts/run_core_experiment.py --spec <cycle-root>\specs\s1-parent-opt800-bootstrap.json --output-root <cycle-root>\runs\parent-opt800 s1-parent-opt800
+uv run python scripts/prepare_s1_counterfactual_cycle.py freeze-cycle --cycle-root <cycle-root> --bootstrap-receipt <cycle-root>\runs\parent-opt800\s1-parent-opt800-bootstrap.json
+uv run python scripts/run_core_experiment.py --spec <cycle-root>\specs\r31.json --output-root <cycle-root>\runs\r31 run --through s1
+uv run python scripts/run_core_experiment.py --spec <cycle-root>\specs\r32.json --output-root <cycle-root>\runs\r32 run --through s1
+uv run python scripts/run_s1_counterfactual_cycle.py finalize --cycle-definition <cycle-root>\cycle-definition.json
+uv run python scripts/run_s1_counterfactual_cycle.py s1-finalist-test --cycle-definition <cycle-root>\cycle-definition.json --finalist-receipt <cycle-root>\cycle-finalist.json --output-root <cycle-root>\runs\test300
+```
+
+前四类产物均为 create-only；同一 round 只允许 CallStore resume，不允许重采或重试挑结果。预算
+在 bootstrap/freeze/finalize/test 各边界重新核算，整个周期 DashScope 预计费用超过 CNY 10 即
+停止并请求授权。
+
+本周期现已终结。canonical parent baseline 位于
+`D:\athena\experiment-runs\portfolio-core-r12-counterfactual-v3-20260814`，800/800、GCS
+success 164、hard error 146、SHA `4c6bafa65e320f46…aa84fcf`、成本 ¥1.2439722。更早的 v1
+在 provider 前因错误 config 全部失败（¥0）；v2 为 799/800，单个 non-retryable provider failure，
+成本 ¥1.2357178 加一个未知 orphan，未进入 selection。终态 v4 中，R31 9/9 Feedback 通过，但
+Creator 的 action `then` 要求生成 fallback/answer/evidence，跨 response surface，故
+`counterfactual_contract_rejected`、Assistant replay/body 0-call；R32 因不足三个 matched
+parent-success，以 `insufficient_counterfactual_evidence`、Creator 0-call 终止。R33 冻结 0 个
+accepted branch、`finalist=null`、`test300_allowed=false`。周期可追踪 DashScope 合计
+¥2.52357745；唯一 Creator 成本不可得。test300、S2/S3/Judge 均未访问，selected Bank 保持 R12。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |
@@ -250,8 +371,8 @@ PowerShell：
 uv run python scripts/run_core_experiment.py validate
 ```
 
-当前只推荐上述零调用验证命令。以下付费/下游命令是编排接口示例，不代表 tracked template 可以
-resume 任一已执行 lineage；fan-out R1–R10 已终结，本阶段不再运行新的 S1：
+当前 tracked spec 已冻结 fresh Static，且该命令返回 `runtime_ready=true`。以下通用付费/下游命令仍是
+编排接口；新的 R12 parent 周期必须使用上文独立 spec/root，不能把 rejected candidate 带入 S2：
 
 ```powershell
 uv run python scripts/run_core_experiment.py run --through s1
@@ -261,10 +382,10 @@ uv run python scripts/run_core_experiment.py run --through test
 uv run python scripts/run_core_experiment.py report
 ```
 
-默认 spec 是最终 R10 的 v6 Static + compact-contrastive fan-out **新运行模板**；`validate` 不产生
-调用，但 `run --through s1` 会创建新的 Feedback/Creator/Assistant 调用，不能据此重放或追认
-已完成的 R10。若后续选择推进 S2，必须显式使用 R10 canonical artifact spec 与同一 run root；
-tracked spec 的字节 SHA 不同，会按预期拒绝旧 root resume。
+默认 spec 指向当前 model-generated fresh Static，不再指向最终 R10 的 deterministic v6 Static。
+`validate` 不产生调用且当前通过；它不等于授权重跑 S1。历史 deterministic roots 与当前 30 轮
+canonical roots 都保持只读，不能跨 runtime 继续 S2，也不能把任何 rejected candidate 当作 parent。
+后续阶段唯一合法的 S1 selected Bank 是 R12 `e70ed907…096cd`。
 
 `run --through full` 在冻结 S1/S2/S3 后立即补齐 NoSkill val200，并写出五配置
 `val-results.jsonl` 的 1,000 条逻辑结果；`run --through test` 再生成 test300、Final

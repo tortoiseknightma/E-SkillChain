@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Mapping
 
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 from pydantic import ValidationError
 
 from skillchain import config, llm
@@ -26,6 +26,7 @@ from skillchain.evaluation.assistant_runs import (
     build_assistant_query_input,
 )
 from skillchain.evaluation.evaluator_outputs import (
+    VisualFeedbackOutput,
     parse_final_judge_output_v4,
     parse_visual_feedback_output_v4,
 )
@@ -65,9 +66,6 @@ from skillchain.runners.assistant import (
     CoreFastAssistantRunner,
     require_core_fast_assistant_runner,
 )
-from skillchain.runners.assistant_deterministic_contract import (
-    SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS,
-)
 from skillchain.schemas import Query
 from skillchain.static_authoring import StaticBankArtifact
 from skillchain.task_spec import load_mvp_task_specification_v1
@@ -88,6 +86,43 @@ from .models import (
 )
 from .feedback_selection import project_feedback_observation, project_feedback_query
 from .pacing import StartPacer
+
+
+_FEEDBACK_DISPOSITIONS = (
+    "policy_compatible",
+    "requires_new_evidence",
+    "rejected",
+)
+_FEEDBACK_SURFACES = ("action-policy", "response-policy")
+
+
+def _normalize_dual_policy_feedback_labels(
+    feedback: VisualFeedbackOutput,
+) -> VisualFeedbackOutput:
+    """Canonicalize label order without changing suggestion prose."""
+
+    normalized: list[str] = []
+    for suggestion in feedback.skill_suggestions:
+        body = suggestion.strip()
+        labels: list[str] = []
+        while body.startswith("[") and "]" in body:
+            end = body.index("]")
+            label = body[1:end]
+            if label not in {*_FEEDBACK_DISPOSITIONS, *_FEEDBACK_SURFACES}:
+                break
+            labels.append(label)
+            body = body[end + 1 :].lstrip()
+        dispositions = [item for item in labels if item in _FEEDBACK_DISPOSITIONS]
+        surfaces = [item for item in labels if item in _FEEDBACK_SURFACES]
+        if len(set(dispositions)) > 1 or len(set(surfaces)) > 1 or not body:
+            normalized.append(suggestion)
+            continue
+        # Missing disposition is not evidence of policy compatibility. Keep
+        # the usable diagnostic but exclude it from Creator actionability.
+        disposition = dispositions[0] if dispositions else "rejected"
+        surface = f" [{surfaces[0]}]" if surfaces else ""
+        normalized.append(f"[{disposition}]{surface} {body}")
+    return feedback.model_copy(update={"skill_suggestions": tuple(normalized)})
 
 
 _QWEN_INPUT_CNY_PER_MILLION = 0.15
@@ -162,6 +197,7 @@ class LiveCoreFastAdapter:
         self._rubric: RubricSnapshot | None = None
         self._feedback_query_by_id: dict[str, Query] | None = None
         self._feedback_baseline_by_id: dict[str, AssistantObservation] | None = None
+        self._feedback_identity_lock = threading.Lock()
         self._qwen_client: OpenAI | None = None
         self._judge_client: OpenAI | None = None
         self._assistant_start_pacer = StartPacer(
@@ -176,6 +212,17 @@ class LiveCoreFastAdapter:
         if not isinstance(value, str) or not value:
             return None
         expanded = Path(os.path.expandvars(value))
+        return (
+            expanded if expanded.is_absolute() else (self.base_dir / expanded).resolve()
+        )
+
+    def _feedback_baseline_path(self) -> Path:
+        """Return the observations bound to the active S1 parent lineage."""
+
+        binding = getattr(self.spec, "s1_parent", None)
+        if binding is None:
+            return self._path("opt_static_results")
+        expanded = Path(os.path.expandvars(binding.opt_results_path))
         return (
             expanded if expanded.is_absolute() else (self.base_dir / expanded).resolve()
         )
@@ -332,9 +379,6 @@ class LiveCoreFastAdapter:
                     banks={name: bank for name in ("llm_static", "s1", "s1s2", "full")},
                     asset_catalog=catalog,
                     qwen_call_start_waiter=self._wait_for_assistant_start,
-                    deterministic_action_contract_version=(
-                        self.spec.runtime.assistant_contract
-                    ),
                 )
             )
             self._runner_by_bank[bank.bank_sha256] = runner
@@ -492,7 +536,11 @@ class LiveCoreFastAdapter:
             )
         )
         request, runner = self._request(query=query, config_name=config_name, bank=bank)
-        reuse = intent.payload.get("reuse_parent_route_and_tool")
+        action_reuse = intent.payload.get("reuse_parent_route_only")
+        response_reuse = intent.payload.get("reuse_parent_route_and_tool")
+        if isinstance(action_reuse, dict) and isinstance(response_reuse, dict):
+            raise RuntimeError("Assistant replay cannot bind two policy surfaces")
+        reuse = action_reuse if isinstance(action_reuse, dict) else response_reuse
         if isinstance(reuse, dict):
             context = reuse.get("replay_context")
             if not isinstance(context, dict):
@@ -514,15 +562,11 @@ class LiveCoreFastAdapter:
                 )
                 for item in context["scorer_calls"]
             )
-            if (
-                self.spec.runtime.assistant_contract
-                in SUPPORTED_DETERMINISTIC_ASSISTANT_CONTRACT_VERSIONS
-            ):
-                execution = runner.execute_deterministic_body_replay(
+            if isinstance(action_reuse, dict):
+                execution = runner.execute_action_replay(
                     request,
                     parent_response=parent_response,
                     parent_receipt=parent_receipt,
-                    parent_scorer_calls=scorer_calls,
                     scorer_query=query,
                 )
             else:
@@ -625,24 +669,32 @@ class LiveCoreFastAdapter:
         ):
             raise RuntimeError("Feedback intent lacks its projected query identity")
         query_id = raw_query["query_id"]
-        if self._feedback_query_by_id is None:
-            self._feedback_query_by_id = {}
-            for line in self._path("queries").read_text(encoding="utf-8").splitlines():
-                query_item = Query.model_validate_json(line, strict=True)
-                self._feedback_query_by_id[query_item.query_id] = query_item
-        if self._feedback_baseline_by_id is None:
-            self._feedback_baseline_by_id = {}
-            for line in (
-                self._path("opt_static_results")
-                .read_text(encoding="utf-8")
-                .splitlines()
-            ):
-                raw = json.loads(line)
-                payload = raw.get("observation", raw)
-                baseline_item = AssistantObservation.model_validate(
-                    payload, strict=True
-                )
-                self._feedback_baseline_by_id[baseline_item.query_id] = baseline_item
+        if self._feedback_query_by_id is None or self._feedback_baseline_by_id is None:
+            with self._feedback_identity_lock:
+                if self._feedback_query_by_id is None:
+                    queries: dict[str, Query] = {}
+                    for line in (
+                        self._path("queries").read_text(encoding="utf-8").splitlines()
+                    ):
+                        query_item = Query.model_validate_json(line, strict=True)
+                        queries[query_item.query_id] = query_item
+                    self._feedback_query_by_id = queries
+                if self._feedback_baseline_by_id is None:
+                    baselines: dict[str, AssistantObservation] = {}
+                    for line in (
+                        self._feedback_baseline_path()
+                        .read_text(encoding="utf-8")
+                        .splitlines()
+                    ):
+                        raw = json.loads(line)
+                        payload = raw.get("observation", raw)
+                        baseline_item = AssistantObservation.model_validate(
+                            payload, strict=True
+                        )
+                        baselines[baseline_item.query_id] = baseline_item
+                    self._feedback_baseline_by_id = baselines
+        assert self._feedback_query_by_id is not None
+        assert self._feedback_baseline_by_id is not None
         try:
             query = self._feedback_query_by_id[query_id]
             baseline = self._feedback_baseline_by_id[query_id]
@@ -680,23 +732,87 @@ class LiveCoreFastAdapter:
         prompt = build_feedback_evaluator_prompt_v6(packet)
         image_path = self._image_path(query)
         messages = evaluator_wire_messages(prompt, image_bytes=image_path.read_bytes())
+        if intent.payload.get("attribution_policy") == "answer-stage-body-only-v1":
+            attribution = canonical_json_bytes(
+                {
+                    "selection_class": intent.payload.get("selection_class"),
+                    "failure_cluster": intent.payload.get("failure_cluster"),
+                    "allowed_update_surface": "answer-stage Skill Body behavior only",
+                    "instruction": (
+                        "A policy_compatible suggestion is allowed only for "
+                        "body_fixable_failure, and only when routing was acceptable, "
+                        "tools succeeded, and the suggestion changes evidence-bounded "
+                        "final answer reasoning. For boundary_failure or "
+                        "success_anchor, use rejected or requires_new_evidence instead. "
+                        "Never propose routing, tool choice, tool arguments, or a "
+                        "runtime/compiler change."
+                    ),
+                }
+            ).decode("utf-8")
+            user_content = messages[1]["content"]
+            assert isinstance(user_content, list)
+            text_part = user_content[1]
+            assert isinstance(text_part, dict) and isinstance(
+                text_part.get("text"), str
+            )
+            text_part["text"] += "\n\nLOCAL S1 ATTRIBUTION CONTRACT:\n" + attribution
+        elif intent.payload.get("attribution_policy") == "dual-policy-attribution-v1":
+            attribution = canonical_json_bytes(
+                {
+                    "selection_class": intent.payload.get("selection_class"),
+                    "failure_cluster": intent.payload.get("failure_cluster"),
+                    "instruction": (
+                        "Classify each policy-compatible suggestion as exactly one "
+                        "surface in its text: [action-policy] for tool-first choice, "
+                        "public arguments, continuation, retry, or stopping; "
+                        "[response-policy] for visible evidence, cards, answer, "
+                        "uncertainty, or fallback. Do not combine the two surfaces "
+                        "in one suggestion and never propose routing Description edits."
+                    ),
+                }
+            ).decode("utf-8")
+            user_content = messages[1]["content"]
+            assert isinstance(user_content, list)
+            text_part = user_content[1]
+            assert isinstance(text_part, dict) and isinstance(
+                text_part.get("text"), str
+            )
+            text_part["text"] += "\n\nLOCAL S1 ATTRIBUTION CONTRACT:\n" + attribution
         started = time.perf_counter()
-        response = llm.chat(
-            "qwen",
-            messages,
-            model=intent.requested_model,
-            temperature=config.FEEDBACK_JUDGE_TEMPERATURE,
-            top_p=config.FEEDBACK_JUDGE_TOP_P,
-            thinking=config.FEEDBACK_JUDGE_THINKING,
-            thinking_budget=config.FEEDBACK_JUDGE_THINKING_BUDGET,
-            max_tokens=None,
-            max_completion_tokens=config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS,
-            json_mode=False,
-            response_format=visual_feedback_response_format_v1(),
-            max_attempts=1,
-            record_usage=False,
-            timeout_seconds=config.FEEDBACK_JUDGE_TIMEOUT_SECONDS,
-        )
+        try:
+            response = llm.chat(
+                "qwen",
+                messages,
+                model=intent.requested_model,
+                temperature=config.FEEDBACK_JUDGE_TEMPERATURE,
+                top_p=config.FEEDBACK_JUDGE_TOP_P,
+                thinking=config.FEEDBACK_JUDGE_THINKING,
+                thinking_budget=config.FEEDBACK_JUDGE_THINKING_BUDGET,
+                max_tokens=None,
+                max_completion_tokens=config.FEEDBACK_JUDGE_MAX_COMPLETION_TOKENS,
+                json_mode=False,
+                response_format=visual_feedback_response_format_v1(),
+                max_attempts=1,
+                record_usage=False,
+                timeout_seconds=config.FEEDBACK_JUDGE_TIMEOUT_SECONDS,
+            )
+        except BadRequestError as error:
+            message = str(error)
+            if (
+                "Model output became abnormal while generating a JSON response"
+                not in message
+            ):
+                raise
+            return CallResult(
+                call_id=intent.call_id,
+                role=intent.role,
+                status="schema_error",
+                requested_model=intent.requested_model,
+                latency_ms=round((time.perf_counter() - started) * 1000),
+                failure_reason=(
+                    "provider aborted malformed structured Feedback generation"
+                ),
+            )
         latency_ms = round((time.perf_counter() - started) * 1000)
         text = response.text
         input_tokens = response.usage.input_tokens
@@ -727,6 +843,8 @@ class LiveCoreFastAdapter:
             )
         try:
             parsed = parse_visual_feedback_output_v4(text)
+            if intent.payload.get("attribution_policy") == "dual-policy-attribution-v1":
+                parsed = _normalize_dual_policy_feedback_labels(parsed)
             require_policy_labeled_suggestions(parsed)
         except (TypeError, ValueError):
             return CallResult(

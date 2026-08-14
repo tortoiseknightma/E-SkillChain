@@ -67,6 +67,10 @@
 | 49 | 跨品类搭配不能伪装成同类视觉相似：需要 query-independent evidence graph | 工具分支与真实 smoke 完成；Core 重锁/模型增益待验证 | 检索建模、Codex 辅助数据闭环、证据边界、实验隔离 |
 | 50 | JSON Schema 能收紧结构契约，但不能让 reasoning-only 空正文变得不可能 | canary 已验证；phase60/全量未执行 | LLM 结构化输出、故障恢复、不可变审计、成本治理 |
 | 51 | Sparse patch 不等于因果隔离：需要 capability-local paired screen 与 byte-exact 回滚 | 已验证；Qwen3.7 S1 两批十轮负结果已冻结，未进入 S2 | 算法实验、因果归因、负迁移防护、诚实停止 |
+| 52 | 确定性 runtime 之后，S1 必须拥有真实 treatment surface | 历史方案已验证，现由 54 前向替代 | 因果实验、运行时设计、Gate 归因 |
+| 55 | 同一 Body 同时控制工具与答案时，S1 必须拆成两条因果 screen | 机制代码与离线回归已验证；真实增益待验证 | 因果归因、反事实 replay、分层指标、组合风险 |
+| 53 | 六能力 fan-out 不是六次自由搜索 | 历史方案已验证，机制保留 | 分支隔离、counterfactual replay、fan-in |
+| 54 | 确定性 response compiler 会吞掉 S1 Body 的 treatment surface | 代码与回归已修复；fresh Static/S1 效果待验证 | 因果实验、运行时设计、模型工具调用、迁移边界 |
 
 ---
 
@@ -5570,6 +5574,158 @@ Document 一项，但 Multi/Style/Recipe baseline 已满分，Exact/Encyclopedia
 - `docs/s1-experiment-log.html`
 - `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v5-20260813`
 - `D:\athena\experiment-runs\portfolio-core-qwen37-fanout-v6-20260813`
+
+---
+
+## 54. 确定性 response compiler 修好了格式，却让 S1 Body 失去因果作用
+
+**状态：代码与回归已修复；fresh Static/S1 效果待验证**
+
+### 一句话问题
+
+把 tool-first、DTO/card/evidence closure 和 fallback 全部收进确定性 runtime 后，格式更稳定了，
+但 S1 仍只能修改 Skill Body，而运行时不再读取 Body；parent/candidate 的差异因此不能归因于 S1。
+
+### 背景与影响
+
+deterministic v4–v6 曾在同一 contract 下完成 fresh Static 和 fan-out 实验，历史结果本身仍有效。
+但继续把这条 runtime 当作下一批 S1 的基础，会让 Creator 主要改动只存在于 artifact 中，无法影响
+工具选择或回答。即使指标变化，也更可能来自路由或工具波动，而不是候选 Bank。
+
+### 观察到的证据
+
+- deterministic action path 在路由后固定工具序列/参数，并直接编译最终回答，不进入读取 Skill Body
+  的 action model loop。
+- S1 冻结 Description；typed policy 之外的普通 Body prose 不影响输出，导致可修改面与可消费面错位。
+- 历史 R10 依赖 `core-fast-semantic-policy-v2` 的 Document literal-span 枚举；这是旧 runtime 专属
+  treatment，不能跨到恢复后的 model-generated runtime。
+- 默认 spec 若继续绑定旧 Static，会因 assistant contract identity 不同而失败；换 SHA 也不能修复
+  缺少 fresh parent 的公平性问题。
+
+### 考虑过的方案与取舍
+
+1. 为六能力继续扩 typed semantic policy：能保留确定性格式，但会把 S1 逐步变成 runtime 参数搜索，
+   与“Skill Body 自进化”目标偏离，未采用。
+2. 只在候选失败时让模型补救：parent/candidate 不对称，会夸大候选收益，拒绝。
+3. 删除 deterministic response compiler，恢复 action model 读取 Body、自选函数工具并写 final；采用。
+4. 完全取消格式约束：会让 GCS 输出协议失去可比性；保留模型可见 contract、格式预检与最多一次固定
+   repair，但这些只验证模型输出，不直接代写答案。
+
+### 最终方案
+
+活动 runtime identity 改为 `core-fast-model-generated-action-response-v1`。正常执行重新走 route → action
+model → function tool → action model final；S1 sparse compiler 删除 typed semantic-policy 字段，重新开放
+目标能力的 tool-step/fallback/citation authoring prose，同时继续冻结 Description、工具集合/顺序和其他
+五个 Skill。capability-local screen 仍复用 parent route/tool evidence 以减少采样噪声，但由模型按候选
+Body 重新生成回答。六能力 fan-out/fan-in、有界风险 screen 和 full-48 Feedback terminal gate 保留。
+
+### 如何验证
+
+- Runner、response contract、sparse compiler 与 live capacity 聚焦回归通过，证明真实 action model wire
+  仍包含函数工具，候选 Body 会进入 system prompt。
+- Core Fast/fan-out/lineage 回归通过，证明六分支仍可独立编译、screen、fan-in 与回滚。
+- deterministic compiler 模块、测试、typed policy schema/renderer 和 zero-call replay 均已删除。
+- 迁移当时 tracked spec 使用新 contract identity，并把 opt800 路径/SHA置为显式占位；fresh Static
+  未冻结前 `validate` fail closed，防止误用旧 deterministic observation。后续 fresh Static 已冻结，
+  当前 `validate` 已恢复通过。
+
+### 剩余限制
+
+恢复模型自由生成会重新暴露 tool skip、invalid arguments 和格式波动，因此历史 deterministic R10 的
+收益不能外推。后续 fresh Static opt800 已 800/800 完成，parent/no-op qualification 在 137 条
+treatment-reached replay 上以 1 gain / 0 regression 通过；新授权的 10 轮 S1 也已全部结束，但没有
+候选通过 +2pp body gate。R7 的 Multi 候选达到 replay +3.4483pp、body +10pp，折算六能力 macro
+仅 +1.6667pp，因此仍回滚。这个结果验证了 treatment 可消费，也说明恢复模型自由生成并没有自动
+带来足够的跨能力总体增益。
+
+### 30 秒回答
+
+“我曾把工具和答案闭合做成确定性 compiler，格式稳定了，但复核时发现 S1 只能改 Body，而 runtime
+已经不读 Body，实验变量实际上失效。我删除了 response compiler，恢复模型读取 Skill Body、原生函数
+调用和最终回答生成；保留格式预检作为对称评分保护。与此同时我让默认 spec 对旧 Static fail closed，
+要求 fresh baseline 后才能跑新 S1，避免把路由波动伪装成算法收益。”
+
+### 2 分钟回答
+
+“deterministic runtime 解决了历史 tool-first、DTO 和 fallback 波动，也在旧 contract 下得到过一个
+Document 正向结果。但它把最终回答完全编译掉了，而 S1 又冻结 Description，所以普通 Body patch
+不能影响执行。继续实验的话，任何 parent/candidate 差异都不可解释。
+
+我比较了两条路：继续扩 typed policy，或恢复模型 action loop。前者会把 S1 变成 runtime 参数搜索，
+不再体现 Skill Body 演化；我选择后者。现在路由后模型会拿到候选 Body 和允许的函数工具，自主选择
+工具/参数并生成 final；runner 只执行真实工具、记录公开证据、做格式预检和一次固定 repair。六能力
+fan-out/fan-in 没有丢：每项仍独立 Creator、独立 common-trace answer replay、有界风险筛查，通过后
+才组合。
+
+迁移时我还删除了 typed policy schema/renderer 和 zero-call replay，并把 runtime identity 升级。
+迁移时 tracked spec 不再偷偷指向旧 Static，而是先用占位输入强制 fail closed；完成 fresh Static 与
+no-op qualification 后再冻结新 SHA。这样历史 R10 保持只读，新 runtime 的实验变量也真实可消费。
+代价是模型波动会回来，不过结果才有因果解释。后续十轮进一步验证了：R7 有可复核的 Multi held-out
+信号，但总体仍未达到正式接受门。”
+
+### 2026-08-13 实验后补充
+
+- fresh Static：800/800，GCS 168/800，hard error 135/800，SHA `a9949cd6…2c0805a7`。
+- no-op qualification：137 条 treatment-reached，1 gain / 0 regression，qualified。
+- 新 R1–R10：全部 `accepted=false`；R4 覆盖 Multi + Style 但 body=0，R7 的 held-out 效果最强但
+  总体 +1.6667pp 未达 +2pp；selected Bank 仍为 Static。
+- 十轮的算法结论是 attribution-aware Feedback 比 failure-rich 重采样和 rejected-edit memory 更有效，
+  但单条稳定 Multi gain 不足以达到六能力 macro 门槛。不得事后把 R4 Style 与 R7 Multi 拼成未评测 Bank。
+
+### 证据入口
+
+- `src/skillchain/runners/assistant.py`
+- `src/skillchain/evolution/s1_sparse_patch.py`
+- `src/skillchain/evaluation/core_fast/live_adapter.py`
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `specs/core-experiment-fast-v1.json`
+- `tests/runners/test_assistant_action_contract.py`
+- `tests/evolution/test_s1_sparse_patch.py`
+- `tests/evaluation/test_core_fast.py`
+- `docs/s1-experiment-log.html`
+
+---
+
+## 55. 同一 Body 同时控制工具与答案时，S1 必须拆成两条因果 screen
+
+**状态：机制代码与离线回归已验证；真实算法增益待新 lineage 验证**
+
+### 一句话问题
+
+删除 deterministic runtime 后，模型自由生成暴露了 action/tool 与 response/grounding 两类失败；若仍用
+同一 GCS screen，工具跳过、参数错误和答案证据错误会混在一起，无法判断 Skill patch 真正修复了哪一层。
+
+### 最终方案
+
+每个 capability 仍只占一个独立 Creator 会话，但返回 `action-policy` 与 `response-policy` 两个可分别
+inherit/patch 的 typed surface。action screen 固定 Static route 并重跑 action/tool loop；response screen
+固定 route/tool/scorer evidence 并只重生回答。前者以 route/tool 两项合取为成功，避免回答格式错误
+污染 action 归因；后者以
+no-hard/evidence/output 三项合取为成功；两组 protected-success 和有界风险账本互不混用。通过的 surface
+先在 capability 内组合，再进入六能力 fan-in、完整 replay200 和 body_gate75。
+
+### 如何验证
+
+- runner 测试证明 action replay 没有新 route call，却重新产生 tool 与 final model calls；
+- response replay 保持 route/tool/scorer bytes；
+- policy screen 测试证明同一个 observation 可成为 action gain、同时仍是 response failure；
+- sparse compiler 测试证明两类 overlay 可独立编译、组合，且另外五个 Skill byte-exact；
+- 未调用 provider，不能把机制通过写成算法效果提升。
+
+### 30 秒回答
+
+“模型自由生成后，S1 Body 同时影响工具决策和最终回答。我把评测拆成两条：action-policy 固定路由后
+重跑工具循环，只看工具和停止；response-policy 固定路由与工具，只看证据、卡片和回答。每条都有自己
+的正例保护和风险门，通过后才组合，所以收益可以归因，组合风险仍由完整 replay 和 holdout gate 兜底。”
+
+### 证据入口
+
+- `src/skillchain/runners/assistant.py`
+- `src/skillchain/evolution/s1_sparse_patch.py`
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `tests/runners/test_assistant_action_contract.py`
+- `tests/evolution/test_s1_sparse_patch.py`
+- `tests/evaluation/test_core_fast.py`
 
 ---
 

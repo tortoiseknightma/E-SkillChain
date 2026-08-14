@@ -152,6 +152,10 @@ def visual_feedback_json_schema_v1() -> dict[str, object]:
                 "items": {"type": "string", "minLength": 1},
                 "maxItems": 8,
             },
+            "evidence_quality_notes": {
+                "type": ["string", "null"],
+                "minLength": 1,
+            },
         },
         "required": [
             "schema_version",
@@ -159,6 +163,7 @@ def visual_feedback_json_schema_v1() -> dict[str, object]:
             "rule_violations",
             "ideal_response_gaps",
             "skill_suggestions",
+            "evidence_quality_notes",
         ],
     }
 

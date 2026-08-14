@@ -14,7 +14,8 @@ from skillchain.evaluation.core_fast.models import (
     AssistantObservation,
     CallIntent,
     CoreFastSpec,
-    S1_SEMANTIC_POLICY_TARGETS,
+    S1_BODY_PATCH_TARGETS,
+    S1ParentBinding,
     S1Settings,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
@@ -27,6 +28,11 @@ from skillchain.evaluation.portfolio_treatments import (
     load_verified_codex_draft_rebind,
 )
 from skillchain.evolution import s1_gcs_gate as frozen_s1_gate
+from skillchain.evolution.s1_sparse_patch import (
+    DualPolicyPatchPayloadV1,
+    PolicySurfaceDraftV1,
+    compile_policy_surface_branch,
+)
 from skillchain.schemas import Query
 from skillchain.static_authoring import StaticBankArtifact
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
@@ -120,7 +126,7 @@ def _observation(
     *,
     success: bool = False,
     assistant_model: str = "fake-model",
-    assistant_contract: str = "core-fast-deterministic-action-response-v6",
+    assistant_contract: str = "core-fast-model-generated-action-response-v1",
 ) -> dict[str, object]:
     components = {
         "route_acceptable": True,
@@ -136,15 +142,23 @@ def _observation(
         route_trace_key=f"route:{query.canonical_capability}",
         tool_trace_key=f"tool:{query.query_id}",
         replay_context={
-            "response": {"backbone_model": assistant_model},
+            "response": {
+                "backbone_model": assistant_model,
+                "error_code": None,
+                "selected_capability": query.canonical_capability,
+                "skill_slug": f"skill-{query.canonical_capability}",
+                "route_trace_sha256": "a" * 64,
+            },
             "receipt": {
+                "outcome": "success",
+                "route_attempt": {"status": "selected"},
                 "model_calls": [
                     {
                         "requested_model": assistant_model,
                         "response_model": assistant_model,
                         "provider_request_id": f"fixture-{query.query_id}",
                     }
-                ]
+                ],
             },
             "assistant_result": {
                 "bank_sha256": _bank().bank_sha256,
@@ -406,6 +420,375 @@ def test_validate_fixes_core_geometry_and_samples(fast_fixture, tmp_path: Path) 
         "val": 200,
         "test_frozen": 300,
     }
+
+
+def test_accepted_s1_parent_binding_loads_its_own_opt800_and_rejects_rejected_parent(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    static_style = next(
+        item
+        for item in _bank().skills
+        if item.capability_id == "product.style_recommendation"
+    )
+    compiled_parent = compile_policy_surface_branch(
+        parent_bank=_bank(),
+        proposal=DualPolicyPatchPayloadV1(
+            capability_id="product.style_recommendation",
+            parent_skill_sha256=static_style.skill_sha256,
+            action_policy=PolicySurfaceDraftV1(action="inherit", policy_text=None),
+            response_policy=PolicySurfaceDraftV1(
+                action="patch",
+                policy_text="Preserve the accepted R12-style response behavior.",
+            ),
+        ),
+        surface="response-policy",
+    )
+    assert compiled_parent is not None
+    parent = compiled_parent.bank
+    assert parent.bank_sha256 != _bank().bank_sha256
+    parent_path = tmp_path / "r12-bank.json"
+    parent_path.write_bytes(parent.canonical_bytes())
+    decision = {
+        "schema_version": 1,
+        "stage": "s1",
+        "accepted": True,
+        "alias_of": None,
+        "parent_bank": _bank().bank_sha256,
+        "candidate_bank": parent.bank_sha256,
+        "selected_bank": parent.bank_sha256,
+        "reasons": [],
+        "metrics": {"round_id": "r12"},
+    }
+    decision_path = tmp_path / "r12-decision.json"
+    decision_path.write_bytes(canonical_json_bytes(decision))
+    manifest_path = tmp_path / "r12-manifest.json"
+    manifest_path.write_bytes(
+        canonical_json_bytes({"s1_settings": {"round_id": "r12"}})
+    )
+    source_opt = Path(spec.paths.opt_static_results)
+    opt_rows = [
+        json.loads(line) for line in source_opt.read_text(encoding="utf-8").splitlines()
+    ]
+    for row in opt_rows:
+        row["replay_context"]["assistant_result"]["bank_sha256"] = parent.bank_sha256
+    parent_opt_path = tmp_path / "r12-opt800.jsonl"
+    parent_opt_path.write_bytes(b"".join(canonical_json_bytes(row) for row in opt_rows))
+    recipe_ids = sorted(
+        query.query_id
+        for query in queries
+        if query.split == "opt_pool"
+        and query.canonical_capability == "utility.recipe_guidance"
+    )
+    protection_id = next(
+        query.query_id
+        for query in queries
+        if query.canonical_capability == "product.style_recommendation"
+    )
+    parent_style = next(
+        item
+        for item in parent.skills
+        if item.capability_id == "product.style_recommendation"
+    )
+    payload = spec.model_dump(mode="json")
+    payload["s1_parent"] = {
+        "source_round_id": "r12",
+        "bank_path": str(parent_path),
+        "bank_file_sha256": sha256_bytes(parent_path.read_bytes()),
+        "bank_sha256": parent.bank_sha256,
+        "decision_path": str(decision_path),
+        "decision_file_sha256": sha256_bytes(decision_path.read_bytes()),
+        "manifest_path": str(manifest_path),
+        "manifest_file_sha256": sha256_bytes(manifest_path.read_bytes()),
+        "opt_results_path": str(parent_opt_path),
+        "opt_results_sha256": sha256_bytes(parent_opt_path.read_bytes()),
+        "parent_protection_query_ids": [protection_id],
+        "protected_skill_sha256": {
+            "product.style_recommendation": parent_style.skill_sha256
+        },
+    }
+    payload["s1_settings"] = {
+        "round_id": "r31",
+        "feedback_mode": "fresh-per-round",
+        "feedback_total_count": 9,
+        "feedback_canary_count": 3,
+        "feedback_format_retry_limit": 1,
+        "feedback_selection_policy": "parent-counterfactual-v6",
+        "feedback_allocation": "target-focused",
+        "target_capabilities": ["utility.recipe_guidance"],
+        "proposal_mode": "single-surface-counterfactual-fanout-v4",
+        "max_patched_capabilities": 1,
+        "protected_capabilities": [
+            item for item in CAPABILITIES if item != "utility.recipe_guidance"
+        ],
+        "cycle_id": "s1-counterfactual-v1",
+        "target_surface": "action-policy",
+        "counterfactual_gain_seed_query_ids": recipe_ids[:2],
+        "counterfactual_regression_query_ids": recipe_ids[2:5],
+        "parent_protection_query_ids": [protection_id],
+    }
+    payload["limits"]["max_feedback_calls"] = 18
+    bound_spec = CoreFastSpec.model_validate_json(
+        canonical_json_bytes(payload), strict=True
+    )
+    engine = CoreFastEngine(
+        spec=bound_spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "accepted-parent",
+        adapter=FakeCoreFastAdapter(),
+    )
+    assert engine.s1_parent_bank().bank_sha256 == parent.bank_sha256
+    assert len(engine.s1_parent_opt()) == 800
+
+    parent_bootstrap_path = tmp_path / "fresh-r12-opt800.jsonl"
+    bootstrap_payload = bound_spec.model_dump(mode="json")
+    bootstrap_payload["s1_parent"]["opt_results_path"] = str(parent_bootstrap_path)
+    bootstrap_payload["s1_parent"]["opt_results_sha256"] = None
+    bootstrap_spec = CoreFastSpec.model_validate_json(
+        canonical_json_bytes(bootstrap_payload), strict=True
+    )
+
+    class RecordingAdapter(FakeCoreFastAdapter):
+        assistant_configs: list[str]
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.assistant_configs = []
+
+        def invoke(self, intent):
+            if intent.role == "assistant":
+                self.assistant_configs.append(str(intent.payload["config"]))
+            return super().invoke(intent)
+
+    recording = RecordingAdapter()
+    bootstrap_engine = CoreFastEngine(
+        spec=bootstrap_spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "accepted-parent-bootstrap",
+        adapter=recording,
+    )
+    bootstrap_engine.initialize_s1_parent_opt800()
+    bootstrap = bootstrap_engine.run_s1_parent_opt800()
+    assert bootstrap["row_count"] == 800
+    assert set(recording.assistant_configs) == {"s1"}
+    assert len(recording.assistant_configs) == 800
+
+    decision["accepted"] = False
+    decision["alias_of"] = "llm_static"
+    rejected_path = tmp_path / "rejected-decision.json"
+    rejected_path.write_bytes(canonical_json_bytes(decision))
+    rejected_payload = bound_spec.model_dump(mode="json")
+    rejected_payload["s1_parent"]["decision_path"] = str(rejected_path)
+    rejected_payload["s1_parent"]["decision_file_sha256"] = sha256_bytes(
+        rejected_path.read_bytes()
+    )
+    rejected_spec = CoreFastSpec.model_validate_json(
+        canonical_json_bytes(rejected_payload), strict=True
+    )
+    with pytest.raises(FastPathError, match="accepted selected Bank"):
+        CoreFastEngine(
+            spec=rejected_spec,
+            spec_path=spec_path,
+            output_root=tmp_path / "rejected-parent",
+            adapter=FakeCoreFastAdapter(),
+        ).s1_parent_bank()
+
+
+def test_counterfactual_branch_has_six_records_and_uses_only_target_surface(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    bank = _bank()
+    bank_path = tmp_path / "accepted-parent.json"
+    bank_path.write_bytes(bank.canonical_bytes())
+    decision_path = tmp_path / "accepted-decision.json"
+    decision_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "stage": "s1",
+                "accepted": True,
+                "alias_of": None,
+                "parent_bank": bank.bank_sha256,
+                "candidate_bank": bank.bank_sha256,
+                "selected_bank": bank.bank_sha256,
+                "reasons": [],
+                "metrics": {"round_id": "r12"},
+            }
+        )
+    )
+    manifest_path = tmp_path / "accepted-manifest.json"
+    manifest_path.write_bytes(
+        canonical_json_bytes({"s1_settings": {"round_id": "r12"}})
+    )
+    recipe_rows = [
+        query
+        for query in queries
+        if query.split == "opt_pool"
+        and query.canonical_capability == "utility.recipe_guidance"
+    ]
+    success_ids = tuple(
+        sorted(row.query_id for row in (recipe_rows[1], recipe_rows[6], recipe_rows[7]))
+    )
+    style_skill = next(
+        item
+        for item in bank.skills
+        if item.capability_id == "product.style_recommendation"
+    )
+    binding = S1ParentBinding(
+        source_round_id="r12",
+        bank_path=str(bank_path),
+        bank_file_sha256=sha256_bytes(bank_path.read_bytes()),
+        bank_sha256=bank.bank_sha256,
+        decision_path=str(decision_path),
+        decision_file_sha256=sha256_bytes(decision_path.read_bytes()),
+        manifest_path=str(manifest_path),
+        manifest_file_sha256=sha256_bytes(manifest_path.read_bytes()),
+        opt_results_path=spec.paths.opt_static_results,
+        opt_results_sha256=spec.opt_static_results_sha256,
+        parent_protection_query_ids=(
+            next(
+                query.query_id
+                for query in queries
+                if query.canonical_capability == "product.style_recommendation"
+            ),
+        ),
+        protected_skill_sha256={
+            "product.style_recommendation": style_skill.skill_sha256
+        },
+    )
+    settings = S1Settings(
+        round_id="r31",
+        feedback_total_count=9,
+        feedback_canary_count=3,
+        feedback_format_retry_limit=1,
+        feedback_selection_policy="parent-counterfactual-v6",
+        feedback_allocation="target-focused",
+        target_capabilities=("utility.recipe_guidance",),
+        proposal_mode="single-surface-counterfactual-fanout-v4",
+        max_patched_capabilities=1,
+        protected_capabilities=tuple(
+            item for item in CAPABILITIES if item != "utility.recipe_guidance"
+        ),
+        cycle_id="s1-counterfactual-v1",
+        target_surface="action-policy",
+        counterfactual_gain_seed_query_ids=tuple(
+            sorted((recipe_rows[0].query_id, recipe_rows[2].query_id))
+        ),
+        counterfactual_regression_query_ids=tuple(
+            sorted(
+                (
+                    recipe_rows[3].query_id,
+                    recipe_rows[4].query_id,
+                    recipe_rows[5].query_id,
+                )
+            )
+        ),
+        parent_protection_query_ids=binding.parent_protection_query_ids,
+    )
+    bound_spec = spec.model_copy(
+        update={
+            "s1_parent": binding,
+            "s1_settings": settings,
+            "limits": spec.limits.model_copy(update={"max_feedback_calls": 18}),
+        }
+    )
+
+    class LocalGainAdapter(FakeCoreFastAdapter):
+        def invoke(self, intent: CallIntent):
+            result = super().invoke(intent)
+            if (
+                intent.role == "assistant"
+                and "local-action-policy" in str(intent.payload.get("split"))
+                and result.output is not None
+            ):
+                observation = result.output["observation"]
+                assert isinstance(observation, dict)
+                query = intent.payload["query"]
+                assert isinstance(query, dict)
+                query_id = str(query["query_id"])
+                parent_control = intent.payload["config"] == "s1-parent-control"
+                pass_action = not parent_control or query_id in success_ids
+                components = observation["gcs_components"]
+                assert isinstance(components, dict)
+                components["route_acceptable"] = True
+                components["tool_contract_pass"] = pass_action
+                observation["gcs_score"] = float(all(components.values()))
+            return result
+
+    adapter = LocalGainAdapter()
+    engine = CoreFastEngine(
+        spec=bound_spec,
+        spec_path=spec_path,
+        output_root=tmp_path / "counterfactual-branch",
+        adapter=adapter,
+    )
+    evidence_rows = [
+        {
+            "query_id": query_id,
+            "sample_role": role,
+            "feedback": {
+                "skill_suggestions": [
+                    "[policy_compatible] apply the one visible-state action correction"
+                ]
+            },
+        }
+        for query_id, role in zip(
+            (
+                recipe_rows[0].query_id,
+                recipe_rows[2].query_id,
+                recipe_rows[8].query_id,
+                *success_ids,
+                recipe_rows[3].query_id,
+                recipe_rows[4].query_id,
+                recipe_rows[5].query_id,
+            ),
+            (
+                "cluster_failure",
+                "cluster_failure",
+                "cluster_failure",
+                "parent_success",
+                "parent_success",
+                "parent_success",
+                "historical_regression",
+                "historical_regression",
+                "historical_regression",
+            ),
+            strict=True,
+        )
+    ]
+    decision = engine._run_s1_counterfactual_branch(  # noqa: SLF001
+        parent=bank,
+        opt=engine.opt_static(),
+        query_by_id=engine.query_by_id(),
+        feedback_bundle={
+            "feedback_by_capability": {
+                capability: evidence_rows
+                if capability == "utility.recipe_guidance"
+                else []
+                for capability in CAPABILITIES
+            },
+            "policy_compatible_suggestions": [
+                {
+                    "capability": "utility.recipe_guidance",
+                    "suggestion": "[policy_compatible] apply the one visible-state action correction",
+                }
+            ],
+        },
+        feedback_bundle_sha256="f" * 64,
+        patchable_capabilities=frozenset({"utility.recipe_guidance"}),
+        metrics={"replay_accessed": False, "body_accessed": False},
+    )
+    assert decision.alias_of == "s1"
+    assert len(decision.metrics["fanout_branches"]) == 6
+    target = next(
+        row
+        for row in decision.metrics["fanout_branches"]
+        if row["capability"] == "utility.recipe_guidance"
+    )
+    assert target["local_screen"]["decision"] == "retain_patch"
+    assert target["surface"] == "action-policy"
+    assert adapter.calls["creator"] == 1
 
 
 def test_opt_static_rejects_rows_from_another_assistant_model(
@@ -904,22 +1287,25 @@ class _S1ScreenAdapter(FakeCoreFastAdapter):
                 }
                 if capability in self.patch_capabilities:
                     template = template_by_capability[capability]
+                    steps = [dict(item) for item in template["steps"]]
+                    steps[0]["instruction"] = (
+                        str(steps[0]["instruction"])
+                        + " Model-generated Body treatment."
+                    )
+                    fallback = str(template["fallback_instruction"])
+                    if (
+                        capability == "knowledge.visual_encyclopedia"
+                        and "not enough evidence" not in fallback.casefold()
+                    ):
+                        fallback += " State not enough evidence."
                     entry = {
                         **entry,
                         "action": "patch",
                         "patch": {
                             "objective": template["objective"],
-                            "steps": template["steps"],
-                            "fallback_instruction": template["fallback_instruction"],
+                            "steps": steps,
+                            "fallback_instruction": fallback,
                             "citation_source_ids": template["citation_source_ids"],
-                            "semantic_policy": {
-                                "schema_version": 1,
-                                "policy_version": "core-fast-semantic-policy-v2",
-                                "ocr_extraction_plan": "all-lines",
-                                "evidence_terms": ["ingredient"],
-                                "require_all_terms": False,
-                                "abstain_when_no_evidence": True,
-                            },
                         },
                     }
                 generated.append(entry)
@@ -1010,6 +1396,9 @@ class _FanoutScreenAdapter(FakeCoreFastAdapter):
         query = intent.payload["query"]
         assert isinstance(query, dict)
         success = str(query["query_id"]) in self.gain_query_ids
+        config = str(intent.payload.get("config", ""))
+        if "parent-control" in config:
+            success = False
         output = dict(result.output)
         observation = dict(output["observation"])
         observation.update(
@@ -1046,9 +1435,9 @@ def test_s1_fanout_screens_capabilities_independently_and_combines_only_passes(
         feedback_canary_count=6,
         feedback_selection_policy="discovery-stratified-v1",
         feedback_allocation="balanced-six-capability",
-        target_capabilities=S1_SEMANTIC_POLICY_TARGETS,
+        target_capabilities=S1_BODY_PATCH_TARGETS,
         proposal_mode="six-capability-fanout-fanin-v2",
-        max_patched_capabilities=len(S1_SEMANTIC_POLICY_TARGETS),
+        max_patched_capabilities=len(S1_BODY_PATCH_TARGETS),
         protected_capabilities=(),
     )
     run_spec = spec.model_copy(
@@ -1134,6 +1523,69 @@ def test_s1_fanout_screens_capabilities_independently_and_combines_only_passes(
         f"s1-creator-{capability}.intent.json" for capability in CAPABILITIES
     }
     assert decision.metrics["fanout_creator_call_count"] == 6
+    for capability in CAPABILITIES:
+        creator_intent = json.loads(
+            (
+                engine.output_root
+                / "calls"
+                / "creator"
+                / f"s1-creator-{capability}.intent.json"
+            ).read_text(encoding="utf-8")
+        )["payload"]
+        assert set(creator_intent["capability_discovery_summary"]) == {capability}
+        assert set(
+            creator_intent["feedback_evidence_bundle"]["failure_examples_by_capability"]
+        ) == {capability}
+        assert set(
+            creator_intent["feedback_evidence_bundle"][
+                "protected_success_examples_by_capability"
+            ]
+        ) == {capability}
+        assert set(
+            creator_intent["feedback_evidence_bundle"][
+                "diagnostic_non_body_failures_by_capability"
+            ]
+        ) == {capability}
+        assert all(
+            row["sample_role"] == "failure"
+            for row in creator_intent["feedback_evidence_bundle"][
+                "failure_examples_by_capability"
+            ][capability]
+        )
+
+        assert all(
+            row["sample_role"] == "anchor"
+            for row in creator_intent["feedback_evidence_bundle"][
+                "protected_success_examples_by_capability"
+            ][capability]
+        )
+    assistant_intents = tuple(
+        (engine.output_root / "calls" / "assistant").glob("*.intent.json")
+    )
+    for capability in CAPABILITIES:
+        branch_id = capability
+        assert any(
+            f"opt-replay-{branch_id}-s1-branch-{branch_id}-parent-control-a-"
+            in item.name
+            for item in assistant_intents
+        )
+        assert any(
+            f"opt-replay-{branch_id}-s1-branch-{branch_id}-candidate-a-" in item.name
+            for item in assistant_intents
+        )
+        record = records[capability]
+        assert record["adaptive_confirmation_count"] == int(capability in retained)
+        has_parent_confirmation = any(
+            f"opt-replay-{branch_id}-s1-branch-{branch_id}-parent-control-b-"
+            in item.name
+            for item in assistant_intents
+        )
+        has_candidate_confirmation = any(
+            f"opt-replay-{branch_id}-s1-branch-{branch_id}-candidate-b-" in item.name
+            for item in assistant_intents
+        )
+        assert has_parent_confirmation is (capability in retained)
+        assert has_candidate_confirmation is (capability in retained)
     assert not (
         engine.output_root / "calls" / "creator" / "s1-creator-once.intent.json"
     ).exists()
@@ -1248,6 +1700,71 @@ def test_s1_fanout_records_reason_migration_without_rejecting_it(
     ]
 
 
+def test_s1_policy_screens_use_distinct_metrics_and_protected_successes(
+    fast_fixture, tmp_path: Path
+) -> None:
+    engine = _engine(fast_fixture, tmp_path, FakeCoreFastAdapter())
+    query = next(
+        item
+        for item in _queries()
+        if item.canonical_capability == "product.multi_search"
+    )
+    baseline = AssistantObservation.model_validate(
+        _observation(query, success=False), strict=True
+    ).model_copy(
+        update={
+            "gcs_components": {
+                "route_acceptable": True,
+                "no_hard_error": True,
+                "tool_contract_pass": False,
+                "evidence_grounded": False,
+                "output_contract_pass": False,
+            },
+            "tool_violation": True,
+        }
+    )
+    candidate = baseline.model_copy(
+        update={
+            "gcs_components": {
+                "route_acceptable": True,
+                "no_hard_error": True,
+                "tool_contract_pass": True,
+                "evidence_grounded": False,
+                "output_contract_pass": False,
+            },
+            "gcs_score": 0.0,
+            "tool_violation": False,
+        }
+    )
+    action = engine._s1_policy_screen(
+        capability="product.multi_search",
+        surface="action-policy",
+        queries=(query,),
+        baseline={query.query_id: baseline},
+        candidate={query.query_id: candidate},
+    )
+    response = engine._s1_policy_screen(
+        capability="product.multi_search",
+        surface="response-policy",
+        queries=(query,),
+        baseline={query.query_id: baseline},
+        candidate={query.query_id: candidate},
+    )
+    assert action["gain_count"] == 1
+    assert action["decision"] == "retain_patch"
+    assert response["gain_count"] == 0
+    assert response["decision"] == "inherit_parent"
+    assert action["metric_components"] == [
+        "route_acceptable",
+        "tool_contract_pass",
+    ]
+    assert response["metric_components"] == [
+        "no_hard_error",
+        "evidence_grounded",
+        "output_contract_pass",
+    ]
+
+
 def test_s1_fanout_rejects_ordinary_failure_escalating_to_hard_failure(
     fast_fixture, tmp_path: Path
 ) -> None:
@@ -1294,7 +1811,7 @@ def test_s1_fanout_rejects_ordinary_failure_escalating_to_hard_failure(
 def test_s1_fanout_requires_all_six_typed_branches() -> None:
     settings = S1Settings(
         feedback_allocation="balanced-six-capability",
-        target_capabilities=S1_SEMANTIC_POLICY_TARGETS,
+        target_capabilities=S1_BODY_PATCH_TARGETS,
         proposal_mode="six-capability-fanout-fanin-v2",
         max_patched_capabilities=6,
         protected_capabilities=(),
@@ -1309,6 +1826,43 @@ def test_s1_fanout_requires_all_six_typed_branches() -> None:
             proposal_mode="six-capability-fanout-fanin-v2",
             max_patched_capabilities=5,
             protected_capabilities=("product.exact_match",),
+        )
+
+
+def test_s1_bounded_edit_surface_is_frozen_in_creator_requirements(
+    fast_fixture, tmp_path: Path
+) -> None:
+    spec, spec_path, _ = fast_fixture
+    settings = S1Settings(
+        feedback_total_count=12,
+        feedback_canary_count=6,
+        feedback_allocation="balanced-six-capability",
+        target_capabilities=S1_BODY_PATCH_TARGETS,
+        proposal_mode="six-capability-fanout-fanin-v2",
+        max_patched_capabilities=6,
+        protected_capabilities=(),
+        bounded_edit_surface="single-step-replace",
+    )
+    engine = CoreFastEngine(
+        spec=spec.model_copy(
+            update={
+                "s1_settings": settings,
+                "limits": spec.limits.model_copy(update={"max_creator_calls": 8}),
+            }
+        ),
+        spec_path=spec_path,
+        output_root=tmp_path / "bounded-edit",
+        adapter=FakeCoreFastAdapter(reject_stages=frozenset({"s1"})),
+    )
+    engine._feedback_start_pacer.wait = lambda: None
+
+    engine.run_s1()
+
+    for intent_path in (engine.output_root / "calls" / "creator").glob("*.intent.json"):
+        intent = json.loads(intent_path.read_text(encoding="utf-8"))
+        assert (
+            intent["payload"]["requirements"]["bounded_edit_surface"]
+            == "single-step-replace"
         )
 
 
@@ -1361,7 +1915,7 @@ def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
         ),
         creator_directives=("Keep the literal fallback marker.",),
         required_patch_phrases={
-            "utility.recipe_guidance": ("no supported recipe",),
+            "utility.recipe_guidance": ("creator-required-absent-phrase",),
         },
     )
     engine = CoreFastEngine(
@@ -1391,11 +1945,11 @@ def test_s1_round_focus_is_bound_and_missing_required_phrase_fails_closed(
     assert requirements["max_patched_capabilities"] == 1
     assert requirements["creator_directives"] == ["Keep the literal fallback marker."]
     assert requirements["required_patch_phrases"] == {
-        "utility.recipe_guidance": ["no supported recipe"]
+        "utility.recipe_guidance": ["creator-required-absent-phrase"]
     }
 
 
-def test_required_phrase_may_bind_a_typed_semantic_policy_value(
+def test_required_phrase_may_bind_model_generated_body_prose(
     fast_fixture, tmp_path: Path
 ) -> None:
     spec, spec_path, _ = fast_fixture

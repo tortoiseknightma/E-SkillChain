@@ -18,6 +18,296 @@ _COMPONENT_ORDER = (
 )
 
 
+class CounterfactualEvidenceError(ValueError):
+    """The frozen parent cannot supply a complete 3/3/3 evidence packet."""
+
+
+def _public_evidence_shape(observation: AssistantObservation) -> dict[str, object]:
+    result = observation.replay_context.get("assistant_result")
+    if not isinstance(result, dict):
+        return {"visible_cards": 0, "tool_evidence": []}
+    evidence = result.get("visible_tool_evidence")
+    rows = evidence if isinstance(evidence, list) else []
+    projected: list[dict[str, object]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        projected.append(
+            {
+                "tool_name": item.get("tool_name"),
+                "status": item.get("status"),
+                "cards": len(item.get("cards", []))
+                if isinstance(item.get("cards"), list)
+                else 0,
+                "citations": len(item.get("citations", []))
+                if isinstance(item.get("citations"), list)
+                else 0,
+                "detections": len(item.get("detections", []))
+                if isinstance(item.get("detections"), list)
+                else 0,
+            }
+        )
+    cards = result.get("visible_cards")
+    return {
+        "visible_cards": len(cards) if isinstance(cards, list) else 0,
+        "tool_evidence": projected,
+    }
+
+
+def _surface_success(
+    observation: AssistantObservation,
+    surface: str,
+    capability: str,
+) -> bool:
+    if observation.selected_capability != capability:
+        return False
+    components = observation.gcs_components
+    if surface == "action-policy":
+        return bool(components["route_acceptable"] and components["tool_contract_pass"])
+    if surface == "response-policy":
+        return bool(
+            components["route_acceptable"]
+            and components["tool_contract_pass"]
+            and components["no_hard_error"]
+            and components["evidence_grounded"]
+            and components["output_contract_pass"]
+        )
+    raise CounterfactualEvidenceError(f"unknown counterfactual surface: {surface}")
+
+
+def _counterfactual_state(
+    query: Query,
+    observation: AssistantObservation,
+    surface: str,
+) -> dict[str, object]:
+    trace = [
+        {
+            "tool_name": item.tool_name,
+            "status": item.status,
+            "error_code": item.error_code,
+        }
+        for item in observation.tool_trace
+    ]
+    common = {
+        "selected_capability": observation.selected_capability,
+        "source_or_boundary": query.boundary_strategy or observation.source or "none",
+        "answer_mode": observation.answer_mode,
+        "tool_trace": trace,
+        "public_evidence_shape": _public_evidence_shape(observation),
+    }
+    if surface == "action-policy":
+        return {
+            **common,
+            "failed_action_components": [
+                name
+                for name in ("route_acceptable", "tool_contract_pass")
+                if not observation.gcs_components[name]
+            ],
+        }
+    return {
+        **common,
+        "failed_response_components": [
+            name
+            for name in (
+                "no_hard_error",
+                "evidence_grounded",
+                "output_contract_pass",
+            )
+            if not observation.gcs_components[name]
+        ],
+        "response_reason_codes": list(observation.gcs_reason_codes),
+    }
+
+
+def build_parent_counterfactual_population(
+    *,
+    queries: Sequence[Query],
+    observations: Mapping[str, AssistantObservation],
+    settings: S1Settings,
+) -> tuple[dict[str, object], ...]:
+    """Project all parent opt800 rows for one pre-frozen surface treatment."""
+
+    if settings.target_surface is None or len(settings.target_capabilities) != 1:
+        raise CounterfactualEvidenceError(
+            "counterfactual population requires one target and one surface"
+        )
+    target = settings.target_capabilities[0]
+    rows: list[dict[str, object]] = []
+    for ordinal, query in enumerate(queries):
+        if query.split != "opt_pool" or query.canonical_capability != target:
+            continue
+        observation = observations[query.query_id]
+        if not observation.oracle_available:
+            raise CounterfactualEvidenceError(
+                f"parent counterfactual input lacks oracle coverage: {query.query_id}"
+            )
+        state = _counterfactual_state(query, observation, settings.target_surface)
+        success = _surface_success(observation, settings.target_surface, target)
+        rows.append(
+            {
+                "query_ordinal": ordinal,
+                "query_id": query.query_id,
+                "asset_id": query.asset_id,
+                "leakage_group_id": query.leakage_group_id,
+                "capability": target,
+                "surface": settings.target_surface,
+                "role": "parent_success" if success else "parent_failure",
+                "surface_success": success,
+                "state": state,
+                "state_sha256": _hash(state),
+                "cluster_sha256": _hash(
+                    {
+                        "surface": settings.target_surface,
+                        "capability": target,
+                        "state": state,
+                    }
+                ),
+            }
+        )
+    if not rows:
+        raise CounterfactualEvidenceError("counterfactual target population is empty")
+    return tuple(rows)
+
+
+def select_parent_counterfactual_samples(
+    population: Sequence[Mapping[str, object]],
+    settings: S1Settings,
+) -> tuple[dict[str, object], ...]:
+    """Select one cluster plus matched successes and historical regressions."""
+
+    by_id = {str(row["query_id"]): row for row in population}
+    seeds = [
+        by_id[query_id]
+        for query_id in settings.counterfactual_gain_seed_query_ids
+        if query_id in by_id and not bool(by_id[query_id]["surface_success"])
+    ]
+    if not seeds:
+        raise CounterfactualEvidenceError(
+            "insufficient_counterfactual_evidence: no frozen gain seed still fails"
+        )
+    cluster_support = Counter(str(row["cluster_sha256"]) for row in seeds)
+    current_failures = Counter(
+        str(row["cluster_sha256"])
+        for row in population
+        if not bool(row["surface_success"])
+    )
+    selected_cluster = min(
+        cluster_support,
+        key=lambda value: (
+            -cluster_support[value],
+            -current_failures[value],
+            value,
+        ),
+    )
+    failures = sorted(
+        (
+            row
+            for row in population
+            if not bool(row["surface_success"])
+            and row["cluster_sha256"] == selected_cluster
+            and row["query_id"] not in settings.counterfactual_regression_query_ids
+        ),
+        key=lambda row: (
+            0 if row["query_id"] in settings.counterfactual_gain_seed_query_ids else 1,
+            int(row["query_ordinal"]),
+            str(row["query_id"]),
+        ),
+    )
+    selected: list[Mapping[str, object]] = []
+
+    def take(rows: Iterable[Mapping[str, object]], count: int) -> None:
+        used_query = {row["query_id"] for row in selected}
+        used_asset = {row["asset_id"] for row in selected}
+        used_leakage = {row["leakage_group_id"] for row in selected}
+        for row in rows:
+            if len(selected) >= count:
+                return
+            if (
+                row["query_id"] in used_query
+                or row["asset_id"] in used_asset
+                or row["leakage_group_id"] in used_leakage
+            ):
+                continue
+            selected.append(row)
+            used_query.add(row["query_id"])
+            used_asset.add(row["asset_id"])
+            used_leakage.add(row["leakage_group_id"])
+
+    take(failures, 3)
+    if len(selected) != 3:
+        raise CounterfactualEvidenceError(
+            "insufficient_counterfactual_evidence: fewer than three cluster failures"
+        )
+    exemplar = selected[0]
+    exemplar_state = exemplar["state"]
+    assert isinstance(exemplar_state, dict)
+
+    def success_rank(row: Mapping[str, object]) -> tuple[int, int, int, str]:
+        state = row["state"]
+        assert isinstance(state, dict)
+        if settings.target_surface == "response-policy":
+            exact_boundary = int(
+                state.get("tool_trace") != exemplar_state.get("tool_trace")
+                or state.get("public_evidence_shape")
+                != exemplar_state.get("public_evidence_shape")
+            )
+        else:
+            exact_boundary = int(
+                state.get("source_or_boundary")
+                != exemplar_state.get("source_or_boundary")
+            )
+        return (
+            exact_boundary,
+            int(state.get("tool_trace") != exemplar_state.get("tool_trace")),
+            int(row["query_ordinal"]),
+            str(row["query_id"]),
+        )
+
+    successes = sorted(
+        (
+            row
+            for row in population
+            if bool(row["surface_success"])
+            and row["query_id"] not in settings.counterfactual_regression_query_ids
+        ),
+        key=success_rank,
+    )
+    if settings.target_surface == "response-policy":
+        successes = [row for row in successes if success_rank(row)[0] == 0]
+    take(successes, 6)
+    if len(selected) != 6:
+        raise CounterfactualEvidenceError(
+            "insufficient_counterfactual_evidence: fewer than three matched parent successes"
+        )
+    regressions = [
+        by_id[query_id]
+        for query_id in settings.counterfactual_regression_query_ids
+        if query_id in by_id
+    ]
+    take(regressions, 9)
+    if len(selected) != 9:
+        raise CounterfactualEvidenceError(
+            "insufficient_counterfactual_evidence: fewer than three distinct regressions"
+        )
+    roles = (
+        "cluster_failure",
+        "cluster_failure",
+        "cluster_failure",
+        "parent_success",
+        "parent_success",
+        "parent_success",
+        "historical_regression",
+        "historical_regression",
+        "historical_regression",
+    )
+    rows = [
+        {**dict(row), "counterfactual_role": role} for row, role in zip(selected, roles)
+    ]
+    # Canary3 observes one sample from every evidence class.
+    order = (0, 3, 6, 1, 2, 4, 5, 7, 8)
+    return tuple(rows[index] for index in order)
+
+
 def _hash(value: object) -> str:
     return sha256_bytes(canonical_json_bytes(value))
 
@@ -402,7 +692,12 @@ def select_feedback_samples(
                 ),
             )
             _unique_take(fallback, total, selected=selected)
-    elif settings.feedback_selection_policy == "discovery-contrastive-v2":
+    elif settings.feedback_selection_policy in {
+        "discovery-contrastive-v2",
+        "discovery-supported-clusters-v3",
+        "discovery-attributed-v4",
+        "discovery-dual-policy-v5",
+    }:
         quotient, remainder = divmod(total, len(CAPABILITIES))
         quotas = {
             capability: quotient + int(index < remainder)
@@ -438,6 +733,11 @@ def select_feedback_samples(
             capability: [row for row in population if row["capability"] == capability]
             for capability in CAPABILITIES
         }
+        cluster_support = Counter(
+            str(row["cluster"]["cluster_sha256"])  # type: ignore[index]
+            for row in population
+            if row["role"] == "failure"
+        )
         desired_failures = {
             capability: min(
                 quotas[capability] // 2,
@@ -467,16 +767,48 @@ def select_feedback_samples(
                 quotas[capability],
                 len(by_capability[capability]) + desired_failures[capability],
             )
-            body = _round_robin(
-                row
-                for row in populations[capability]
-                if row["selection_class"] == "body_fixable_failure"
-            )
-            boundary = _round_robin(
-                row
-                for row in populations[capability]
-                if row["selection_class"] == "boundary_failure"
-            )
+            if settings.feedback_selection_policy in {
+                "discovery-supported-clusters-v3",
+                "discovery-attributed-v4",
+                "discovery-dual-policy-v5",
+            }:
+
+                def rank(row: Mapping[str, object]) -> tuple[int, int, str]:
+                    return (
+                        -cluster_support[
+                            str(row["cluster"]["cluster_sha256"])  # type: ignore[index]
+                        ],
+                        int(row["query_ordinal"]),
+                        str(row["query_id"]),
+                    )
+
+                body = sorted(
+                    (
+                        row
+                        for row in populations[capability]
+                        if row["selection_class"] == "body_fixable_failure"
+                    ),
+                    key=rank,
+                )
+                boundary = sorted(
+                    (
+                        row
+                        for row in populations[capability]
+                        if row["selection_class"] == "boundary_failure"
+                    ),
+                    key=rank,
+                )
+            else:
+                body = _round_robin(
+                    row
+                    for row in populations[capability]
+                    if row["selection_class"] == "body_fixable_failure"
+                )
+                boundary = _round_robin(
+                    row
+                    for row in populations[capability]
+                    if row["selection_class"] == "boundary_failure"
+                )
             take(capability, body, failure_goal)
             take(capability, boundary, failure_goal)
             fallback = sorted(
@@ -492,9 +824,12 @@ def select_feedback_samples(
                 ),
             )
             take(capability, fallback, quotas[capability])
-        selected = [
-            row for capability in CAPABILITIES for row in by_capability[capability]
-        ]
+        selected = []
+        # Interleave capabilities so the operational canary covers all six
+        # branches instead of accidentally probing only the first capability.
+        for ordinal in range(max(len(rows) for rows in by_capability.values())):
+            for rows in by_capability.values():
+                selected.extend(rows[ordinal : ordinal + 1])
     else:
         quotient, remainder = divmod(total, len(CAPABILITIES))
         for index, capability in enumerate(CAPABILITIES):
@@ -573,11 +908,71 @@ def build_feedback_selection_manifest(
     return _self_hashed(unsigned, "manifest_sha256")
 
 
+def build_parent_counterfactual_manifest(
+    *,
+    population: Sequence[Mapping[str, object]],
+    selected: Sequence[Mapping[str, object]],
+    settings: S1Settings,
+    parent_bank_sha256: str,
+    parent_opt_sha256: str,
+) -> dict[str, object]:
+    if len(selected) != 9:
+        raise CounterfactualEvidenceError("counterfactual manifest requires nine rows")
+    role_counts = Counter(str(row["counterfactual_role"]) for row in selected)
+    if role_counts != Counter(
+        {"cluster_failure": 3, "parent_success": 3, "historical_regression": 3}
+    ):
+        raise CounterfactualEvidenceError(
+            "counterfactual manifest role geometry differs"
+        )
+    unsigned = {
+        "schema_version": 1,
+        "kind": "core-fast-parent-counterfactual-selection-manifest",
+        "cycle_id": settings.cycle_id,
+        "round_id": settings.round_id,
+        "parent_bank_sha256": parent_bank_sha256,
+        "parent_opt_sha256": parent_opt_sha256,
+        "target_capability": settings.target_capabilities[0],
+        "target_surface": settings.target_surface,
+        "population_count": len(population),
+        "population_sha256": _hash(list(population)),
+        "selection_policy": settings.feedback_selection_policy,
+        "requested_count": 9,
+        "effective_count": 9,
+        "canary_count": 3,
+        "selected_query_ids": [row["query_id"] for row in selected],
+        "selected_samples": [
+            {
+                "selection_ordinal": index,
+                "query_id": row["query_id"],
+                "capability": row["capability"],
+                "role": row["counterfactual_role"],
+                "selection_class": row["counterfactual_role"],
+                "cluster_sha256": row["cluster_sha256"],
+                "failure_cluster": row["state"],
+                "state_sha256": row["state_sha256"],
+                "selection_reason": "frozen_counterfactual_3_failure_3_success_3_regression",
+            }
+            for index, row in enumerate(selected, start=1)
+        ],
+        "capability_quotas": {settings.target_capabilities[0]: 9},
+        "role_quotas": dict(sorted(role_counts.items())),
+        "cluster_coverage": dict(
+            sorted(Counter(str(row["cluster_sha256"]) for row in selected).items())
+        ),
+    }
+    return _self_hashed(unsigned, "manifest_sha256")
+
+
 __all__ = [
+    "CounterfactualEvidenceError",
     "build_discovery_failure_summary",
     "build_discovery_feedback_population",
     "build_feedback_selection_manifest",
+    "build_parent_counterfactual_manifest",
+    "build_parent_counterfactual_population",
     "project_feedback_observation",
     "project_feedback_query",
     "select_feedback_samples",
+    "select_parent_counterfactual_samples",
 ]

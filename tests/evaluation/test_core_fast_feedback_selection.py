@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import importlib.util
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,11 @@ import pytest
 from skillchain.evaluation.core_fast.engine import CoreFastEngine, FastPathError
 from skillchain.evaluation.core_fast.fake_provider import FakeCoreFastAdapter
 from skillchain.evaluation.core_fast.feedback_selection import (
+    CounterfactualEvidenceError,
     build_discovery_feedback_population,
+    build_parent_counterfactual_manifest,
+    build_parent_counterfactual_population,
+    select_parent_counterfactual_samples,
     select_feedback_samples,
 )
 from skillchain.evaluation.core_fast.models import CAPABILITIES, S1Settings
@@ -84,6 +89,99 @@ def test_discovery_population_covers_600_and_excludes_replay(fast_fixture) -> No
     assert query_ids.isdisjoint(replay_ids)
 
 
+def test_parent_counterfactual_selection_freezes_one_cluster_and_three_three_three(
+    fast_fixture,
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=spec_path.parent / "counterfactual-population",
+        adapter=FakeCoreFastAdapter(),
+    )
+    target_rows = [
+        query
+        for query in queries
+        if query.split == "opt_pool"
+        and query.canonical_capability == "utility.recipe_guidance"
+    ]
+    settings = S1Settings.model_validate(
+        {
+            "round_id": "r31",
+            "feedback_mode": "fresh-per-round",
+            "feedback_total_count": 9,
+            "feedback_canary_count": 3,
+            "feedback_format_retry_limit": 1,
+            "feedback_selection_policy": "parent-counterfactual-v6",
+            "feedback_allocation": "target-focused",
+            "target_capabilities": ("utility.recipe_guidance",),
+            "proposal_mode": "single-surface-counterfactual-fanout-v4",
+            "max_patched_capabilities": 1,
+            "protected_capabilities": tuple(
+                item for item in CAPABILITIES if item != "utility.recipe_guidance"
+            ),
+            "cycle_id": "s1-counterfactual-v1",
+            "target_surface": "response-policy",
+            "counterfactual_gain_seed_query_ids": tuple(
+                sorted((target_rows[0].query_id, target_rows[2].query_id))
+            ),
+            "counterfactual_regression_query_ids": tuple(
+                sorted(
+                    (
+                        target_rows[3].query_id,
+                        target_rows[4].query_id,
+                        target_rows[5].query_id,
+                    )
+                )
+            ),
+            "parent_protection_query_ids": ("style-protection",),
+        },
+        strict=True,
+    )
+    population = build_parent_counterfactual_population(
+        queries=queries,
+        observations=engine.opt_static(),
+        settings=settings,
+    )
+    selected = select_parent_counterfactual_samples(population, settings)
+    assert len(selected) == 9
+    assert Counter(row["counterfactual_role"] for row in selected) == Counter(
+        {"cluster_failure": 3, "parent_success": 3, "historical_regression": 3}
+    )
+    failures = [
+        row for row in selected if row["counterfactual_role"] == "cluster_failure"
+    ]
+    assert len({row["cluster_sha256"] for row in failures}) == 1
+    assert tuple(row["counterfactual_role"] for row in selected[:3]) == (
+        "cluster_failure",
+        "parent_success",
+        "historical_regression",
+    )
+    assert len({row["leakage_group_id"] for row in selected}) == 9
+    manifest = build_parent_counterfactual_manifest(
+        population=population,
+        selected=selected,
+        settings=settings,
+        parent_bank_sha256="a" * 64,
+        parent_opt_sha256="b" * 64,
+    )
+    assert manifest["role_quotas"] == {
+        "cluster_failure": 3,
+        "historical_regression": 3,
+        "parent_success": 3,
+    }
+    with pytest.raises(CounterfactualEvidenceError, match="parent successes"):
+        select_parent_counterfactual_samples(
+            tuple(
+                row
+                for row in population
+                if row["role"] != "parent_success"
+                or row["query_id"] in {target_rows[1].query_id, target_rows[6].query_id}
+            ),
+            settings,
+        )
+
+
 @pytest.mark.parametrize("count", (12, 24, 48, 60))
 def test_selection_counts_are_deterministic_and_unique(
     fast_fixture, count: int
@@ -145,6 +243,50 @@ def test_contrastive_selection_balances_failures_and_success_anchors(
             assert observed_anchors <= available_anchors
         assert observed_failures + observed_anchors == 10
         assert observed_failures <= available_failures
+
+
+def test_supported_cluster_selection_interleaves_canary_and_prioritizes_support(
+    fast_fixture,
+) -> None:
+    population = _population(fast_fixture)
+    selected = select_feedback_samples(
+        population,
+        _settings(count=60, policy="discovery-supported-clusters-v3"),
+    )
+    assert tuple(row["capability"] for row in selected[:6]) == CAPABILITIES
+    for capability in CAPABILITIES:
+        selected_failures = [
+            row
+            for row in selected
+            if row["capability"] == capability and row["role"] == "failure"
+        ]
+        all_failures = [
+            row
+            for row in population
+            if row["capability"] == capability and row["role"] == "failure"
+        ]
+        support = Counter(row["cluster"]["cluster_sha256"] for row in all_failures)
+        observed = [
+            support[row["cluster"]["cluster_sha256"]] for row in selected_failures
+        ]
+        assert observed == sorted(observed, reverse=True)
+
+
+def test_attributed_selection_uses_the_same_supported_interleaved_population(
+    fast_fixture,
+) -> None:
+    population = _population(fast_fixture)
+    supported = select_feedback_samples(
+        population,
+        _settings(count=60, policy="discovery-supported-clusters-v3"),
+    )
+    attributed = select_feedback_samples(
+        population,
+        _settings(count=60, policy="discovery-attributed-v4"),
+    )
+    assert canonical_json_bytes(list(attributed)) == canonical_json_bytes(
+        list(supported)
+    )
 
 
 def test_prepare_is_byte_exact_and_manifest_drift_fails_closed(

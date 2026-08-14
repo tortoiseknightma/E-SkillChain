@@ -1799,7 +1799,16 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    # Legacy-only compatibility for frozen deterministic replay artifacts.
+    # The active Core Fast runner no longer produces this field.
     deterministic_replay_source_receipt_sha256: Sha256 | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    # Active Core Fast action-policy replay reuses a previously captured
+    # selected route while making fresh action/tool calls.  It must not claim
+    # that its first model call is a newly captured route call.
+    fixed_stage1_route_attempt_sha256: Sha256 | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
     )
@@ -1827,6 +1836,8 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             payload.pop("response_contract_repair", None)
         if self.deterministic_replay_source_receipt_sha256 is None:
             payload.pop("deterministic_replay_source_receipt_sha256", None)
+        if self.fixed_stage1_route_attempt_sha256 is None:
+            payload.pop("fixed_stage1_route_attempt_sha256", None)
         return payload
 
     @model_validator(mode="after")
@@ -1873,6 +1884,18 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             raise ValueError(
                 "deterministic replay must be a zero-call successful selected route"
             )
+        if self.fixed_stage1_route_attempt_sha256 is not None and (
+            self.policy_version != ASSISTANT_EXECUTION_RECEIPT_POLICY_VERSION
+            or self.route_attempt is None
+            or self.route_attempt.status != "selected"
+            or self.route_attempt.route_attempt_sha256
+            != self.fixed_stage1_route_attempt_sha256
+            or self.shared_route_reference is not None
+            or self.route_call_evidence is not None
+        ):
+            raise ValueError(
+                "fixed Stage-1 route receipt does not bind one selected route"
+            )
         route_evidence = self.route_call_evidence
         if route_evidence is not None:
             if (
@@ -1888,6 +1911,7 @@ class AssistantExecutionReceipt(_StrictFrozenModel):
             and self.route_attempt is not None
             and self.route_attempt.status != "not_applicable"
             and self.shared_route_reference is None
+            and self.fixed_stage1_route_attempt_sha256 is None
             and self.model_calls
             and route_evidence is None
         ):
