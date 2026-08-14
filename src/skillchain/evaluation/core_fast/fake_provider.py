@@ -4,6 +4,9 @@ import hashlib
 from collections import Counter
 
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
+from skillchain.evolution.s1_sparse_patch import (
+    S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY,
+)
 
 from .models import CAPABILITIES, CallIntent, CallResult
 
@@ -102,6 +105,7 @@ class FakeCoreFastAdapter:
                         in {
                             "single-surface-counterfactual-v4",
                             "single-surface-counterfactual-v5",
+                            "single-surface-counterfactual-v6",
                         }
                         else "[policy_compatible] make the existing contract explicit"
                     ),
@@ -135,7 +139,10 @@ class FakeCoreFastAdapter:
                 )
                 payload: dict[str, object] = {
                     "schema_version": (
-                        2
+                        3
+                        if intent.payload.get("proposal_mode")
+                        == "single-surface-counterfactual-fanout-v6"
+                        else 2
                         if intent.payload.get("proposal_mode")
                         == "single-surface-counterfactual-fanout-v5"
                         else 1
@@ -154,19 +161,57 @@ class FakeCoreFastAdapter:
                         for query_id in success_ids
                     ],
                 }
-                if payload["schema_version"] == 2 and surface == "action-policy":
+                if payload["schema_version"] in {2, 3} and surface == "action-policy":
+                    expected = requirements.get(
+                        "action_condition_is_bound_to_selected_failure_state"
+                    )
                     payload.update(
                         {
-                            "action_when": {
+                            "action_when": expected
+                            if isinstance(expected, dict)
+                            else {
                                 "phase": "before-first-tool",
                                 "prior_tool_name": None,
                                 "prior_tool_status": "not-called",
                                 "public_evidence": "unknown",
                             },
                             "action_then": {
-                                "operation": "invoke-tool-once",
-                                "tool_name": skill["operators"][0],
-                                "arguments_from": "current-user-request",
+                                "operation": "retry-tool-once"
+                                if isinstance(expected, dict)
+                                and expected.get("phase") == "after-tool"
+                                else "invoke-tool-once",
+                                "tool_name": expected.get("prior_tool_name")
+                                if isinstance(expected, dict)
+                                and expected.get("phase") == "after-tool"
+                                else skill["operators"][0],
+                                "arguments_from": (
+                                    "last-valid-arguments"
+                                    if isinstance(expected, dict)
+                                    and expected.get("prior_tool_status") == "error"
+                                    else "current-user-request"
+                                ),
+                            },
+                        }
+                    )
+                elif payload["schema_version"] == 3:
+                    signature = requirements.get(
+                        "response_behavior_is_bound_to_selected_failure"
+                    )
+                    assert isinstance(signature, dict)
+                    evidence = signature["terminal_evidence_class"]
+                    assert isinstance(evidence, dict)
+                    family = str(signature["response_failure_family"])
+                    payload.update(
+                        {
+                            "response_when": {
+                                "terminal_tool_names": evidence["tool_names"],
+                                "terminal_evidence_outcome": evidence["outcome"],
+                                "evidence_kinds": evidence["evidence_kinds"],
+                            },
+                            "response_then": {
+                                "operation": S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY[
+                                    family
+                                ]
                             },
                         }
                     )

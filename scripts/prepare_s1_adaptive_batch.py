@@ -65,7 +65,11 @@ def _load_plan(path: Path) -> dict[str, object]:
             or regressions != sorted(set(regressions))
             or len(regressions) < 3
             or selection_policy
-            not in {"parent-counterfactual-v7", "parent-counterfactual-v8"}
+            not in {
+                "parent-counterfactual-v7",
+                "parent-counterfactual-v8",
+                "parent-counterfactual-v9",
+            }
             or not isinstance(exclusions, list)
             or exclusions != sorted(set(exclusions))
             or any(not isinstance(item, str) or not item for item in exclusions)

@@ -804,6 +804,7 @@ class LiveCoreFastAdapter:
         elif intent.payload.get("attribution_policy") in {
             "single-surface-counterfactual-v4",
             "single-surface-counterfactual-v5",
+            "single-surface-counterfactual-v6",
         }:
             target_surface = intent.payload.get("target_surface")
             if target_surface not in {"action-policy", "response-policy"}:
@@ -892,6 +893,7 @@ class LiveCoreFastAdapter:
                 "dual-policy-attribution-v1",
                 "single-surface-counterfactual-v4",
                 "single-surface-counterfactual-v5",
+                "single-surface-counterfactual-v6",
             }:
                 parsed = _normalize_dual_policy_feedback_labels(parsed)
             require_policy_labeled_suggestions(parsed)

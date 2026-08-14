@@ -25,7 +25,10 @@ from skillchain.evaluation.core_fast.feedback_selection import (  # noqa: E402
 )
 from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
     S1_CAPABILITY_ACTION_TOOLS,
+    S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY,
+    compile_counterfactual_semantic_policy_branch,
     compile_counterfactual_typed_policy_branch,
+    parse_counterfactual_semantic_policy_patch,
     parse_counterfactual_typed_policy_patch,
 )
 from skillchain.schemas import Query  # noqa: E402
@@ -294,7 +297,9 @@ def _round_spec(
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
         "proposal_mode": (
-            "single-surface-counterfactual-fanout-v5"
+            "single-surface-counterfactual-fanout-v6"
+            if typed_contract and selection_policy == "parent-counterfactual-v9"
+            else "single-surface-counterfactual-fanout-v5"
             if typed_contract
             else "single-surface-counterfactual-fanout-v4"
         ),
@@ -450,8 +455,12 @@ def _treatment_probe(
             if row["counterfactual_role"] == "parent_success"
         )
     )
+    semantic_contract = (
+        getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
+        == "single-surface-counterfactual-fanout-v6"
+    )
     payload: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3 if semantic_contract else 2,
         "capability_id": capability,
         "parent_skill_sha256": parent_skill.skill_sha256,
         "target_surface": surface,
@@ -483,10 +492,9 @@ def _treatment_probe(
             if isinstance(selected_failure, dict)
             else None
         )
-        if (
-            getattr(settings, "feedback_selection_policy", "parent-counterfactual-v7")
-            == "parent-counterfactual-v8"
-        ):
+        if getattr(
+            settings, "feedback_selection_policy", "parent-counterfactual-v7"
+        ) in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
             if not isinstance(action_signature, dict):
                 raise ValueError(
                     "action treatment has no provider-visible failure state"
@@ -559,36 +567,67 @@ def _treatment_probe(
             if isinstance(selected_failure, dict)
             else None
         )
-        if (
-            getattr(settings, "feedback_selection_policy", "parent-counterfactual-v7")
-            == "parent-counterfactual-v8"
-        ):
+        if settings.feedback_selection_policy in {
+            "parent-counterfactual-v8",
+            "parent-counterfactual-v9",
+        }:
             if not isinstance(response_signature, dict):
                 raise ValueError(
                     "response treatment has no provider-visible failure family"
                 )
-            when, then = _response_probe_clauses(response_signature, capability)
+            if semantic_contract:
+                evidence = response_signature.get("terminal_evidence_class")
+                family = response_signature.get("response_failure_family")
+                operation = S1_RESPONSE_OPERATION_BY_FAILURE_FAMILY.get(str(family))
+                if not isinstance(evidence, dict) or operation is None:
+                    raise ValueError("response treatment has no typed behavior")
+                payload.update(
+                    {
+                        "response_when": {
+                            "terminal_tool_names": evidence.get("tool_names"),
+                            "terminal_evidence_outcome": evidence.get("outcome"),
+                            "evidence_kinds": evidence.get("evidence_kinds"),
+                        },
+                        "response_then": {"operation": operation},
+                    }
+                )
+            else:
+                when, then = _response_probe_clauses(response_signature, capability)
+                payload.update({"when": when, "then": then})
         else:
             when = "the fixed public tool evidence contains an item association"
             then = (
                 "preserve only the item association supported by that public evidence"
             )
-        payload.update(
-            {
-                "when": when,
-                "then": then,
-            }
+            payload.update({"when": when, "then": then})
+    if semantic_contract:
+        proposal = parse_counterfactual_semantic_policy_patch(
+            canonical_json_bytes(payload),
+            capability_id=capability,
+            parent_skill_sha256=parent_skill.skill_sha256,
+            target_surface=surface,
+            parent_success_query_ids=success_ids,
+            expected_action_condition=(
+                payload.get("action_when") if surface == "action-policy" else None
+            ),
+            expected_response_signature=(
+                response_signature if surface == "response-policy" else None
+            ),
         )
-    proposal = parse_counterfactual_typed_policy_patch(
-        canonical_json_bytes(payload),
-        capability_id=capability,
-        parent_skill_sha256=parent_skill.skill_sha256,
-        target_surface=surface,
-        parent_success_query_ids=success_ids,
-    )
-    compiled = compile_counterfactual_typed_policy_branch(
-        parent_bank=parent, proposal=proposal
-    )
+        compiled = compile_counterfactual_semantic_policy_branch(
+            parent_bank=parent, proposal=proposal
+        )
+    else:
+        proposal = parse_counterfactual_typed_policy_patch(
+            canonical_json_bytes(payload),
+            capability_id=capability,
+            parent_skill_sha256=parent_skill.skill_sha256,
+            target_surface=surface,
+            parent_success_query_ids=success_ids,
+        )
+        compiled = compile_counterfactual_typed_policy_branch(
+            parent_bank=parent, proposal=proposal
+        )
     candidate_skill = next(
         item for item in compiled.bank.skills if item.capability_id == capability
     )
@@ -607,7 +646,7 @@ def _treatment_probe(
         for left, right in zip(parent.skills, compiled.bank.skills, strict=True)
         if left.capability_id != capability
     )
-    sensitive = bool(
+    structural_sensitive = bool(
         candidate_skill.skill_sha256 != parent_skill.skill_sha256
         and candidate_skill.description == parent_skill.description
         and candidate_skill.operators == parent_skill.operators
@@ -615,8 +654,59 @@ def _treatment_probe(
         and forbidden_heading not in candidate_skill.body
         and protected_exact
     )
+    behavior_sensitive = True
+    behavior_probe: dict[str, object] = {}
+    if semantic_contract and surface == "response-policy":
+        assert isinstance(response_signature, dict)
+        predicted_reason = response_signature.get("predicted_reason_code")
+        predicted_component = response_signature.get("predicted_metric_component")
+        terminal_evidence = response_signature.get("terminal_evidence_class")
+        failure_rows = tuple(
+            row
+            for row in selected
+            if row.get("counterfactual_role") == "cluster_failure"
+        )
+        success_rows = tuple(
+            row
+            for row in selected
+            if row.get("counterfactual_role") == "parent_success"
+        )
+        behavior_sensitive = bool(
+            isinstance(predicted_reason, str)
+            and isinstance(predicted_component, str)
+            and isinstance(terminal_evidence, dict)
+            and len(failure_rows) == 3
+            and len(success_rows) == 3
+            and all(
+                isinstance(row.get("state"), dict)
+                and predicted_reason in row["state"].get("response_reason_codes", ())
+                and predicted_component
+                in row["state"].get("failed_response_components", ())
+                and row["state"].get("terminal_response_evidence_class")
+                == terminal_evidence
+                for row in failure_rows
+            )
+            and all(
+                isinstance(row.get("state"), dict)
+                and predicted_component
+                not in row["state"].get("failed_response_components", ())
+                and row["state"].get("terminal_response_evidence_class")
+                == terminal_evidence
+                for row in success_rows
+            )
+        )
+        behavior_probe = {
+            "probe_response_predicted_reason_code": predicted_reason,
+            "probe_response_predicted_metric_component": predicted_component,
+            "probe_response_failure_count": len(failure_rows),
+            "probe_response_protected_success_count": len(success_rows),
+            "probe_response_behavior_sensitive": behavior_sensitive,
+        }
+    sensitive = structural_sensitive and behavior_sensitive
     return {
         "treatment_sensitive": sensitive,
+        "structural_treatment_sensitive": structural_sensitive,
+        "behavior_treatment_sensitive": behavior_sensitive,
         "probe_candidate_bank_sha256": compiled.bank.bank_sha256,
         "probe_candidate_skill_sha256": candidate_skill.skill_sha256,
         "probe_policy_text_sha256": sha256_bytes(compiled.policy_text.encode("utf-8")),
@@ -647,6 +737,7 @@ def _treatment_probe(
                 )
             }
         ),
+        **behavior_probe,
     }
 
 
@@ -699,7 +790,10 @@ def _build_cycle_preflight(
                 }
             )
             treatment_separable = True
-            if spec.s1_settings.feedback_selection_policy == "parent-counterfactual-v8":
+            if spec.s1_settings.feedback_selection_policy in {
+                "parent-counterfactual-v8",
+                "parent-counterfactual-v9",
+            }:
                 if spec.s1_settings.target_surface == "action-policy":
                     failure_signatures = {
                         canonical_json_bytes(row.get("action_treatment_signature"))

@@ -160,6 +160,7 @@ def prepare_static_bootstrap_spec(
         "feedback_mode": "fresh-per-round",
         "feedback_total_count": 48,
         "feedback_canary_count": 6,
+        "feedback_format_retry_limit": 0,
         "feedback_selection_policy": "discovery-stratified-v1",
         "feedback_allocation": "balanced-six-capability",
         "target_capabilities": list(S1_BODY_PATCH_TARGETS),
@@ -169,6 +170,7 @@ def prepare_static_bootstrap_spec(
         "creator_directives": [],
         "required_patch_phrases": {},
     }
+    payload["limits"]["max_feedback_calls"] = 48
     payload["limits"]["max_creator_calls"] = 8
     disclosures = _clean_disclosures(base.disclosures)
     disclosures.append(

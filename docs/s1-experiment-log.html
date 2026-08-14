@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R12 仍是唯一正式 accepted；自适应 R34–R48 已完成 15/30，0 branch accepted，test 未访问</span>
+        <span>R12 仍是唯一正式 accepted；R34–R48 已完成 15/30，R49–R53 仅完成零调用资格证明，test 未访问</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -571,7 +571,9 @@
         5/5 通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight；R44
         Recipe action 局部 7/1 并进入正式 replay200，但因 hard-error delta +2pp 回滚；R45/R46 为
         Multi response 0/0，R47 停在 Creator contract，R48 Encyclopedia response 为 0/1。body75、
-        test300、S2/S3/Judge 均未启动；因此仍没有新的 accepted S1 或最终 test 结论。
+        test300、S2/S3/Judge 均未启动；因此仍没有新的 accepted S1 或最终 test 结论。下一批
+        R49–R53 已用 surface-closed Creator IR、surface-filtered Feedback 与行为级 preflight 完成
+        5/5 零调用资格证明，但尚未启动 Feedback、Creator 或 Assistant，完成轮数仍是 15/30。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -1924,6 +1926,47 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-analysis" id="exp-20260815-counterfactual-v6-preflight" data-status="analysis" data-capability="recipe,exact,encyclopedia,multi">
+          <div class="experiment-title">
+            <div>
+              <div class="experiment-id">MECH-20260815-B06</div>
+              <h3>Counterfactual v6 · surface-closed IR 与行为级全轮预检</h3>
+              <p>在不调用 provider 的前提下，先证明 R49–R53 的证据可用、两侧状态可分，而且规范化 treatment 会改变预期评分行为。</p>
+            </div>
+            <div class="experiment-labels"><span class="state baseline">Qualified · not run</span><span class="tag">0 provider calls</span></div>
+          </div>
+
+          <div class="result-row">
+            <div class="result-box"><strong>5 / 5</strong><span>evidence feasible</span></div>
+            <div class="result-box"><strong>5 / 5</strong><span>treatment separable</span></div>
+            <div class="result-box"><strong>5 / 5</strong><span>structural + behavior sensitive</span></div>
+            <div class="result-box"><strong>15 / 30</strong><span>completed rounds unchanged</span></div>
+          </div>
+
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · Bank <code>e70ed907…096cd</code> · opt SHA <code>4c6bafa6…84fcf</code></dd></div>
+            <div><dt>Mechanism</dt><dd><code>single-surface-counterfactual-fanout-v6</code> + <code>parent-counterfactual-v9</code></dd></div>
+            <div><dt>Frozen rounds</dt><dd>R49 Recipe fallback；R50 Exact unsupported claim；R51 Encyclopedia unsupported claim；R52 Encyclopedia citation closure；R53 Multi item association</dd></div>
+            <div><dt>Execution</dt><dd>Feedback 0 · Creator 0 · Assistant 0 · replay/body/test 0</dd></div>
+          </dl>
+
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>action proposal 继续使用 capability-bound typed tool-loop state/transition，无法表达 answer/cards/evidence/fallback；response proposal 改成封闭枚举 IR，condition 只能引用 terminal tool、empty/nonempty evidence 与公开 evidence kind，directive 只能选择当前 failure family 对应的一项规范化语义操作。Feedback 在进入 Creator 前按 surface 投影。</p></div>
+            <div class="finding"><span class="kind fact">FACT</span><p>response selector 只用实际承载回答证据的 terminal tool 建立 fingerprint，并同时冻结目标 reason code 与 scorer component。preflight 要求 3 个 failure 在该边界上确有目标 component failure，3 个 parent-success 在相同边界上保持成功；仅产生不同 policy hash 不再算 treatment-sensitive。</p></div>
+            <div class="finding"><span class="kind fact">FACT</span><p>前两个 create-only root 都在 0 provider call 时停止：第一次发现 fallback/item-association scorer component 绑定错误，并发现 Encyclopedia output-structure 无法形成合格 3/3/3；第二次进一步定位 Multi item-association 的 component 绑定错误。修正资格定义并替换不可行 family 后，第三个独立 root 才得到 5/5 通过。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该结果只证明下一批 treatment 在静态证据与评分语义上可执行、可区分；它不能证明 Creator 会给出有效规则，也不能预测 replay、body 或 test 增益。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>停在资格证明，不启动 R49–R53。R12 保持唯一 parent/selected Bank；15/30 完成数、局部有界风险门、正式 hard-error 门、R33 accepted-only fan-in 与 one-finalist test300 均不变。</p></div>
+          </div>
+
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>specs/s1-r12-adaptive-batch06.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-20260815\batch-preflight.json · failed, 0 calls</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-v2-20260815\batch-preflight.json · failed, 0 calls</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-v3-20260815\batch-preflight.json · SHA 359a187c…16b97</code>
+            <code>batch-definition SHA 5b6ee5d3…03c28 · provider_calls=0</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -2043,6 +2086,18 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="decision-meta"><span class="tag">parent：R12 only</span><span class="tag">R17/R26/R29：禁止</span><span class="tag">Creator：≤2</span><span class="tag">S2/S3/Judge：0-call</span></div>
           </div>
         </article>
+
+        <article class="decision-card" id="decision-surface-closed-counterfactual-v6">
+          <div>
+            <div class="decision-id">DEC-20260815-03</div>
+            <span class="state baseline">离线资格通过</span>
+          </div>
+          <div>
+            <h3>Surface-closed Creator IR + scored-behavior preflight</h3>
+            <p>action 与 response proposal 都改为各自封闭的 typed IR；Feedback 先按 surface 投影，response failure cluster 绑定 terminal evidence、reason code 与 scorer component。所有预注册轮次必须在任何 Feedback 前同时通过 evidence feasibility、treatment separability、结构敏感性和行为敏感性。</p>
+            <div class="decision-meta"><span class="tag">验证：B06 5/5</span><span class="tag">provider calls：0</span><span class="tag">S1 增益：未声明</span><span class="tag">parent：R12 only</span></div>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -2068,7 +2123,8 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         R12 是唯一 accepted Bank。R31 Recipe action、R32 Multi response 与 accepted-only R33
         fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
         parent 或被复制。自适应 R34–R48 也已结束当前三个预算阶段，仍为 0 个 accepted branch；
-        finalist 为 null，test300 仍 untouched。下一阶段不得事后修文案、缩保护集或重跑挑结果。
+        R49–R53 仅完成 5/5 零调用资格证明，尚未启动实验。finalist 为 null，test300 仍 untouched。
+        下一阶段不得事后修文案、缩保护集或重跑挑结果。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">
@@ -2085,7 +2141,7 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         </article>
 
         <article class="future-card priority" id="future-typed-response-operation">
-          <span class="state priority">Next-stage priority</span>
+          <span class="state baseline">Offline qualified</span>
           <h3>ALG-10 · Typed response semantic operation</h3>
           <p>把自由文本 <code>then</code> 收紧为不可携带评价标签、跨 family checklist 或机械 closure 文案的 response IR。</p>
           <dl class="future-fields">
@@ -2093,6 +2149,7 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div><dt>证据</dt><dd>R45/R46 的不同 policy hash 均为 0/0；R47 因评价式自由文本被拒且 Assistant 0-call；R48 真正执行后为 0/1。</dd></div>
             <div><dt>可证伪预测</dt><dd>preflight 不仅证明 rule bytes 不同，还能对至少一个选中 failure 预测具体 scorer component 改变；Creator 输出无法表示 response 之外的 surface 或私有评价标签。</dd></div>
             <div><dt>冻结边界</dt><dd>R12-only parent、局部有界风险门、formal hard-error 门、R33 accepted-only fan-in 与 one-finalist test300 均不变。</dd></div>
+            <div><dt>资格结果</dt><dd>B06 的 v6/v9 实现对五个预注册 response round 全部通过结构与行为 sensitivity；Feedback/Creator/Assistant 仍为 0-call，因此没有效果结论。</dd></div>
           </dl>
         </article>
 

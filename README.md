@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R48（15/30）。第三阶段 R44–R48 在任何新调用前一次性通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight：R44 Recipe typed action 在局部 screen 得到 7 gains / 1 regression，并进入正式 replay200，macro +1.6667pp、Recipe +10pp，但 hard-error delta +2pp 超过冻结门而回滚；R45/R46 两个 Multi response family 均为 0/0；R47 在 Creator contract 安全停止、Assistant 0-call；R48 Encyclopedia response 为 0/1。R34–R48 仍无新 accepted branch，未访问 body75/test300/S2/S3/Judge。三个阶段新增可追踪 DashScope 成本合计 ¥2.2644525；14 次 Creator 会话的人民币 cost basis 不可得。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R48（15/30）。第三阶段 R44–R48 在任何新调用前一次性通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight：R44 Recipe typed action 在局部 screen 得到 7 gains / 1 regression，并进入正式 replay200，macro +1.6667pp、Recipe +10pp，但 hard-error delta +2pp 超过冻结门而回滚；R45/R46 两个 Multi response family 均为 0/0；R47 在 Creator contract 安全停止、Assistant 0-call；R48 Encyclopedia response 为 0/1。此后 R49–R53 已用新的 surface-closed Creator IR、surface-filtered Feedback 与行为级 preflight 完成 5/5 零调用资格证明，但尚未启动 Feedback、Creator 或 replay，因此完成轮数仍为 15/30。R34–R48 仍无新 accepted branch，未访问 body75/test300/S2/S3/Judge。三个已执行阶段新增可追踪 DashScope 成本合计 ¥2.2644525；14 次 Creator 会话的人民币 cost basis 不可得。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -130,6 +130,20 @@ screen，但均为 0 gain / 0 regression；R47 的 Encyclopedia unsupported-clai
 5 个 Creator 会话、674 个 Assistant outer calls 和可追踪 DashScope ¥1.23552605；R12 仍是唯一 parent
 与 selected Bank，body75/test300/S2/S3/Judge 未访问。下一阶段优先把 response `then` 也收紧为
 typed semantic operation，并让 preflight 证明规则能改变具体评分行为，而不只是生成不同的 policy hash。
+
+下一批 B06 已完成机制资格证明但**尚未启动实验**。`single-surface-counterfactual-fanout-v6`
+继续使用既有 typed action state/transition，并把 response Creator 也改成封闭枚举 IR：condition 只能引用
+terminal tool、empty/nonempty evidence 与公开 evidence kind，directive 只能选择一项 claim/evidence/card/
+fallback 语义操作；schema 不再提供自由文本 `when/then` 或 action channel。Feedback packet 在进入 Creator
+前按 action/response surface 投影，response selector 只以真正承载回答证据的 terminal tool 建立
+failure cluster，并绑定预期 reason code 与 scorer component。
+
+在任何新 Feedback 前，B06 对 R49–R53 一次性完成 evidence-feasibility、treatment-separability、
+结构敏感性和行为级 treatment-sensitivity 检查，最终为 5/5 通过、provider calls=0。前两次 create-only
+预检分别因 fallback/item-association 的 scorer component 绑定错误，以及 Encyclopedia
+output-structure 在 R12 evidence 上不可形成 3/3/3 对照而失败；修正资格定义和预注册 family 后，第三个
+独立 root 才冻结通过。R49–R53 仍只读 R12，尚未调用 Feedback/Creator/Assistant；15/30 完成数、
+局部/正式 gate、R33 accepted-only fan-in 与 one-finalist test300 全部不变。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前

@@ -25,18 +25,21 @@ from skillchain.evolution.s1_sparse_patch import (
     SparseCompilationReceiptV1,
     S1SparsePatchError,
     bind_sparse_patch_draft,
+    compile_counterfactual_semantic_policy_branch,
     compile_counterfactual_policy_branch,
     compile_counterfactual_typed_policy_branch,
     compile_sparse_s1_candidate,
     compile_policy_surface_branch,
     compose_policy_surface_branches,
     compose_screened_sparse_bank,
+    counterfactual_semantic_policy_patch_output_json_schema,
     counterfactual_policy_patch_output_json_schema,
     counterfactual_typed_policy_patch_output_json_schema,
     decode_sparse_parent_content,
     dual_policy_patch_output_json_schema,
     load_sparse_compilation_receipt,
     parse_dual_policy_patch,
+    parse_counterfactual_semantic_policy_patch,
     parse_counterfactual_policy_patch,
     parse_counterfactual_typed_policy_patch,
     sparse_author_content_lexical_guard,
@@ -68,6 +71,7 @@ from .feedback_selection import (
     build_parent_counterfactual_manifest,
     build_parent_counterfactual_population,
     project_feedback_observation,
+    project_feedback_observation_for_surface,
     project_feedback_query,
     select_feedback_samples,
     select_parent_counterfactual_samples,
@@ -110,10 +114,16 @@ _COUNTERFACTUAL_PROPOSAL_MODES = frozenset(
     {
         "single-surface-counterfactual-fanout-v4",
         "single-surface-counterfactual-fanout-v5",
+        "single-surface-counterfactual-fanout-v6",
     }
 )
 _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
-    {"parent-counterfactual-v6", "parent-counterfactual-v7", "parent-counterfactual-v8"}
+    {
+        "parent-counterfactual-v6",
+        "parent-counterfactual-v7",
+        "parent-counterfactual-v8",
+        "parent-counterfactual-v9",
+    }
 )
 
 
@@ -2373,6 +2383,7 @@ class CoreFastEngine:
         | None = None,
         counterfactual_parent_success_ids: tuple[str, ...] = (),
         counterfactual_action_condition: Mapping[str, object] | None = None,
+        counterfactual_response_signature: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         capability_enum = list(CAPABILITIES)
         if stage == "s1":
@@ -2384,6 +2395,17 @@ class CoreFastEngine:
                 if len(targets) != 1:
                     raise ValueError("counterfactual schema requires one target")
                 capability = targets[0]
+                if self.spec.s1_settings.proposal_mode == (
+                    "single-surface-counterfactual-fanout-v6"
+                ):
+                    return counterfactual_semantic_policy_patch_output_json_schema(
+                        capability_id=capability,
+                        parent_skill_sha256=by_capability[capability].skill_sha256,
+                        target_surface=counterfactual_surface,
+                        parent_success_query_ids=counterfactual_parent_success_ids,
+                        expected_action_condition=counterfactual_action_condition,
+                        expected_response_signature=counterfactual_response_signature,
+                    )
                 if self.spec.s1_settings.proposal_mode == (
                     "single-surface-counterfactual-fanout-v5"
                 ):
@@ -2612,7 +2634,10 @@ class CoreFastEngine:
         """Fail before provider calls unless every pre-registered round is viable."""
 
         settings = self.spec.s1_settings
-        if settings.proposal_mode != "single-surface-counterfactual-fanout-v5":
+        if settings.proposal_mode not in {
+            "single-surface-counterfactual-fanout-v5",
+            "single-surface-counterfactual-fanout-v6",
+        }:
             return None
         if (
             settings.cycle_preflight_path is None
@@ -2641,7 +2666,8 @@ class CoreFastEngine:
                 or item.get("evidence_feasible") is not True
                 or item.get("treatment_sensitive") is not True
                 or (
-                    settings.feedback_selection_policy == "parent-counterfactual-v8"
+                    settings.feedback_selection_policy
+                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
                     and item.get("treatment_separable") is not True
                 )
                 for item in rounds.values()
@@ -2807,13 +2833,23 @@ class CoreFastEngine:
             "selection_manifest_sha256": selection_manifest_sha256,
             "selection_ordinal": sample["selection_ordinal"],
             "query": project_feedback_query(query),
-            "baseline": project_feedback_observation(baseline),
+            "baseline": (
+                project_feedback_observation_for_surface(
+                    baseline, self.spec.s1_settings.target_surface
+                )
+                if self.spec.s1_settings.proposal_mode in _COUNTERFACTUAL_PROPOSAL_MODES
+                and self.spec.s1_settings.target_surface is not None
+                else project_feedback_observation(baseline)
+            ),
             "sample_role": sample["role"],
             "selection_class": sample["selection_class"],
             "failure_cluster": sample["failure_cluster"],
             "target_surface": self.spec.s1_settings.target_surface,
             "attribution_policy": (
-                "single-surface-counterfactual-v5"
+                "single-surface-counterfactual-v6"
+                if self.spec.s1_settings.proposal_mode
+                == "single-surface-counterfactual-fanout-v6"
+                else "single-surface-counterfactual-v5"
                 if self.spec.s1_settings.proposal_mode
                 == "single-surface-counterfactual-fanout-v5"
                 else "single-surface-counterfactual-v4"
@@ -2927,7 +2963,15 @@ class CoreFastEngine:
                         if "response_treatment_signature" in sample
                         else {}
                     ),
-                    "baseline_observation": project_feedback_observation(opt[query_id]),
+                    "baseline_observation": (
+                        project_feedback_observation_for_surface(
+                            opt[query_id], self.spec.s1_settings.target_surface
+                        )
+                        if self.spec.s1_settings.proposal_mode
+                        in _COUNTERFACTUAL_PROPOSAL_MODES
+                        and self.spec.s1_settings.target_surface is not None
+                        else project_feedback_observation(opt[query_id])
+                    ),
                     "status": result.status,
                     "feedback": self._parse_feedback_result(result),
                     "failure_reason": result.failure_reason,
@@ -4445,8 +4489,10 @@ class CoreFastEngine:
             )
         )
         expected_action_condition: Mapping[str, object] | None = None
+        expected_response_signature: Mapping[str, object] | None = None
         if (
-            settings.feedback_selection_policy == "parent-counterfactual-v8"
+            settings.feedback_selection_policy
+            in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
             and settings.target_surface == "action-policy"
         ):
             action_conditions = {
@@ -4471,6 +4517,32 @@ class CoreFastEngine:
                     "counterfactual action treatment state is not an object"
                 )
             expected_action_condition = raw_condition
+        if (
+            settings.feedback_selection_policy == "parent-counterfactual-v9"
+            and settings.target_surface == "response-policy"
+        ):
+            response_signatures = {
+                canonical_json_bytes(row.get("response_treatment_signature"))
+                for row in evidence_rows
+                if row.get("sample_role") == "cluster_failure"
+            }
+            if (
+                len(response_signatures) != 1
+                or canonical_json_bytes(None) in response_signatures
+            ):
+                raise FastPathError(
+                    "counterfactual response evidence lacks one bound scored behavior"
+                )
+            raw_signature = next(
+                row.get("response_treatment_signature")
+                for row in evidence_rows
+                if row.get("sample_role") == "cluster_failure"
+            )
+            if not isinstance(raw_signature, dict):
+                raise FastPathError(
+                    "counterfactual response treatment signature is not an object"
+                )
+            expected_response_signature = raw_signature
         branch_records: list[dict[str, object]] = [
             {
                 "capability": capability,
@@ -4554,7 +4626,10 @@ class CoreFastEngine:
                     "then_target_surface_only": settings.target_surface,
                     "action_output_is_typed_ir_without_response_text": (
                         settings.proposal_mode
-                        == "single-surface-counterfactual-fanout-v5"
+                        in {
+                            "single-surface-counterfactual-fanout-v5",
+                            "single-surface-counterfactual-fanout-v6",
+                        }
                         and settings.target_surface == "action-policy"
                     ),
                     "action_condition_is_bound_to_selected_failure_state": (
@@ -4562,13 +4637,19 @@ class CoreFastEngine:
                     ),
                     "action_transition_obeys_capability_tool_order": (
                         settings.proposal_mode
-                        == "single-surface-counterfactual-fanout-v5"
+                        in {
+                            "single-surface-counterfactual-fanout-v5",
+                            "single-surface-counterfactual-fanout-v6",
+                        }
                         and settings.target_surface == "action-policy"
                     ),
-                    "response_when_then_are_single_clauses_without_semicolons": (
+                    "response_output_is_typed_ir_without_action_or_answer_text": (
                         settings.proposal_mode
-                        == "single-surface-counterfactual-fanout-v5"
+                        == "single-surface-counterfactual-fanout-v6"
                         and settings.target_surface == "response-policy"
+                    ),
+                    "response_behavior_is_bound_to_selected_failure": (
+                        expected_response_signature
                     ),
                     "non_target_surface": "inherit",
                     "must_preserve_exactly": list(parent_success_ids),
@@ -4584,6 +4665,7 @@ class CoreFastEngine:
                     counterfactual_surface=settings.target_surface,
                     counterfactual_parent_success_ids=parent_success_ids,
                     counterfactual_action_condition=expected_action_condition,
+                    counterfactual_response_signature=expected_response_signature,
                 ),
             },
         )
@@ -4597,7 +4679,20 @@ class CoreFastEngine:
                 or creator.output is None
             ):
                 raise S1SparsePatchError("counterfactual Creator result is invalid")
-            if settings.proposal_mode == "single-surface-counterfactual-fanout-v5":
+            if settings.proposal_mode == "single-surface-counterfactual-fanout-v6":
+                semantic_proposal = parse_counterfactual_semantic_policy_patch(
+                    canonical_json_bytes(creator.output),
+                    capability_id=target,
+                    parent_skill_sha256=parent_by_capability[target].skill_sha256,
+                    target_surface=settings.target_surface,
+                    parent_success_query_ids=parent_success_ids,
+                    expected_action_condition=expected_action_condition,
+                    expected_response_signature=expected_response_signature,
+                )
+                compiled = compile_counterfactual_semantic_policy_branch(
+                    parent_bank=parent, proposal=semantic_proposal
+                )
+            elif settings.proposal_mode == "single-surface-counterfactual-fanout-v5":
                 typed_proposal = parse_counterfactual_typed_policy_patch(
                     canonical_json_bytes(creator.output),
                     capability_id=target,

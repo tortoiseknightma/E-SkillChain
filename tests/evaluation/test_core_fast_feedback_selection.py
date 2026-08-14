@@ -14,6 +14,7 @@ from skillchain.evaluation.core_fast.feedback_selection import (
     build_discovery_feedback_population,
     build_parent_counterfactual_manifest,
     build_parent_counterfactual_population,
+    project_feedback_observation_for_surface,
     select_parent_counterfactual_samples,
     select_feedback_samples,
 )
@@ -563,6 +564,154 @@ def test_v8_response_selector_uses_one_failure_family_and_stable_controls(
     } == {"item-association"}
     assert chosen[6].query_id not in {row["query_id"] for row in successes}
     assert {row["response_treatment_signature"] for row in successes} == {None}
+
+
+def test_v9_response_selector_binds_terminal_evidence_and_scored_behavior(
+    fast_fixture,
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=spec_path.parent / "v9-response-population",
+        adapter=FakeCoreFastAdapter(),
+    )
+    target = "utility.recipe_guidance"
+    target_rows = [
+        query
+        for query in queries
+        if query.split == "opt_pool" and query.canonical_capability == target
+    ]
+    chosen = target_rows[::2][:13]
+    observations = dict(engine.opt_static())
+    trace = (
+        ToolTraceItem(
+            tool_name="object_detect", status="success", result_sha256="a" * 64
+        ),
+        ToolTraceItem(
+            tool_name="recipe_lookup", status="success", result_sha256="b" * 64
+        ),
+    )
+    for index, query in enumerate(chosen):
+        original = observations[query.query_id]
+        failed = index < 6
+        components = dict(original.gcs_components)
+        components.update(
+            {
+                "route_acceptable": True,
+                "tool_contract_pass": True,
+                "no_hard_error": True,
+                "evidence_grounded": not failed,
+                "output_contract_pass": True,
+            }
+        )
+        context = json.loads(json.dumps(original.replay_context))
+        context["assistant_result"]["visible_tool_evidence"] = [
+            {
+                "tool_name": "object_detect",
+                "status": "success",
+                "cards": [],
+                "citations": [],
+                "detections": [{}],
+                "visible_text": "one visible detection",
+            },
+            {
+                "tool_name": "recipe_lookup",
+                "status": "success",
+                "cards": [],
+                "citations": [],
+                "detections": [],
+                "visible_text": "[tool-call-2-source-1] public source text",
+            },
+        ]
+        observations[query.query_id] = original.model_copy(
+            update={
+                "selected_capability": target,
+                "tool_trace": trace,
+                "hard_error": False,
+                "gcs_components": components,
+                "gcs_reason_codes": ("unsupported_claim",) if failed else (),
+                "replay_context": context,
+            }
+        )
+    settings = S1Settings.model_validate(
+        {
+            "round_id": "r49",
+            "feedback_total_count": 9,
+            "feedback_canary_count": 3,
+            "feedback_format_retry_limit": 1,
+            "feedback_selection_policy": "parent-counterfactual-v9",
+            "feedback_allocation": "target-focused",
+            "target_capabilities": (target,),
+            "proposal_mode": "single-surface-counterfactual-fanout-v6",
+            "max_patched_capabilities": 1,
+            "protected_capabilities": tuple(
+                item for item in CAPABILITIES if item != target
+            ),
+            "cycle_id": "s1-r12-adaptive-v1-b06",
+            "target_surface": "response-policy",
+            "counterfactual_gain_seed_query_ids": tuple(
+                sorted(row.query_id for row in chosen[:2])
+            ),
+            "counterfactual_regression_query_ids": tuple(
+                sorted(row.query_id for row in chosen[10:13])
+            ),
+            "parent_protection_query_ids": ("style-protection",),
+            "cycle_preflight_path": "batch-preflight.json",
+            "cycle_preflight_sha256": "b" * 64,
+        },
+        strict=True,
+    )
+    population = build_parent_counterfactual_population(
+        queries=queries, observations=observations, settings=settings
+    )
+    selected = select_parent_counterfactual_samples(population, settings)
+    failures = [
+        row for row in selected if row["counterfactual_role"] == "cluster_failure"
+    ]
+    successes = [
+        row for row in selected if row["counterfactual_role"] == "parent_success"
+    ]
+    signature = failures[0]["response_treatment_signature"]
+    assert signature == {
+        "terminal_evidence_class": {
+            "tool_names": ["recipe_lookup"],
+            "outcome": "nonempty",
+            "evidence_kinds": ["source-text"],
+        },
+        "response_failure_family": "unsupported-claim",
+        "predicted_reason_code": "unsupported_claim",
+        "predicted_metric_component": "evidence_grounded",
+    }
+    assert {
+        canonical_json_bytes(row["response_treatment_signature"]) for row in failures
+    } == {canonical_json_bytes(signature)}
+    assert {
+        canonical_json_bytes(row["state"]["terminal_response_evidence_class"])
+        for row in successes
+    } == {canonical_json_bytes(signature["terminal_evidence_class"])}
+
+
+def test_counterfactual_feedback_projection_is_surface_closed(fast_fixture) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=spec_path.parent / "surface-projection",
+        adapter=FakeCoreFastAdapter(),
+    )
+    query = next(item for item in queries if item.split == "opt_pool")
+    observation = engine.opt_static()[query.query_id]
+    action = project_feedback_observation_for_surface(observation, "action-policy")
+    response = project_feedback_observation_for_surface(observation, "response-policy")
+    assert "response_text" not in action
+    assert "card_violation" not in action and "evidence_violation" not in action
+    assert "response_text" in response
+    assert "tool_violation" not in response
+    assert set(action["gcs_components"]) == {
+        "route_acceptable",
+        "tool_contract_pass",
+    }
 
 
 def test_counterfactual_feedback_bundle_keeps_only_the_target_surface(

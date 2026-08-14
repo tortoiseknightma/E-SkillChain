@@ -3,6 +3,10 @@ from __future__ import annotations
 from collections import Counter, defaultdict, deque
 from typing import Iterable, Mapping, Sequence
 
+from skillchain.evolution.s1_sparse_patch import (
+    S1_RESPONSE_METRIC_BY_FAILURE_FAMILY,
+    S1_RESPONSE_REASON_BY_FAILURE_FAMILY,
+)
 from skillchain.schemas import Query
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 
@@ -16,6 +20,24 @@ _COMPONENT_ORDER = (
     "evidence_grounded",
     "output_contract_pass",
 )
+_ACTION_REASON_CODES = frozenset(
+    {
+        "route_unacceptable",
+        "tool_contract_failed",
+        "tool_call_failed",
+        "invalid_tool_arguments",
+        "runtime_error",
+    }
+)
+
+_TERMINAL_RESPONSE_TOOLS = {
+    "knowledge.visual_encyclopedia": frozenset({"encyclopedia_lookup"}),
+    "product.exact_match": frozenset({"image_product_search", "text_product_search"}),
+    "product.multi_search": frozenset({"multi_product_search"}),
+    "product.style_recommendation": frozenset({"style_similar_search"}),
+    "utility.document_reading": frozenset({"document_ocr"}),
+    "utility.recipe_guidance": frozenset({"recipe_lookup"}),
+}
 
 
 class CounterfactualEvidenceError(ValueError):
@@ -94,6 +116,50 @@ def _response_evidence_class(observation: AssistantObservation) -> dict[str, obj
     }
 
 
+def _terminal_response_evidence_class(
+    observation: AssistantObservation,
+) -> dict[str, object]:
+    """Project only the public evidence consumed by the final response branch."""
+
+    result = observation.replay_context.get("assistant_result")
+    evidence = result.get("visible_tool_evidence") if isinstance(result, dict) else None
+    rows = evidence if isinstance(evidence, list) else []
+    allowed = _TERMINAL_RESPONSE_TOOLS.get(
+        observation.selected_capability or "", frozenset()
+    )
+    terminal = [
+        item
+        for item in rows
+        if isinstance(item, dict)
+        and item.get("tool_name") in allowed
+        and item.get("status") == "success"
+    ]
+    has_cards = any(
+        isinstance(item.get("cards"), list) and bool(item["cards"]) for item in terminal
+    )
+    visible_text = "\n".join(str(item.get("visible_text", "")) for item in terminal)
+    has_source_text = "-source-" in visible_text and "[tool-call-" in visible_text
+    has_ocr_lines = "-line-" in visible_text and "[tool-call-" in visible_text
+    has_style_evidence = (
+        "-style-evidence-" in visible_text and "[tool-call-" in visible_text
+    )
+    kinds = [
+        name
+        for name, present in (
+            ("cards", has_cards),
+            ("source-text", has_source_text),
+            ("ocr-lines", has_ocr_lines),
+            ("style-evidence", has_style_evidence),
+        )
+        if present
+    ]
+    return {
+        "tool_names": [str(item["tool_name"]) for item in terminal],
+        "outcome": "nonempty" if kinds else "successful-empty",
+        "evidence_kinds": kinds,
+    }
+
+
 def _action_failure_signature(state: Mapping[str, object]) -> dict[str, object] | None:
     """Return a provider-visible post-tool state that excludes successful controls."""
 
@@ -143,6 +209,34 @@ def _response_failure_family(observation: AssistantObservation) -> str | None:
     if not components["output_contract_pass"]:
         return "output-other"
     return None
+
+
+def _response_treatment_signature_v9(
+    observation: AssistantObservation,
+) -> dict[str, object] | None:
+    family = _response_failure_family(observation)
+    predicted_reason = S1_RESPONSE_REASON_BY_FAILURE_FAMILY.get(family or "")
+    metric_component = S1_RESPONSE_METRIC_BY_FAILURE_FAMILY.get(family or "")
+    if family is None or predicted_reason is None or metric_component is None:
+        return None
+    reasons = set(observation.gcs_reason_codes)
+    if family == "citation-closure" and "evidence_handle_unknown" in reasons:
+        predicted_reason = "evidence_handle_unknown"
+    if predicted_reason not in reasons:
+        return None
+    terminal = _terminal_response_evidence_class(observation)
+    tool_names = terminal.get("tool_names")
+    outcome = terminal.get("outcome")
+    if not isinstance(tool_names, list) or not tool_names:
+        return None
+    if (family == "fallback-branch") != (outcome == "successful-empty"):
+        return None
+    return {
+        "terminal_evidence_class": terminal,
+        "response_failure_family": family,
+        "predicted_reason_code": predicted_reason,
+        "predicted_metric_component": metric_component,
+    }
 
 
 def _surface_eligible(
@@ -250,7 +344,7 @@ def _counterfactual_cluster_state(
     if surface == "action-policy":
         trace = state.get("tool_trace")
         assert isinstance(trace, list)
-        if selection_policy == "parent-counterfactual-v8":
+        if selection_policy in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
             return {
                 "action_failure_signature": _action_failure_signature(state),
                 "failed_action_components": state.get("failed_action_components"),
@@ -259,10 +353,10 @@ def _counterfactual_cluster_state(
             "tool_called": bool(trace),
             "failed_action_components": state.get("failed_action_components"),
         }
-    if selection_policy == "parent-counterfactual-v8":
+    if selection_policy in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
+        signature = state.get("response_treatment_signature")
         return {
-            "response_evidence_class": state.get("response_evidence_class"),
-            "response_failure_family": state.get("response_failure_family"),
+            "response_treatment_signature": signature,
         }
     return {
         "response_evidence_class": state.get("response_evidence_class"),
@@ -300,23 +394,45 @@ def build_parent_counterfactual_population(
             settings.target_surface,
             settings.feedback_selection_policy,
         )
+        strict_policy = settings.feedback_selection_policy in {
+            "parent-counterfactual-v8",
+            "parent-counterfactual-v9",
+        }
         action_signature = (
             _action_failure_signature(state)
-            if settings.feedback_selection_policy == "parent-counterfactual-v8"
-            and settings.target_surface == "action-policy"
+            if strict_policy and settings.target_surface == "action-policy"
             else None
         )
         response_signature = (
-            {
-                "response_evidence_class": state.get("response_evidence_class"),
-                "response_failure_family": state.get("response_failure_family"),
-            }
-            if settings.feedback_selection_policy == "parent-counterfactual-v8"
+            _response_treatment_signature_v9(observation)
+            if settings.feedback_selection_policy == "parent-counterfactual-v9"
             and settings.target_surface == "response-policy"
             and not success
-            and state.get("response_failure_family") is not None
-            else None
+            else (
+                {
+                    "response_evidence_class": state.get("response_evidence_class"),
+                    "response_failure_family": state.get("response_failure_family"),
+                }
+                if settings.feedback_selection_policy == "parent-counterfactual-v8"
+                and settings.target_surface == "response-policy"
+                and not success
+                and state.get("response_failure_family") is not None
+                else None
+            )
         )
+        if settings.feedback_selection_policy == "parent-counterfactual-v9":
+            state = {
+                **state,
+                "terminal_response_evidence_class": (
+                    _terminal_response_evidence_class(observation)
+                ),
+                "response_treatment_signature": response_signature,
+            }
+            cluster_state = _counterfactual_cluster_state(
+                state,
+                settings.target_surface,
+                settings.feedback_selection_policy,
+            )
         rows.append(
             {
                 "query_ordinal": ordinal,
@@ -342,8 +458,7 @@ def build_parent_counterfactual_population(
                         "action_treatment_signature": action_signature,
                         "action_treatment_separable": bool(action_signature),
                     }
-                    if settings.feedback_selection_policy == "parent-counterfactual-v8"
-                    and settings.target_surface == "action-policy"
+                    if strict_policy and settings.target_surface == "action-policy"
                     else {}
                 ),
                 **(
@@ -351,8 +466,7 @@ def build_parent_counterfactual_population(
                         "response_treatment_signature": response_signature,
                         "response_treatment_separable": bool(response_signature),
                     }
-                    if settings.feedback_selection_policy == "parent-counterfactual-v8"
-                    and settings.target_surface == "response-policy"
+                    if strict_policy and settings.target_surface == "response-policy"
                     else {}
                 ),
             }
@@ -369,9 +483,10 @@ def select_parent_counterfactual_samples(
     """Select one cluster plus matched successes and historical regressions."""
 
     by_id = {str(row["query_id"]): row for row in population}
-    strict_qualification = (
-        settings.feedback_selection_policy == "parent-counterfactual-v8"
-    )
+    strict_qualification = settings.feedback_selection_policy in {
+        "parent-counterfactual-v8",
+        "parent-counterfactual-v9",
+    }
 
     def treatment_separable(row: Mapping[str, object]) -> bool:
         if not strict_qualification:
@@ -458,9 +573,13 @@ def select_parent_counterfactual_samples(
         state = row["state"]
         assert isinstance(state, dict)
         if settings.target_surface == "response-policy":
+            evidence_key = (
+                "terminal_response_evidence_class"
+                if settings.feedback_selection_policy == "parent-counterfactual-v9"
+                else "response_evidence_class"
+            )
             exact_boundary = int(
-                state.get("response_evidence_class")
-                != exemplar_state.get("response_evidence_class")
+                state.get(evidence_key) != exemplar_state.get(evidence_key)
             )
         elif strict_qualification:
             exemplar_trace = exemplar_state.get("tool_trace")
@@ -573,6 +692,57 @@ def project_feedback_observation(
         "tool_violation": observation.tool_violation,
         "repair": observation.repair,
     }
+
+
+def project_feedback_observation_for_surface(
+    observation: AssistantObservation,
+    surface: str,
+) -> dict[str, object]:
+    """Expose only evidence that can authorize the requested policy surface."""
+
+    projected = project_feedback_observation(observation)
+    if surface == "action-policy":
+        return {
+            "query_id": projected["query_id"],
+            "selected_capability": projected["selected_capability"],
+            "tool_trace": projected["tool_trace"],
+            "gcs_components": {
+                name: observation.gcs_components[name]
+                for name in ("route_acceptable", "tool_contract_pass")
+            },
+            "gcs_reason_codes": [
+                code
+                for code in observation.gcs_reason_codes
+                if code in _ACTION_REASON_CODES
+            ],
+            "tool_violation": projected["tool_violation"],
+        }
+    if surface == "response-policy":
+        return {
+            "query_id": projected["query_id"],
+            "response_text": projected["response_text"],
+            "selected_capability": projected["selected_capability"],
+            "tool_trace": projected["tool_trace"],
+            "answer_mode": projected["answer_mode"],
+            "terminal_public_evidence": _terminal_response_evidence_class(observation),
+            "gcs_components": {
+                name: observation.gcs_components[name]
+                for name in (
+                    "no_hard_error",
+                    "evidence_grounded",
+                    "output_contract_pass",
+                )
+            },
+            "gcs_reason_codes": [
+                code
+                for code in observation.gcs_reason_codes
+                if code not in _ACTION_REASON_CODES
+            ],
+            "card_violation": projected["card_violation"],
+            "evidence_violation": projected["evidence_violation"],
+            "repair": projected["repair"],
+        }
+    raise CounterfactualEvidenceError(f"unknown Feedback surface: {surface}")
 
 
 def _failure_cluster(
@@ -1182,7 +1352,8 @@ def build_parent_counterfactual_manifest(
                             "action_treatment_signature"
                         )
                     }
-                    if settings.feedback_selection_policy == "parent-counterfactual-v8"
+                    if settings.feedback_selection_policy
+                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
                     and settings.target_surface == "action-policy"
                     else {}
                 ),
@@ -1192,7 +1363,8 @@ def build_parent_counterfactual_manifest(
                             "response_treatment_signature"
                         )
                     }
-                    if settings.feedback_selection_policy == "parent-counterfactual-v8"
+                    if settings.feedback_selection_policy
+                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
                     and settings.target_surface == "response-policy"
                     else {}
                 ),
@@ -1217,6 +1389,7 @@ __all__ = [
     "build_parent_counterfactual_manifest",
     "build_parent_counterfactual_population",
     "project_feedback_observation",
+    "project_feedback_observation_for_surface",
     "project_feedback_query",
     "select_feedback_samples",
     "select_parent_counterfactual_samples",

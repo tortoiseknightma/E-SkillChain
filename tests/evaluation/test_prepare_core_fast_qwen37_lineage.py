@@ -43,6 +43,7 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
     assert bootstrap.s1_settings.round_id == "r1"
     assert bootstrap.s1_settings.feedback_mode == "fresh-per-round"
     assert bootstrap.s1_settings.feedback_total_count == 48
+    assert bootstrap.s1_settings.feedback_format_retry_limit == 0
     assert bootstrap.s1_settings.creator_directives == ()
     assert bootstrap.s1_settings.required_patch_phrases == {}
     assert bootstrap.s1_settings.proposal_mode == "six-capability-fanout-fanin-v2"
@@ -50,6 +51,7 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
     assert bootstrap.s1_settings.max_patched_capabilities == 6
     assert bootstrap.s1_settings.protected_capabilities == ()
     assert bootstrap.limits.max_creator_calls == 8
+    assert bootstrap.limits.max_feedback_calls == 48
     assert bootstrap.gates.s1_max_capability_drop_pp == 5.0
     assert Path(bootstrap.paths.queries).is_absolute()
 

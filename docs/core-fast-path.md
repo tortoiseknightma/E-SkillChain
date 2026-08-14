@@ -458,6 +458,36 @@ semantic operation，使评价标签和跨 family 内容不可表达；同时让
 局部、replay、body 与 R33/test300 规则全部保持不变。canonical root 为
 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815`。
 
+### B06 机制资格证明（R49–R53 尚未运行）
+
+`single-surface-counterfactual-fanout-v6` 关闭了 B05 暴露的两个 treatment 通道问题。action
+proposal 继续使用 capability-bound tool-loop state/transition，类型上不能携带 answer、cards、
+evidence 或 fallback 内容；response proposal 改为封闭枚举 IR，condition 只允许 terminal tool、
+empty/nonempty evidence outcome 与公开 evidence kind，directive 只允许当前 failure family 对应的一项
+规范化 response operation。Creator 不再拥有自由文本 `when/then`，也不能从 response proposal 写回
+action surface。Feedback evidence 在进入 Creator 前按 surface 投影：action 看不到回答/card/evidence
+内容，response 看不到 action violation/transition 内容。
+
+response selector 的资格也改为回答端语义，而不是整条工具链的粗粒度相等：只有实际承载回答证据的
+terminal tool 参与 fingerprint，上游 `object_detect` 不再把 Recipe/Encyclopedia 的 response cluster
+误分裂；每个 failure family 同时绑定预期 reason code 与 scorer component。preflight 不只证明 policy
+bytes/hash 会变化，还要求 3 个 failure 在相同 terminal evidence 上具有目标 reason/component failure，
+3 个 parent-success 在同一边界上保持该 component success。
+
+tracked `specs/s1-r12-adaptive-batch06.json` 预注册五个独立 response round：R49 Recipe fallback、
+R50 Exact unsupported claim、R51 Encyclopedia unsupported claim、R52 Encyclopedia citation closure、
+R53 Multi item association。前两个 create-only root 在 0 provider call 时分别发现 scorer component
+绑定错误和不可形成 3/3/3 对照的 failure family；它们保持为失败诊断，没有生成可运行实验。最终
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-v3-20260815\batch-preflight.json`
+对 R49–R53 均得到 `evidence_feasible=true`、`treatment_separable=true`、
+`structural_treatment_sensitive=true`、`behavior_treatment_sensitive=true`，且五个实际 selection
+manifest SHA 与冻结值一致。
+
+这是**零调用机制资格证明**，不是新的 S1 实验结果：Feedback、Creator、Assistant replay、body75、
+fan-in、test300、S2/S3/Judge 均未启动，已完成轮数仍为 15/30。R12
+`e70ed907…096cd` 继续是唯一 parent/selected Bank；局部有界风险门、正式 hard-error 门、R33
+accepted-only fan-in 与 one-finalist test300 规则均未改变。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

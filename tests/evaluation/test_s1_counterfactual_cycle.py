@@ -226,3 +226,82 @@ def test_v8_treatment_probe_uses_the_selected_provider_visible_failure() -> None
     assert probe["probe_action_prior_tool_name"] == "recipe_lookup"
     assert probe["probe_action_prior_tool_status"] == "invalid-arguments"
     assert probe["probe_action_tool_name"] == "recipe_lookup"
+
+
+def test_v9_preflight_requires_a_scored_response_behavior_and_matched_successes() -> (
+    None
+):
+    signature = {
+        "terminal_evidence_class": {
+            "tool_names": ["recipe_lookup"],
+            "outcome": "nonempty",
+            "evidence_kinds": ["source-text"],
+        },
+        "response_failure_family": "unsupported-claim",
+        "predicted_reason_code": "unsupported_claim",
+        "predicted_metric_component": "evidence_grounded",
+    }
+    spec = SimpleNamespace(
+        s1_settings=SimpleNamespace(
+            target_capabilities=("utility.recipe_guidance",),
+            target_surface="response-policy",
+            feedback_selection_policy="parent-counterfactual-v9",
+            proposal_mode="single-surface-counterfactual-fanout-v6",
+        ),
+        s1_parent=SimpleNamespace(
+            protected_skill_sha256={"product.style_recommendation": "a" * 64}
+        ),
+    )
+    failures = tuple(
+        {
+            "query_id": f"failure-{index}",
+            "counterfactual_role": "cluster_failure",
+            "response_treatment_signature": signature,
+            "state": {
+                "terminal_response_evidence_class": signature[
+                    "terminal_evidence_class"
+                ],
+                "response_reason_codes": ["unsupported_claim"],
+                "failed_response_components": ["evidence_grounded"],
+            },
+        }
+        for index in range(1, 4)
+    )
+    successes = tuple(
+        {
+            "query_id": f"success-{index}",
+            "counterfactual_role": "parent_success",
+            "response_treatment_signature": None,
+            "state": {
+                "terminal_response_evidence_class": signature[
+                    "terminal_evidence_class"
+                ],
+                "response_reason_codes": [],
+                "failed_response_components": [],
+            },
+        }
+        for index in range(1, 4)
+    )
+    probe = cycle_preparer._treatment_probe(  # noqa: SLF001
+        parent=fixture_module._bank(),
+        spec=spec,
+        selected=failures + successes,
+    )
+    assert probe["treatment_sensitive"] is True
+    assert probe["structural_treatment_sensitive"] is True
+    assert probe["behavior_treatment_sensitive"] is True
+    assert probe["probe_response_predicted_reason_code"] == "unsupported_claim"
+    assert probe["probe_response_predicted_metric_component"] == "evidence_grounded"
+
+    bad = tuple(
+        {**row, "state": {**row["state"], "response_reason_codes": []}}
+        if row["counterfactual_role"] == "cluster_failure"
+        else row
+        for row in failures + successes
+    )
+    rejected = cycle_preparer._treatment_probe(  # noqa: SLF001
+        parent=fixture_module._bank(), spec=spec, selected=bad
+    )
+    assert rejected["structural_treatment_sensitive"] is True
+    assert rejected["behavior_treatment_sensitive"] is False
+    assert rejected["treatment_sensitive"] is False
