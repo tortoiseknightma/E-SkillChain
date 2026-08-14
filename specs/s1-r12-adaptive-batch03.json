@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b03",
+  "rounds": [
+    {
+      "round_id": "r40",
+      "capability": "product.exact_match",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0656", "r2-core-0657"],
+      "regressions": ["r2-core-0253", "r2-core-0256", "r2-core-0351", "r2-core-0355", "r2-core-0426", "r2-core-0427", "r2-core-0678", "r2-core-0751", "r2-core-0777", "r2-core-0778", "r2-core-0951", "r2-core-0955"],
+      "memory": [{"capability": "product.exact_match", "hypothesis": "Add one minimal typed invocation transition for the stable Exact action failure cluster while preserving successful image and text termination states.", "historical_signal": "R35 produced a valid typed rule but no provider call because of the repaired dynamic S1 runtime label mapping.", "forbidden_carry_forward": "Do not modify response formatting, cards, fallback, or routing Description."}]
+    },
+    {
+      "round_id": "r41",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "gain_seeds": ["r2-core-0444", "r2-core-0795"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0692", "r2-core-0768"],
+      "memory": [{"capability": "knowledge.visual_encyclopedia", "hypothesis": "Add one single-clause source-entailment response rule only for the selected fixed-evidence failure cluster.", "historical_signal": "R36 never reached Assistant because its four-part checklist violated the now schema-visible one-clause contract.", "forbidden_carry_forward": "Do not modify tool choice, tool arguments, continuation, or routing Description."}]
+    },
+    {
+      "round_id": "r42",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "gain_seeds": ["r2-core-0258", "r2-core-0260", "r2-core-0433", "r2-core-0682", "r2-core-0757"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "memory": [{"capability": "product.multi_search", "hypothesis": "Add one conditional item-to-evidence association rule for a nonempty fixed multi_product_search outcome.", "historical_signal": "The former R32 was infeasible because r2-core-0784 had no successful tool trace; this plan replaces it with three response-qualified historical regression examples while preserving the original fixed-evidence boundary.", "forbidden_carry_forward": "Do not add tool-first, retry, argument, route, DTO template, or fallback mechanics."}]
+    },
+    {
+      "round_id": "r43",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0368", "r2-core-0442", "r2-core-0670", "r2-core-0694"],
+      "regressions": ["r2-core-0266", "r2-core-0269", "r2-core-0370", "r2-core-0691", "r2-core-0692", "r2-core-0695", "r2-core-0792", "r2-core-0793", "r2-core-0967", "r2-core-0969"],
+      "memory": [{"capability": "knowledge.visual_encyclopedia", "hypothesis": "Test one narrower typed detect-to-lookup condition using the genuine R37 gain and regression sets.", "historical_signal": "R37 yielded 4 gains and 10 regressions; instance-specific must_preserve prose is verifier-only, and the probe now uses canonical object_detect-to-lookup order rather than Bank storage order.", "forbidden_carry_forward": "Do not copy the rejected R37 Bank, response prose, entity-specific examples, or routing Description."}]
+    }
+  ]
+}

@@ -151,3 +151,31 @@ def test_all_round_preflight_rejects_a_byte_exact_protected_target() -> None:
             spec=spec,
             selected=(),
         )
+
+
+def test_treatment_probe_uses_capability_action_order_not_bank_storage_order() -> None:
+    spec = SimpleNamespace(
+        s1_settings=SimpleNamespace(
+            target_capabilities=("knowledge.visual_encyclopedia",),
+            target_surface="action-policy",
+        ),
+        s1_parent=SimpleNamespace(
+            protected_skill_sha256={"product.style_recommendation": "a" * 64}
+        ),
+    )
+    selected = tuple(
+        {
+            "query_id": f"success-{index}",
+            "counterfactual_role": "parent_success",
+        }
+        for index in range(1, 4)
+    )
+
+    probe = cycle_preparer._treatment_probe(  # noqa: SLF001
+        parent=fixture_module._bank(),
+        spec=spec,
+        selected=selected,
+    )
+
+    assert probe["probe_action_prior_tool_name"] == "object_detect"
+    assert probe["probe_action_tool_name"] == "encyclopedia_lookup"

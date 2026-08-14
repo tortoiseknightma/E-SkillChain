@@ -300,15 +300,34 @@ def freeze_round(args: argparse.Namespace) -> int:
         base,
         binding,
         fixed_samples,
-        _,
-        _,
-        _,
-        _,
+        bank,
+        observations,
+        queries,
+        opt_sha,
     ) = _parent_inputs(
         base_spec_path=args.base_spec.resolve(),
         bootstrap_receipt_path=args.bootstrap_receipt.resolve(),
     )
     preflight_path = Path(str(batch["preflight_path"]))
+    preliminary = _preliminary_specs(
+        plan=plan,
+        base=base,
+        binding=binding,
+        fixed_samples=fixed_samples,
+        preflight_path=preflight_path,
+    )
+    round_ids = tuple(str(item["round_id"]) for item in rows)
+    active_preflight = counterfactual._build_cycle_preflight(  # noqa: SLF001
+        preliminary_specs=preliminary,
+        parent=bank,
+        parent_opt=observations,
+        queries=queries,
+        parent_opt_sha256=opt_sha,
+        round_ids=round_ids,
+        cycle_id=str(batch["cycle_id"]),
+    )
+    if canonical_json_bytes(active_preflight) != preflight_path.read_bytes():
+        raise ValueError("active mechanism changed the frozen adaptive batch preflight")
     spec = counterfactual._round_spec(  # noqa: SLF001
         base,
         round_id=args.round_id,

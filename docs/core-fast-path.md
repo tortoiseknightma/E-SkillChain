@@ -387,6 +387,40 @@ uv run python scripts/prepare_s1_adaptive_batch.py freeze-round --plan specs/s1-
 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815`；可追踪 DashScope 成本
 ¥0.3496057，4 个 Creator 会话的人民币 cost basis 不可得。
 
+### 自适应第二阶段 R39–R43
+
+R39 最初在 B02 独立 root 执行。其 Creator 产生了一个 schema-valid 但非法的 Recipe
+`before-first-tool → recipe_lookup` transition；局部 action screen 为 2 gains / 5 regressions，包含
+两个显式 parent-success 回退。随后 action IR 增加 capability-specific 顺序约束：Recipe 与
+Encyclopedia 必须先 `object_detect`，lookup 只能在成功且非空检测后消费
+`last-visible-tool-output`；retry/stop 也绑定一致的 prior state。与此同时，all-round treatment probe
+从 Bank 存储顺序改为 canonical action 顺序。active-code preflight 因而不再与 B02 frozen bytes
+一致，B02 在任何 R40 provider call 前 create-only 停止，R40–R43 转入独立 B03；旧 root 不 resume。
+
+B03 四轮及 R39 的终态如下：
+
+| Round | Target surface | Parent→candidate | Gains / regressions | 终态 |
+|---|---|---:|---:|---|
+| R39 | Recipe action | 8→5 | 2 / 5 | explicit protection regressions；回滚 |
+| R40 | Exact action | 17→17 | 4 / 4 | net 0；explicit protection regression；回滚 |
+| R41 | Encyclopedia response | 10→9 | 1 / 2 | fixed trace/evidence；net −1；回滚 |
+| R42 | Multi response | 13→13 | 0 / 0 | no treatment gain；回滚 |
+| R43 | Encyclopedia action | 24→23 | 8 / 9 | canonical detect→lookup；net −1；回滚 |
+
+五轮的 Feedback full-batch gate 与 typed proposal 均有效，且没有 severity escalation 或固定边界
+trace mismatch；但没有分支满足既有 gains/net/ratio/parent-success 门，所以 formal replay200、body75、
+fan-in、test300、S2/S3/Judge 仍全部为 0-call。R12 Bank `e70ed907…096cd` 继续是唯一 selected
+parent，不能把这些局部数字报告为系统级 S1 正增益或负增益。阶段共 50 个 Feedback provider calls、
+340 个 Assistant outer / 629 个 Assistant inner calls、5 个 Creator，会话新增可追踪 DashScope
+¥0.67932075；Creator 人民币 cost basis 不可得。
+
+下一预算阶段的机制优先级已经由本阶段证据限定：response parent-success 必须在当轮 live
+parent-control 中仍成功；与 parent Body 语义等价的 response clause 应在 Assistant 前标记为 no-op；
+action condition 必须具有能区分 failure 与 protected-success 的 provider-visible predicate。上述是
+待验证的前向改造，不改变任何已有 gate，也不使 R39–R43 candidate 合法化。canonical evidence
+roots 为 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b02-20260815` 与
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b03-20260815`。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

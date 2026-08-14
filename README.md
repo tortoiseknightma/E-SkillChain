@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期首批 R34–R38 已结束并完整保留 R12：R34、R35、R36、R38 分别在 Feedback 标签、runtime dispatch、Creator 单句合同和 protected-target 可行性处 fail closed，不能解释为算法正负结果；只有 R37 进入有效局部 action screen，得到 4 gains / 10 regressions 并被固定有界风险门拒绝。五轮均未进入正式 replay200/body75，未访问 test300/S2/S3/Judge，也没有放宽 gate。首批可追踪 DashScope 成本为 ¥0.3496057，4 次 Creator 会话的人民币 cost basis 不可得。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R43（10/30）：首批只有 R37 进入有效局部 screen；第二阶段 R39–R43 的五个 typed treatment 均进入可归因局部 screen，但分别得到 Recipe action 2 gains / 5 regressions、Exact action 4/4、Encyclopedia response 1/2、Multi response 0/0、Encyclopedia action 8/9，全部被未改变的有界风险门回滚。十轮均未进入正式 replay200/body75，未访问 test300/S2/S3/Judge。两个阶段新增可追踪 DashScope 成本合计 ¥1.02892645；9 次 Creator 会话的人民币 cost basis 不可得。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -108,6 +108,16 @@ S1 runtime；R36 证明 response Creator 的单句限制必须进入 JSON Schema
 归一到 S1 runtime、response 字段禁止多句 checklist、`must_preserve` 实例只留在 verifier，以及
 all-round preflight 新增 protected-target compatibility。没有候选进入正式 replay200/body75，R12
 selected Bank 与 R33/test300 规则不变；逐轮事实见 [S1 实验日志](docs/s1-experiment-log.html)。
+
+自适应第二阶段 R39–R43 继续只读 R12。R39 后增加了 capability-specific typed action
+顺序校验：Recipe/Encyclopedia 必须先 `object_detect`，lookup 只能消费成功且非空的可见检测输出；
+同时修正 all-round probe，使其使用 canonical action 顺序而不是 Bank 内存储顺序。active-code
+preflight 因此拒绝继续使用旧 B02，R40–R43 在独立 B03 root 前向执行。五个 treatment 均通过
+Feedback terminal gate 与局部可归因执行，但没有一项跨过有界风险门；formal replay200/body75
+仍为 0-call。阶段新增可追踪 DashScope ¥0.67932075、5 次 Creator，会话成本不可得。R42 还暴露
+历史 parent-success 在 fresh parent-control 中可能不再成功，R39/R40/R43 则说明合法但过宽的 action
+transition 会同时扰动 failure 与 protected-success。下一预算阶段优先做 live parent-control qualification、
+response semantic no-op 淘汰与 action predicate separability；不放宽 gate，不继承任何 R39–R43 Bank。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
@@ -409,8 +419,8 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
 3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
 4. 每个后续 batch 必须在任何 Feedback 前一次性通过 evidence-feasibility、treatment-sensitivity 与 protected-target compatibility；不能把 R12 Style 同时声明为 byte-exact protected Skill 和可修改 target。
-5. 下一批仍从 R12 出发，并只使用前向修正后的双标签 Feedback、typed action IR、单句 response contract 与 verifier-only protection examples；R34–R38 的失败候选不得作为 parent 或被拼入 fan-in。
-6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；在候选通过正式 replay200/body75 前，不访问 test300，也不启动 S2/S3/Judge。
+5. 下一批仍从 R12 出发；先让 response parent-success 通过当轮 live parent-control qualification，淘汰与 parent Body 语义等价的 response no-op，并要求 action predicate 能区分目标 failure 与 protected-success。R34–R43 的失败候选不得作为 parent 或被拼入 fan-in。
+6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；在候选通过正式 replay200/body75 前，不访问 test300，也不启动 S2/S3/Judge。当前自适应进度为 10/30，下一预算阶段从 R44 开始。
 
 ---
 

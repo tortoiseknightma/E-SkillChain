@@ -24,6 +24,7 @@ from skillchain.evaluation.core_fast.feedback_selection import (  # noqa: E402
     select_parent_counterfactual_samples,
 )
 from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
+    S1_CAPABILITY_ACTION_TOOLS,
     compile_counterfactual_typed_policy_branch,
     parse_counterfactual_typed_policy_patch,
 )
@@ -408,7 +409,7 @@ def _treatment_probe(
         ],
     }
     if surface == "action-policy":
-        operators = tuple(parent_skill.operators)
+        operators = S1_CAPABILITY_ACTION_TOOLS[capability]
         if not operators:
             raise ValueError(f"action treatment has no operator: {capability}")
         prior = operators[0] if len(operators) > 1 else None
@@ -497,6 +498,16 @@ def _treatment_probe(
         == parent_skill.operators,
         "non_target_surface_absent": forbidden_heading not in candidate_skill.body,
         "protected_skills_byte_exact": protected_exact,
+        **(
+            {
+                "probe_action_prior_tool_name": payload["action_when"][
+                    "prior_tool_name"
+                ],
+                "probe_action_tool_name": payload["action_then"]["tool_name"],
+            }
+            if surface == "action-policy"
+            else {}
+        ),
     }
 
 

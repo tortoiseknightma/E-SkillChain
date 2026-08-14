@@ -431,6 +431,51 @@ class SingleSurfaceCounterfactualPatchV2(_StrictFrozenModel):
                 raise ValueError(
                     "action patch references a tool outside the capability"
                 )
+            condition = self.action_when
+            directive = self.action_then
+            if directive.operation == "retry-tool-once":
+                if (
+                    condition.phase != "after-tool"
+                    or condition.prior_tool_name != directive.tool_name
+                    or condition.prior_tool_status not in {"invalid-arguments", "error"}
+                    or directive.arguments_from != "last-valid-arguments"
+                ):
+                    raise ValueError(
+                        "retry action must retry the failed prior tool with its last valid arguments"
+                    )
+            elif directive.operation == "stop-action-loop":
+                if condition.phase != "after-tool":
+                    raise ValueError("stop action requires a prior tool state")
+            elif condition.phase == "before-first-tool":
+                if directive.arguments_from != "current-user-request":
+                    raise ValueError(
+                        "first tool action must derive arguments from the current user request"
+                    )
+                if (
+                    self.capability_id
+                    in {
+                        "knowledge.visual_encyclopedia",
+                        "utility.recipe_guidance",
+                    }
+                    and directive.tool_name != allowed_tools[0]
+                ):
+                    raise ValueError(
+                        "two-step capability must invoke object_detect before lookup"
+                    )
+            elif self.capability_id in {
+                "knowledge.visual_encyclopedia",
+                "utility.recipe_guidance",
+            }:
+                if (
+                    condition.prior_tool_name != allowed_tools[0]
+                    or condition.prior_tool_status != "success"
+                    or condition.public_evidence != "nonempty"
+                    or directive.tool_name != allowed_tools[1]
+                    or directive.arguments_from != "last-visible-tool-output"
+                ):
+                    raise ValueError(
+                        "two-step lookup must follow nonempty object detection and use visible output"
+                    )
         elif (
             self.when is None
             or self.then is None

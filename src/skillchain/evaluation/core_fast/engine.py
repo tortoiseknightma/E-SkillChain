@@ -4506,6 +4506,11 @@ class CoreFastEngine:
                         == "single-surface-counterfactual-fanout-v5"
                         and settings.target_surface == "action-policy"
                     ),
+                    "action_transition_obeys_capability_tool_order": (
+                        settings.proposal_mode
+                        == "single-surface-counterfactual-fanout-v5"
+                        and settings.target_surface == "action-policy"
+                    ),
                     "response_when_then_are_single_clauses_without_semicolons": (
                         settings.proposal_mode
                         == "single-surface-counterfactual-fanout-v5"
