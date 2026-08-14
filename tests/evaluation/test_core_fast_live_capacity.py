@@ -694,3 +694,69 @@ def test_live_feedback_emits_exact_qwen38_capacity_probe_wire(
     assert wire["timeout"] == 600
     for omitted in ("max_tokens", "temperature", "top_p", "seed", "stream_options"):
         assert omitted not in wire
+
+
+def test_live_feedback_accepts_frozen_single_surface_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = LiveCoreFastAdapter(
+        spec=SimpleNamespace(
+            concurrency=SimpleNamespace(assistant_requests_per_second=0.5)
+        ),
+        cwd=tmp_path,
+        base_dir=tmp_path,
+    )
+    query = _query()
+    baseline = AssistantObservation(
+        query_id=query.query_id,
+        response_text="baseline",
+        selected_capability=query.canonical_capability,
+        route_trace_key="route",
+        tool_trace_key="tool",
+        replay_context={"assistant_result": {}},
+        answer_mode="unresolved",
+        gcs_components={
+            "route_acceptable": True,
+            "no_hard_error": True,
+            "tool_contract_pass": True,
+            "evidence_grounded": False,
+            "output_contract_pass": False,
+        },
+        gcs_reason_codes=("unsupported_claim",),
+        gcs_score=0.0,
+        hard_error=False,
+        evidence_violation=True,
+    )
+    adapter._feedback_query_by_id = {query.query_id: query}
+    adapter._feedback_baseline_by_id = {query.query_id: baseline}
+    monkeypatch.setattr(live_module, "AssistantResult", _AssistantResultStub)
+    adapter._load_runtime = lambda: (object(), object())
+    adapter._rubric_value = lambda: object()
+    adapter._feedback_gcs_contract = lambda _capability: object()
+    monkeypatch.setattr(
+        live_module,
+        "build_feedback_packet_v3",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("surface projection verified")
+        ),
+    )
+    intent = CallIntent(
+        call_id="feedback-surface-projection",
+        role="feedback",
+        purpose="verify frozen response-policy projection",
+        requested_model=config.FEEDBACK_JUDGE_MODEL,
+        payload={
+            "query": live_module.project_feedback_query(query),
+            "baseline": live_module.project_feedback_observation_for_surface(
+                baseline, "response-policy"
+            ),
+            "sample_role": "cluster_failure",
+            "selection_class": "cluster_failure",
+            "attribution_policy": "single-surface-counterfactual-v6",
+            "target_surface": "response-policy",
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="surface projection verified"):
+        adapter._invoke_feedback(intent)

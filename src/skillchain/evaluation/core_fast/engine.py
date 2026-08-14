@@ -33,6 +33,7 @@ from skillchain.evolution.s1_sparse_patch import (
     compose_policy_surface_branches,
     compose_screened_sparse_bank,
     counterfactual_semantic_policy_patch_output_json_schema,
+    counterfactual_surface_closed_policy_patch_output_json_schema,
     counterfactual_policy_patch_output_json_schema,
     counterfactual_typed_policy_patch_output_json_schema,
     decode_sparse_parent_content,
@@ -40,6 +41,7 @@ from skillchain.evolution.s1_sparse_patch import (
     load_sparse_compilation_receipt,
     parse_dual_policy_patch,
     parse_counterfactual_semantic_policy_patch,
+    parse_counterfactual_surface_closed_policy_patch,
     parse_counterfactual_policy_patch,
     parse_counterfactual_typed_policy_patch,
     sparse_author_content_lexical_guard,
@@ -115,6 +117,7 @@ _COUNTERFACTUAL_PROPOSAL_MODES = frozenset(
         "single-surface-counterfactual-fanout-v4",
         "single-surface-counterfactual-fanout-v5",
         "single-surface-counterfactual-fanout-v6",
+        "single-surface-counterfactual-fanout-v7",
     }
 )
 _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
@@ -123,6 +126,7 @@ _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
         "parent-counterfactual-v7",
         "parent-counterfactual-v8",
         "parent-counterfactual-v9",
+        "parent-counterfactual-v10",
     }
 )
 
@@ -2396,6 +2400,17 @@ class CoreFastEngine:
                     raise ValueError("counterfactual schema requires one target")
                 capability = targets[0]
                 if self.spec.s1_settings.proposal_mode == (
+                    "single-surface-counterfactual-fanout-v7"
+                ):
+                    return counterfactual_surface_closed_policy_patch_output_json_schema(
+                        capability_id=capability,
+                        parent_skill_sha256=by_capability[capability].skill_sha256,
+                        target_surface=counterfactual_surface,
+                        parent_success_query_ids=counterfactual_parent_success_ids,
+                        expected_action_condition=counterfactual_action_condition,
+                        expected_response_signature=counterfactual_response_signature,
+                    )
+                if self.spec.s1_settings.proposal_mode == (
                     "single-surface-counterfactual-fanout-v6"
                 ):
                     return counterfactual_semantic_policy_patch_output_json_schema(
@@ -2637,6 +2652,7 @@ class CoreFastEngine:
         if settings.proposal_mode not in {
             "single-surface-counterfactual-fanout-v5",
             "single-surface-counterfactual-fanout-v6",
+            "single-surface-counterfactual-fanout-v7",
         }:
             return None
         if (
@@ -2667,7 +2683,11 @@ class CoreFastEngine:
                 or item.get("treatment_sensitive") is not True
                 or (
                     settings.feedback_selection_policy
-                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
+                    in {
+                        "parent-counterfactual-v8",
+                        "parent-counterfactual-v9",
+                        "parent-counterfactual-v10",
+                    }
                     and item.get("treatment_separable") is not True
                 )
                 for item in rounds.values()
@@ -2846,7 +2866,10 @@ class CoreFastEngine:
             "failure_cluster": sample["failure_cluster"],
             "target_surface": self.spec.s1_settings.target_surface,
             "attribution_policy": (
-                "single-surface-counterfactual-v6"
+                "single-surface-counterfactual-v7"
+                if self.spec.s1_settings.proposal_mode
+                == "single-surface-counterfactual-fanout-v7"
+                else "single-surface-counterfactual-v6"
                 if self.spec.s1_settings.proposal_mode
                 == "single-surface-counterfactual-fanout-v6"
                 else "single-surface-counterfactual-v5"
@@ -4492,7 +4515,11 @@ class CoreFastEngine:
         expected_response_signature: Mapping[str, object] | None = None
         if (
             settings.feedback_selection_policy
-            in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
+            in {
+                "parent-counterfactual-v8",
+                "parent-counterfactual-v9",
+                "parent-counterfactual-v10",
+            }
             and settings.target_surface == "action-policy"
         ):
             action_conditions = {
@@ -4518,7 +4545,8 @@ class CoreFastEngine:
                 )
             expected_action_condition = raw_condition
         if (
-            settings.feedback_selection_policy == "parent-counterfactual-v9"
+            settings.feedback_selection_policy
+            in {"parent-counterfactual-v9", "parent-counterfactual-v10"}
             and settings.target_surface == "response-policy"
         ):
             response_signatures = {
@@ -4629,6 +4657,7 @@ class CoreFastEngine:
                         in {
                             "single-surface-counterfactual-fanout-v5",
                             "single-surface-counterfactual-fanout-v6",
+                            "single-surface-counterfactual-fanout-v7",
                         }
                         and settings.target_surface == "action-policy"
                     ),
@@ -4640,12 +4669,16 @@ class CoreFastEngine:
                         in {
                             "single-surface-counterfactual-fanout-v5",
                             "single-surface-counterfactual-fanout-v6",
+                            "single-surface-counterfactual-fanout-v7",
                         }
                         and settings.target_surface == "action-policy"
                     ),
                     "response_output_is_typed_ir_without_action_or_answer_text": (
                         settings.proposal_mode
-                        == "single-surface-counterfactual-fanout-v6"
+                        in {
+                            "single-surface-counterfactual-fanout-v6",
+                            "single-surface-counterfactual-fanout-v7",
+                        }
                         and settings.target_surface == "response-policy"
                     ),
                     "response_behavior_is_bound_to_selected_failure": (
@@ -4679,7 +4712,20 @@ class CoreFastEngine:
                 or creator.output is None
             ):
                 raise S1SparsePatchError("counterfactual Creator result is invalid")
-            if settings.proposal_mode == "single-surface-counterfactual-fanout-v6":
+            if settings.proposal_mode == "single-surface-counterfactual-fanout-v7":
+                semantic_proposal = parse_counterfactual_surface_closed_policy_patch(
+                    canonical_json_bytes(creator.output),
+                    capability_id=target,
+                    parent_skill_sha256=parent_by_capability[target].skill_sha256,
+                    target_surface=settings.target_surface,
+                    parent_success_query_ids=parent_success_ids,
+                    expected_action_condition=expected_action_condition,
+                    expected_response_signature=expected_response_signature,
+                )
+                compiled = compile_counterfactual_semantic_policy_branch(
+                    parent_bank=parent, proposal=semantic_proposal
+                )
+            elif settings.proposal_mode == "single-surface-counterfactual-fanout-v6":
                 semantic_proposal = parse_counterfactual_semantic_policy_patch(
                     canonical_json_bytes(creator.output),
                     capability_id=target,

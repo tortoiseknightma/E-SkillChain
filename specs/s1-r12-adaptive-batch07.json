@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b07",
+  "rounds": [
+    {
+      "round_id": "r51",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v10",
+      "gain_seeds": ["r2-core-0266", "r2-core-0292", "r2-core-0316", "r2-core-0320", "r2-core-0418"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "For a successful lookup with public source text, omit material claims not stated in that visible evidence.",
+          "historical_signal": "R47 did not reach Assistant replay because free-form response prose failed the Creator contract; v10 binds the same family to a closed semantic operation and query-only protection refs.",
+          "forbidden_carry_forward": "Do not change detection, lookup, citation attachment, empty-source fallback, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r52",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v10",
+      "gain_seeds": ["r2-core-0243", "r2-core-0245", "r2-core-0267", "r2-core-0268", "r2-core-0269"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "For a successful lookup with public source text, attach one visible source handle to each supported material claim.",
+          "historical_signal": "R48 reached replay but regressed under a free-form citation rule; v10 removes arbitrary response and preservation prose while binding the exact material-claim-uncited behavior.",
+          "forbidden_carry_forward": "Do not change action policy, source selection, unsupported-claim policy, fallback, route Description, or the rejected R48 Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r53",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v10",
+      "gain_seeds": ["r2-core-0260", "r2-core-0308", "r2-core-0535", "r2-core-0607", "r2-core-0958"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "product.multi_search",
+          "hypothesis": "For a successful Multi tool state with visible cards, copy every public item association without adding, dropping, merging, renaming, or reclassifying an item.",
+          "historical_signal": "R45 produced a semantic no-op from free-form response prose; v10 binds item-association failures to a closed operation and query-only parent-success protections.",
+          "forbidden_carry_forward": "Do not change action policy, tool arguments, card closure, fallback, route Description, or copy the rejected R45 Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r54",
+      "capability": "utility.recipe_guidance",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v10",
+      "gain_seeds": ["r2-core-0224", "r2-core-0250", "r2-core-0548", "r2-core-0650", "r2-core-0672", "r2-core-0948"],
+      "regressions": ["r2-core-0325", "r2-core-0447", "r2-core-0775"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "utility.recipe_guidance",
+          "hypothesis": "When a successful terminal recipe lookup exposes no public source evidence, preserve the parent fallback branch without adding claims or handles.",
+          "historical_signal": "R49 stopped before provider execution because live projection verification still expected the full baseline; the v7 adapter fix is covered by an integration regression and the treatment remains unevaluated.",
+          "forbidden_carry_forward": "Do not change action policy, lookup arguments, source-bearing answers, route Description, or any rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r55",
+      "capability": "product.exact_match",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v10",
+      "gain_seeds": ["r2-core-0452", "r2-core-0456", "r2-core-0502", "r2-core-0551", "r2-core-0603"],
+      "regressions": ["r2-core-0306", "r2-core-0429", "r2-core-0955"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "product.exact_match",
+          "hypothesis": "For a successful image-search state with visible cards, omit material claims not stated in the public tool evidence while preserving supported cards.",
+          "historical_signal": "R50 returned the exact bound response condition and operation, but free-form must_preserve prose triggered the authoring guard before Assistant; v10 makes preservation query-ID-only.",
+          "forbidden_carry_forward": "Do not change route, image or text tool choice, fallback, card closure, or copy R9, R50, and other rejected Banks."
+        }
+      ]
+    }
+  ]
+}

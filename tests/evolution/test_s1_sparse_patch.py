@@ -26,8 +26,10 @@ from skillchain.evolution.s1_sparse_patch import (
     parse_dual_policy_patch,
     parse_counterfactual_policy_patch,
     parse_counterfactual_semantic_policy_patch,
+    parse_counterfactual_surface_closed_policy_patch,
     parse_counterfactual_typed_policy_patch,
     counterfactual_semantic_policy_patch_output_json_schema,
+    counterfactual_surface_closed_policy_patch_output_json_schema,
     counterfactual_typed_policy_patch_output_json_schema,
     sparse_patch_output_json_schema,
     _body_sections,
@@ -355,6 +357,71 @@ def test_semantic_response_ir_has_no_free_form_or_action_channel(
     invalid["then"] = "write a better answer"
     with pytest.raises(S1SparsePatchError, match="semantic counterfactual Creator"):
         parse_counterfactual_semantic_policy_patch(
+            canonical_json_bytes(invalid),
+            capability_id=capability,
+            parent_skill_sha256=parent_skill.skill_sha256,
+            target_surface="response-policy",
+            parent_success_query_ids=success_ids,
+            expected_response_signature=signature,
+        )
+
+
+def test_surface_closed_ir_uses_query_only_preservation_refs(parent_materials) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "utility.recipe_guidance"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = ("success-1", "success-2", "success-3")
+    signature = {
+        "terminal_evidence_class": {
+            "tool_names": ["recipe_lookup"],
+            "outcome": "nonempty",
+            "evidence_kinds": ["source-text"],
+        },
+        "response_failure_family": "unsupported-claim",
+        "predicted_reason_code": "unsupported_claim",
+        "predicted_metric_component": "evidence_grounded",
+    }
+    schema = counterfactual_surface_closed_policy_patch_output_json_schema(
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="response-policy",
+        parent_success_query_ids=success_ids,
+        expected_response_signature=signature,
+    )
+    preservation = schema["properties"]["must_preserve"]["items"]["anyOf"]
+    assert all(set(item["properties"]) == {"query_id"} for item in preservation)
+    raw = {
+        "schema_version": 4,
+        "capability_id": capability,
+        "parent_skill_sha256": parent_skill.skill_sha256,
+        "target_surface": "response-policy",
+        "non_target_surface_action": "inherit",
+        "response_when": {
+            "terminal_tool_names": ["recipe_lookup"],
+            "terminal_evidence_outcome": "nonempty",
+            "evidence_kinds": ["source-text"],
+        },
+        "response_then": {"operation": "omit-unsupported-claims"},
+        "must_preserve": [{"query_id": query_id} for query_id in success_ids],
+    }
+    proposal = parse_counterfactual_surface_closed_policy_patch(
+        canonical_json_bytes(raw),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="response-policy",
+        parent_success_query_ids=success_ids,
+        expected_response_signature=signature,
+    )
+    compiled = compile_counterfactual_semantic_policy_branch(
+        parent_bank=parent, proposal=proposal
+    )
+    assert "omit every material claim" in compiled.policy_text
+    invalid = json.loads(json.dumps(raw))
+    invalid["must_preserve"][0]["provider_visible_state"] = "label-grounded"
+    with pytest.raises(S1SparsePatchError, match="surface-closed counterfactual"):
+        parse_counterfactual_surface_closed_policy_patch(
             canonical_json_bytes(invalid),
             capability_id=capability,
             parent_skill_sha256=parent_skill.skill_sha256,

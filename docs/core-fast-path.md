@@ -458,7 +458,7 @@ semantic operation，使评价标签和跨 family 内容不可表达；同时让
 局部、replay、body 与 R33/test300 规则全部保持不变。canonical root 为
 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815`。
 
-### B06 机制资格证明（R49–R53 尚未运行）
+### B06/B07 surface-closed response 阶段（R49–R54）
 
 `single-surface-counterfactual-fanout-v6` 关闭了 B05 暴露的两个 treatment 通道问题。action
 proposal 继续使用 capability-bound tool-loop state/transition，类型上不能携带 answer、cards、
@@ -483,10 +483,32 @@ R53 Multi item association。前两个 create-only root 在 0 provider call 时�
 `structural_treatment_sensitive=true`、`behavior_treatment_sensitive=true`，且五个实际 selection
 manifest SHA 与冻结值一致。
 
-这是**零调用机制资格证明**，不是新的 S1 实验结果：Feedback、Creator、Assistant replay、body75、
-fan-in、test300、S2/S3/Judge 均未启动，已完成轮数仍为 15/30。R12
-`e70ed907…096cd` 继续是唯一 parent/selected Bank；局部有界风险门、正式 hard-error 门、R33
-accepted-only fan-in 与 one-finalist test300 规则均未改变。
+资格证明后没有复用旧 root。R49 在 provider request 前暴露 live adapter 仍把 surface-projected
+冻结输入与 full baseline projection 比较；三条 canary 都是本地 identity error、实际 provider 0-call，
+因此不构成 Recipe 算法结果。修复 live/local projection parity 并加集成测试后，R50 的 9/9 Feedback
+通过，但 free-form `must_preserve` 句子触发 authored-content guard，Assistant 仍是 0-call。前向 v7
+把 preservation 收窄为 query-ID-only typed refs，condition 和 operation 继续使用封闭枚举；没有重试
+R49/R50，也没有改写其终态。
+
+独立 B07 root 随后执行 R51–R54：
+
+| Round | Target | 局部 screen | 正式门 | 终态 |
+|---|---|---:|---|---|
+| R51 | Encyclopedia response · unsupported claim | 0 gain / 1 regression | 未进入 replay200 | 回滚 |
+| R52 | Encyclopedia response · citation closure | 2 / 0 | replay macro `+0.8333pp`；body macro `+3.125pp`、CI95 lower `+2.7778pp`、hard-error `−4pp` | AcceptedBranchArtifact |
+| R53 | Multi response · item association | 0 / 0；1 条普通 reason 迁移 | 未进入正式 replay200 | 安全无效，回滚 |
+| R54 | Recipe response · empty-source fallback | 0 / 0；1 条普通 reason 迁移 | 未进入正式 replay200 | 安全无效，回滚 |
+
+R52 candidate Bank 为 `67b92b61…55bc8`，Encyclopedia Skill 为 `76622c04…d2916`；它通过了
+局部有界风险、replay200 和 body75 全部门，因此被 create-only 冻结为 accepted branch。它尚未
+成为 cycle selected Bank，也没有被用作 R53/R54 parent。R12 `e70ed907…096cd` 仍是所有独立
+round 的唯一 parent 和当前 selected Bank；R52 只能进入后续 accepted-only fan-in/finalist。
+
+R49–R54 新增可追踪 DashScope ¥1.3534802、5 个 Creator 会话；Creator 人民币 cost basis 不可得。
+自适应进度为 21/30。test300、S2/S3/Judge 均未访问，R55 尚未冻结/运行；局部门、正式
+hard-error 门、R33 accepted-only fan-in 与 one-finalist test300 规则未改变。canonical roots 为
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b06-v3-20260815`、
+`...-b06-v4-20260815` 与 `...-b07-20260815`。
 
 ## 实测并发与配速
 

@@ -84,7 +84,11 @@ from .models import (
     JudgeObservation,
     ToolTraceItem,
 )
-from .feedback_selection import project_feedback_observation, project_feedback_query
+from .feedback_selection import (
+    project_feedback_observation,
+    project_feedback_observation_for_surface,
+    project_feedback_query,
+)
 from .pacing import StartPacer
 
 
@@ -725,11 +729,25 @@ class LiveCoreFastAdapter:
             raise RuntimeError(
                 "Feedback identity is outside the frozen opt800"
             ) from error
+        attribution_policy = intent.payload.get("attribution_policy")
+        target_surface = intent.payload.get("target_surface")
+        expected_baseline = (
+            project_feedback_observation_for_surface(baseline, target_surface)
+            if attribution_policy
+            in {
+                "single-surface-counterfactual-v4",
+                "single-surface-counterfactual-v5",
+                "single-surface-counterfactual-v6",
+                "single-surface-counterfactual-v7",
+            }
+            and target_surface in {"action-policy", "response-policy"}
+            else project_feedback_observation(baseline)
+        )
         if canonical_json_bytes(project_feedback_query(query)) != canonical_json_bytes(
             raw_query
-        ) or canonical_json_bytes(
-            project_feedback_observation(baseline)
-        ) != canonical_json_bytes(raw_baseline):
+        ) or canonical_json_bytes(expected_baseline) != canonical_json_bytes(
+            raw_baseline
+        ):
             raise RuntimeError("Feedback projection differs from frozen local inputs")
         result = AssistantResult.model_validate_json(
             canonical_json_bytes(baseline.replay_context["assistant_result"]),
@@ -805,6 +823,7 @@ class LiveCoreFastAdapter:
             "single-surface-counterfactual-v4",
             "single-surface-counterfactual-v5",
             "single-surface-counterfactual-v6",
+            "single-surface-counterfactual-v7",
         }:
             target_surface = intent.payload.get("target_surface")
             if target_surface not in {"action-policy", "response-policy"}:

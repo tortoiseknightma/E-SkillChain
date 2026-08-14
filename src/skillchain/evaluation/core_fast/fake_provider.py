@@ -139,7 +139,10 @@ class FakeCoreFastAdapter:
                 )
                 payload: dict[str, object] = {
                     "schema_version": (
-                        3
+                        4
+                        if intent.payload.get("proposal_mode")
+                        == "single-surface-counterfactual-fanout-v7"
+                        else 3
                         if intent.payload.get("proposal_mode")
                         == "single-surface-counterfactual-fanout-v6"
                         else 2
@@ -152,16 +155,25 @@ class FakeCoreFastAdapter:
                     "target_surface": surface,
                     "non_target_surface_action": "inherit",
                     "must_preserve": [
-                        {
-                            "query_id": query_id,
-                            "provider_visible_state": (
-                                f"the provider-visible success state for {query_id} remains unchanged"
-                            ),
-                        }
+                        (
+                            {"query_id": query_id}
+                            if intent.payload.get("proposal_mode")
+                            == "single-surface-counterfactual-fanout-v7"
+                            else {
+                                "query_id": query_id,
+                                "provider_visible_state": (
+                                    "the provider-visible success state for "
+                                    f"{query_id} remains unchanged"
+                                ),
+                            }
+                        )
                         for query_id in success_ids
                     ],
                 }
-                if payload["schema_version"] in {2, 3} and surface == "action-policy":
+                if (
+                    payload["schema_version"] in {2, 3, 4}
+                    and surface == "action-policy"
+                ):
                     expected = requirements.get(
                         "action_condition_is_bound_to_selected_failure_state"
                     )
@@ -193,7 +205,7 @@ class FakeCoreFastAdapter:
                             },
                         }
                     )
-                elif payload["schema_version"] == 3:
+                elif payload["schema_version"] in {3, 4}:
                     signature = requirements.get(
                         "response_behavior_is_bound_to_selected_failure"
                     )

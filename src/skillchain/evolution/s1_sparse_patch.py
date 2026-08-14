@@ -57,6 +57,9 @@ S1_DUAL_POLICY_PATCH_VERSION = "portfolio-s1-dual-policy-patch-v1"
 S1_COUNTERFACTUAL_POLICY_VERSION = "single-surface-counterfactual-fanout-v4"
 S1_COUNTERFACTUAL_TYPED_POLICY_VERSION = "single-surface-counterfactual-fanout-v5"
 S1_COUNTERFACTUAL_SEMANTIC_POLICY_VERSION = "single-surface-counterfactual-fanout-v6"
+S1_COUNTERFACTUAL_SURFACE_CLOSED_POLICY_VERSION = (
+    "single-surface-counterfactual-fanout-v7"
+)
 S1_POLICY_SURFACES = ("action-policy", "response-policy")
 S1_CAPABILITY_ACTION_TOOLS = {
     "knowledge.visual_encyclopedia": ("object_detect", "encyclopedia_lookup"),
@@ -329,6 +332,12 @@ class CounterfactualPreservationV1(_StrictFrozenModel):
             value, "S1 counterfactual preservation state"
         )
         return value
+
+
+class CounterfactualPreservationRefV1(_StrictFrozenModel):
+    """A verifier-bound parent success with no authored prose channel."""
+
+    query_id: str
 
 
 class SingleSurfaceCounterfactualPatchV1(_StrictFrozenModel):
@@ -660,7 +669,15 @@ class SingleSurfaceCounterfactualPatchV3(_StrictFrozenModel):
                 non_target_surface_action="inherit",
                 action_when=self.action_when,
                 action_then=self.action_then,
-                must_preserve=self.must_preserve,
+                must_preserve=tuple(
+                    CounterfactualPreservationV1(
+                        query_id=item.query_id,
+                        provider_visible_state=(
+                            "the provider-visible parent state remains unchanged"
+                        ),
+                    )
+                    for item in self.must_preserve
+                ),
             )
             return self
         if (
@@ -702,6 +719,15 @@ class SingleSurfaceCounterfactualPatchV3(_StrictFrozenModel):
                 "response operation lacks its required public evidence kind"
             )
         return self
+
+
+class SingleSurfaceCounterfactualPatchV4(SingleSurfaceCounterfactualPatchV3):
+    """v7 IR: treatment and preservation channels are both prose-free."""
+
+    schema_version: Literal[4] = 4
+    must_preserve: tuple[CounterfactualPreservationRefV1, ...] = Field(
+        min_length=3, max_length=3
+    )
 
 
 class PolicySurfaceCompilationReceiptV1(_StrictFrozenModel):
@@ -1632,6 +1658,47 @@ def counterfactual_semantic_policy_patch_output_json_schema(
     }
 
 
+def counterfactual_surface_closed_policy_patch_output_json_schema(
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
+    expected_response_signature: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Return v7 schema with no free-form treatment or preservation text."""
+
+    schema = counterfactual_semantic_policy_patch_output_json_schema(
+        capability_id=capability_id,
+        parent_skill_sha256=parent_skill_sha256,
+        target_surface=target_surface,
+        parent_success_query_ids=parent_success_query_ids,
+        expected_action_condition=expected_action_condition,
+        expected_response_signature=expected_response_signature,
+    )
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    properties["schema_version"] = {"type": "integer", "enum": [4]}
+    properties["must_preserve"] = {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+            "anyOf": [
+                {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["query_id"],
+                    "properties": {"query_id": {"type": "string", "enum": [query_id]}},
+                }
+                for query_id in parent_success_query_ids
+            ]
+        },
+    }
+    return schema
+
+
 def parse_counterfactual_policy_patch(
     raw_final: bytes,
     *,
@@ -1746,6 +1813,63 @@ def parse_counterfactual_semantic_policy_patch(
     return proposal
 
 
+def parse_counterfactual_surface_closed_policy_patch(
+    raw_final: bytes,
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
+    expected_response_signature: Mapping[str, object] | None = None,
+) -> SingleSurfaceCounterfactualPatchV4:
+    try:
+        raw = parse_strict_json(
+            raw_final, label="S1 surface-closed counterfactual Creator output"
+        )
+        proposal = SingleSurfaceCounterfactualPatchV4.model_validate(raw, strict=True)
+    except (ArtifactFormatError, ValidationError) as error:
+        raise S1SparsePatchError(
+            "S1 surface-closed counterfactual Creator output is invalid"
+        ) from error
+    if (
+        proposal.capability_id != capability_id
+        or proposal.parent_skill_sha256 != parent_skill_sha256
+        or proposal.target_surface != target_surface
+        or tuple(item.query_id for item in proposal.must_preserve)
+        != parent_success_query_ids
+    ):
+        raise S1SparsePatchError(
+            "S1 surface-closed counterfactual proposal binding drifted"
+        )
+    if target_surface == "action-policy":
+        if expected_action_condition is None or expected_response_signature is not None:
+            raise S1SparsePatchError(
+                "S1 surface-closed action evidence binding is absent"
+            )
+        expected_action = CounterfactualActionConditionV1.model_validate(
+            expected_action_condition, strict=True
+        )
+        if proposal.action_when != expected_action:
+            raise S1SparsePatchError(
+                "S1 surface-closed action condition drifted from evidence"
+            )
+    else:
+        if expected_action_condition is not None or expected_response_signature is None:
+            raise S1SparsePatchError(
+                "S1 surface-closed response evidence binding is absent"
+            )
+        if proposal.response_when != _response_condition_from_signature(
+            expected_response_signature
+        ) or proposal.response_then != _response_directive_from_signature(
+            expected_response_signature
+        ):
+            raise S1SparsePatchError(
+                "S1 surface-closed response treatment drifted from scored behavior"
+            )
+    return proposal
+
+
 def _render_typed_action_condition(value: CounterfactualActionConditionV1) -> str:
     if value.phase == "before-first-tool":
         return "the action loop is before its first tool call"
@@ -1813,7 +1937,7 @@ def _render_typed_response_directive(value: CounterfactualResponseDirectiveV1) -
 def compile_counterfactual_semantic_policy_branch(
     *,
     parent_bank: StaticBankArtifact,
-    proposal: SingleSurfaceCounterfactualPatchV3,
+    proposal: SingleSurfaceCounterfactualPatchV3 | SingleSurfaceCounterfactualPatchV4,
 ) -> CompiledPolicySurfaceBranch:
     if proposal.target_surface == "action-policy":
         assert proposal.action_when is not None and proposal.action_then is not None
@@ -2826,6 +2950,7 @@ __all__ = [
     "SingleSurfaceCounterfactualPatchV1",
     "SingleSurfaceCounterfactualPatchV2",
     "SingleSurfaceCounterfactualPatchV3",
+    "SingleSurfaceCounterfactualPatchV4",
     "CounterfactualActionConditionV1",
     "CounterfactualActionDirectiveV1",
     "CounterfactualResponseConditionV1",
@@ -2843,9 +2968,11 @@ __all__ = [
     "counterfactual_policy_patch_output_json_schema",
     "counterfactual_typed_policy_patch_output_json_schema",
     "counterfactual_semantic_policy_patch_output_json_schema",
+    "counterfactual_surface_closed_policy_patch_output_json_schema",
     "parse_dual_policy_patch",
     "parse_counterfactual_policy_patch",
     "parse_counterfactual_typed_policy_patch",
     "parse_counterfactual_semantic_policy_patch",
+    "parse_counterfactual_surface_closed_policy_patch",
     "sparse_patch_output_json_schema",
 ]

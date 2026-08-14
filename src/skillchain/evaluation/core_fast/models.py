@@ -203,6 +203,7 @@ class S1Settings(FrozenStrictModel):
         "parent-counterfactual-v7",
         "parent-counterfactual-v8",
         "parent-counterfactual-v9",
+        "parent-counterfactual-v10",
     ] = "discovery-stratified-v1"
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
@@ -215,6 +216,7 @@ class S1Settings(FrozenStrictModel):
         "single-surface-counterfactual-fanout-v4",
         "single-surface-counterfactual-fanout-v5",
         "single-surface-counterfactual-fanout-v6",
+        "single-surface-counterfactual-fanout-v7",
     ] = "sparse-parent-patch-v1"
     max_patched_capabilities: int = Field(default=3, ge=1, le=6)
     protected_capabilities: tuple[str, ...] = ()
@@ -318,10 +320,13 @@ class S1Settings(FrozenStrictModel):
             "single-surface-counterfactual-fanout-v4",
             "single-surface-counterfactual-fanout-v5",
             "single-surface-counterfactual-fanout-v6",
+            "single-surface-counterfactual-fanout-v7",
         }
         if counterfactual:
             expected_selections = (
-                {"parent-counterfactual-v9"}
+                {"parent-counterfactual-v10"}
+                if self.proposal_mode == "single-surface-counterfactual-fanout-v7"
+                else {"parent-counterfactual-v9"}
                 if self.proposal_mode == "single-surface-counterfactual-fanout-v6"
                 else {"parent-counterfactual-v7", "parent-counterfactual-v8"}
                 if self.proposal_mode == "single-surface-counterfactual-fanout-v5"
@@ -346,6 +351,7 @@ class S1Settings(FrozenStrictModel):
             if self.proposal_mode in {
                 "single-surface-counterfactual-fanout-v5",
                 "single-surface-counterfactual-fanout-v6",
+                "single-surface-counterfactual-fanout-v7",
             } and (not self.cycle_preflight_path or not self.cycle_preflight_sha256):
                 raise ValueError(
                     "typed counterfactual S1 requires a frozen all-round preflight"
@@ -529,6 +535,7 @@ class CoreFastSpec(FrozenStrictModel):
             "single-surface-counterfactual-fanout-v4",
             "single-surface-counterfactual-fanout-v5",
             "single-surface-counterfactual-fanout-v6",
+            "single-surface-counterfactual-fanout-v7",
         }:
             if self.s1_parent is None:
                 raise ValueError(

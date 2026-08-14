@@ -344,7 +344,11 @@ def _counterfactual_cluster_state(
     if surface == "action-policy":
         trace = state.get("tool_trace")
         assert isinstance(trace, list)
-        if selection_policy in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
+        if selection_policy in {
+            "parent-counterfactual-v8",
+            "parent-counterfactual-v9",
+            "parent-counterfactual-v10",
+        }:
             return {
                 "action_failure_signature": _action_failure_signature(state),
                 "failed_action_components": state.get("failed_action_components"),
@@ -353,7 +357,11 @@ def _counterfactual_cluster_state(
             "tool_called": bool(trace),
             "failed_action_components": state.get("failed_action_components"),
         }
-    if selection_policy in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
+    if selection_policy in {
+        "parent-counterfactual-v8",
+        "parent-counterfactual-v9",
+        "parent-counterfactual-v10",
+    }:
         signature = state.get("response_treatment_signature")
         return {
             "response_treatment_signature": signature,
@@ -397,6 +405,7 @@ def build_parent_counterfactual_population(
         strict_policy = settings.feedback_selection_policy in {
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
+            "parent-counterfactual-v10",
         }
         action_signature = (
             _action_failure_signature(state)
@@ -405,7 +414,8 @@ def build_parent_counterfactual_population(
         )
         response_signature = (
             _response_treatment_signature_v9(observation)
-            if settings.feedback_selection_policy == "parent-counterfactual-v9"
+            if settings.feedback_selection_policy
+            in {"parent-counterfactual-v9", "parent-counterfactual-v10"}
             and settings.target_surface == "response-policy"
             and not success
             else (
@@ -420,7 +430,10 @@ def build_parent_counterfactual_population(
                 else None
             )
         )
-        if settings.feedback_selection_policy == "parent-counterfactual-v9":
+        if settings.feedback_selection_policy in {
+            "parent-counterfactual-v9",
+            "parent-counterfactual-v10",
+        }:
             state = {
                 **state,
                 "terminal_response_evidence_class": (
@@ -486,6 +499,7 @@ def select_parent_counterfactual_samples(
     strict_qualification = settings.feedback_selection_policy in {
         "parent-counterfactual-v8",
         "parent-counterfactual-v9",
+        "parent-counterfactual-v10",
     }
 
     def treatment_separable(row: Mapping[str, object]) -> bool:
@@ -575,7 +589,8 @@ def select_parent_counterfactual_samples(
         if settings.target_surface == "response-policy":
             evidence_key = (
                 "terminal_response_evidence_class"
-                if settings.feedback_selection_policy == "parent-counterfactual-v9"
+                if settings.feedback_selection_policy
+                in {"parent-counterfactual-v9", "parent-counterfactual-v10"}
                 else "response_evidence_class"
             )
             exact_boundary = int(
@@ -1353,7 +1368,11 @@ def build_parent_counterfactual_manifest(
                         )
                     }
                     if settings.feedback_selection_policy
-                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
+                    in {
+                        "parent-counterfactual-v8",
+                        "parent-counterfactual-v9",
+                        "parent-counterfactual-v10",
+                    }
                     and settings.target_surface == "action-policy"
                     else {}
                 ),
@@ -1364,7 +1383,11 @@ def build_parent_counterfactual_manifest(
                         )
                     }
                     if settings.feedback_selection_policy
-                    in {"parent-counterfactual-v8", "parent-counterfactual-v9"}
+                    in {
+                        "parent-counterfactual-v8",
+                        "parent-counterfactual-v9",
+                        "parent-counterfactual-v10",
+                    }
                     and settings.target_surface == "response-policy"
                     else {}
                 ),

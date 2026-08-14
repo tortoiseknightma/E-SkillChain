@@ -29,6 +29,7 @@ from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
     compile_counterfactual_semantic_policy_branch,
     compile_counterfactual_typed_policy_branch,
     parse_counterfactual_semantic_policy_patch,
+    parse_counterfactual_surface_closed_policy_patch,
     parse_counterfactual_typed_policy_patch,
 )
 from skillchain.schemas import Query  # noqa: E402
@@ -297,7 +298,9 @@ def _round_spec(
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
         "proposal_mode": (
-            "single-surface-counterfactual-fanout-v6"
+            "single-surface-counterfactual-fanout-v7"
+            if typed_contract and selection_policy == "parent-counterfactual-v10"
+            else "single-surface-counterfactual-fanout-v6"
             if typed_contract and selection_policy == "parent-counterfactual-v9"
             else "single-surface-counterfactual-fanout-v5"
             if typed_contract
@@ -455,23 +458,37 @@ def _treatment_probe(
             if row["counterfactual_role"] == "parent_success"
         )
     )
-    semantic_contract = (
+    semantic_contract = getattr(
+        settings, "proposal_mode", "single-surface-counterfactual-fanout-v5"
+    ) in {
+        "single-surface-counterfactual-fanout-v6",
+        "single-surface-counterfactual-fanout-v7",
+    }
+    surface_closed_contract = (
         getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
-        == "single-surface-counterfactual-fanout-v6"
+        == "single-surface-counterfactual-fanout-v7"
     )
     payload: dict[str, object] = {
-        "schema_version": 3 if semantic_contract else 2,
+        "schema_version": 4
+        if surface_closed_contract
+        else 3
+        if semantic_contract
+        else 2,
         "capability_id": capability,
         "parent_skill_sha256": parent_skill.skill_sha256,
         "target_surface": surface,
         "non_target_surface_action": "inherit",
         "must_preserve": [
-            {
-                "query_id": query_id,
-                "provider_visible_state": (
-                    f"the provider visible success state {query_id} remains unchanged"
-                ),
-            }
+            (
+                {"query_id": query_id}
+                if surface_closed_contract
+                else {
+                    "query_id": query_id,
+                    "provider_visible_state": (
+                        f"the provider visible success state {query_id} remains unchanged"
+                    ),
+                }
+            )
             for query_id in success_ids
         ],
     }
@@ -494,7 +511,11 @@ def _treatment_probe(
         )
         if getattr(
             settings, "feedback_selection_policy", "parent-counterfactual-v7"
-        ) in {"parent-counterfactual-v8", "parent-counterfactual-v9"}:
+        ) in {
+            "parent-counterfactual-v8",
+            "parent-counterfactual-v9",
+            "parent-counterfactual-v10",
+        }:
             if not isinstance(action_signature, dict):
                 raise ValueError(
                     "action treatment has no provider-visible failure state"
@@ -570,6 +591,7 @@ def _treatment_probe(
         if settings.feedback_selection_policy in {
             "parent-counterfactual-v8",
             "parent-counterfactual-v9",
+            "parent-counterfactual-v10",
         }:
             if not isinstance(response_signature, dict):
                 raise ValueError(
@@ -601,7 +623,12 @@ def _treatment_probe(
             )
             payload.update({"when": when, "then": then})
     if semantic_contract:
-        proposal = parse_counterfactual_semantic_policy_patch(
+        parse_semantic = (
+            parse_counterfactual_surface_closed_policy_patch
+            if surface_closed_contract
+            else parse_counterfactual_semantic_policy_patch
+        )
+        proposal = parse_semantic(
             canonical_json_bytes(payload),
             capability_id=capability,
             parent_skill_sha256=parent_skill.skill_sha256,
@@ -793,6 +820,7 @@ def _build_cycle_preflight(
             if spec.s1_settings.feedback_selection_policy in {
                 "parent-counterfactual-v8",
                 "parent-counterfactual-v9",
+                "parent-counterfactual-v10",
             }:
                 if spec.s1_settings.target_surface == "action-policy":
                     failure_signatures = {

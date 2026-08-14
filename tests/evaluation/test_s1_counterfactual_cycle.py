@@ -228,7 +228,7 @@ def test_v8_treatment_probe_uses_the_selected_provider_visible_failure() -> None
     assert probe["probe_action_tool_name"] == "recipe_lookup"
 
 
-def test_v9_preflight_requires_a_scored_response_behavior_and_matched_successes() -> (
+def test_v10_preflight_requires_a_scored_response_behavior_and_matched_successes() -> (
     None
 ):
     signature = {
@@ -245,8 +245,8 @@ def test_v9_preflight_requires_a_scored_response_behavior_and_matched_successes(
         s1_settings=SimpleNamespace(
             target_capabilities=("utility.recipe_guidance",),
             target_surface="response-policy",
-            feedback_selection_policy="parent-counterfactual-v9",
-            proposal_mode="single-surface-counterfactual-fanout-v6",
+            feedback_selection_policy="parent-counterfactual-v10",
+            proposal_mode="single-surface-counterfactual-fanout-v7",
         ),
         s1_parent=SimpleNamespace(
             protected_skill_sha256={"product.style_recommendation": "a" * 64}

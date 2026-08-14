@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R48（15/30）。第三阶段 R44–R48 在任何新调用前一次性通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight：R44 Recipe typed action 在局部 screen 得到 7 gains / 1 regression，并进入正式 replay200，macro +1.6667pp、Recipe +10pp，但 hard-error delta +2pp 超过冻结门而回滚；R45/R46 两个 Multi response family 均为 0/0；R47 在 Creator contract 安全停止、Assistant 0-call；R48 Encyclopedia response 为 0/1。此后 R49–R53 已用新的 surface-closed Creator IR、surface-filtered Feedback 与行为级 preflight 完成 5/5 零调用资格证明，但尚未启动 Feedback、Creator 或 replay，因此完成轮数仍为 15/30。R34–R48 仍无新 accepted branch，未访问 body75/test300/S2/S3/Judge。三个已执行阶段新增可追踪 DashScope 成本合计 ¥2.2644525；14 次 Creator 会话的人民币 cost basis 不可得。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成，R12 的 Style action-policy Bank `e70ed907…096cd` 仍是当前 cycle selected 和后续独立实验的唯一 parent。自适应周期已完成 R34–R54（21/30）。第四阶段修复了 live/local Feedback projection 身份不一致，并把 response Creator 收窄为封闭 condition/operation 与 query-ID-only preservation；R51–R54 均进入可归因局部 screen。R51 为 0 gain / 1 regression，R53/R54 为 0/0；R52 Encyclopedia citation closure 局部 2/0，replay macro +0.8333pp、body macro +3.125pp、CI95 lower +2.7778pp、hard-error −4pp，成为唯一新增 AcceptedBranchArtifact。R49/R50 没有执行 Assistant treatment，不能写成算法负结果。R52 只能进入后续 accepted-only fan-in/finalist，尚未成为 selected Bank；test300/S2/S3/Judge 均未访问。本阶段新增可追踪 DashScope ¥1.3534802、5 个 Creator 会话；四个自适应阶段合计 ¥3.6179327、19 个 Creator 会话，Creator 人民币 cost basis 不可得。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -131,7 +131,7 @@ screen，但均为 0 gain / 0 regression；R47 的 Encyclopedia unsupported-clai
 与 selected Bank，body75/test300/S2/S3/Judge 未访问。下一阶段优先把 response `then` 也收紧为
 typed semantic operation，并让 preflight 证明规则能改变具体评分行为，而不只是生成不同的 policy hash。
 
-下一批 B06 已完成机制资格证明但**尚未启动实验**。`single-surface-counterfactual-fanout-v6`
+第四阶段先用 B06 完成机制资格证明，再以前向 B07 执行 R49–R54。`single-surface-counterfactual-fanout-v6`
 继续使用既有 typed action state/transition，并把 response Creator 也改成封闭枚举 IR：condition 只能引用
 terminal tool、empty/nonempty evidence 与公开 evidence kind，directive 只能选择一项 claim/evidence/card/
 fallback 语义操作；schema 不再提供自由文本 `when/then` 或 action channel。Feedback packet 在进入 Creator
@@ -142,8 +142,15 @@ failure cluster，并绑定预期 reason code 与 scorer component。
 结构敏感性和行为级 treatment-sensitivity 检查，最终为 5/5 通过、provider calls=0。前两次 create-only
 预检分别因 fallback/item-association 的 scorer component 绑定错误，以及 Encyclopedia
 output-structure 在 R12 evidence 上不可形成 3/3/3 对照而失败；修正资格定义和预注册 family 后，第三个
-独立 root 才冻结通过。R49–R53 仍只读 R12，尚未调用 Feedback/Creator/Assistant；15/30 完成数、
-局部/正式 gate、R33 accepted-only fan-in 与 one-finalist test300 全部不变。
+独立 root 才冻结通过。R49 随后在 provider 前暴露 live adapter 仍校验 full projection；修复并加集成
+回归后，v7 又将 Creator 的 free-form preservation 收窄成 query-ID-only typed refs。R50 的 Exact
+treatment 停在旧 preservation guard，未运行 Assistant；R51–R54 则全部进入局部 response screen。
+R51 unsupported-claim 为 0/1，R53 Multi item-association 与 R54 Recipe fallback 均为 0/0。
+R52 Encyclopedia citation closure 局部 9→11、0 regression，正式 replay macro `+0.8333pp`、
+Encyclopedia `+5pp`、hard-error `+1pp`，body75 macro `+3.125pp`、CI95 lower `+2.7778pp`、
+hard-error `−4pp`，因此冻结为 AcceptedBranchArtifact（Bank `67b92b61…55bc8`）。R12 仍是 independent
+parent 和 cycle selected；R52 只能参加 accepted-only fan-in/finalist，不能改写 R51/R53/R54 的 parent。
+自适应进度为 21/30；R55 尚未冻结/运行，局部/正式 gate、R33 fan-in 与 one-finalist test300 不变。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
@@ -445,8 +452,8 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
 3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
 4. 每个后续 batch 必须在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；不能把 R12 Style 同时声明为 byte-exact protected Skill 和可修改 target。
-5. 下一批仍从 R12 出发；保留已验证能进入 replay 的 typed action IR，但不得继承 R44 candidate。response Creator 应改为不可携带评价标签的 typed semantic operation，并要求 treatment probe 预测具体评分行为变化；R34–R48 的失败候选不得作为 parent 或被拼入 fan-in。
-6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；在候选通过正式 replay200/body75 前，不访问 test300，也不启动 S2/S3/Judge。当前自适应进度为 15/30，下一预算阶段从 R49 开始。
+5. 后续独立 round 仍从 R12 出发；冻结 R52 AcceptedBranchArtifact，只允许它进入 accepted-only fan-in/finalist。R34–R51、R53/R54 的失败候选不得作为 parent、不得复制局部 Skill，也不得拼入组合。
+6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；不因 R52 已通过 body75 而访问 test300。当前自适应进度为 21/30，下一预算阶段从尚未运行的 R55 开始；S2/S3/Judge 继续关闭。
 
 ---
 
