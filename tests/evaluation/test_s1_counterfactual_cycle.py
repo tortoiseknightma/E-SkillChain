@@ -24,6 +24,14 @@ assert _script_spec is not None and _script_spec.loader is not None
 cycle_runner = importlib.util.module_from_spec(_script_spec)
 _script_spec.loader.exec_module(cycle_runner)
 
+_prepare_path = ROOT / "scripts" / "prepare_s1_counterfactual_cycle.py"
+_prepare_spec = importlib.util.spec_from_file_location(
+    "prepare_s1_counterfactual_cycle", _prepare_path
+)
+assert _prepare_spec is not None and _prepare_spec.loader is not None
+cycle_preparer = importlib.util.module_from_spec(_prepare_spec)
+_prepare_spec.loader.exec_module(cycle_preparer)
+
 _fixture_spec = importlib.util.spec_from_file_location(
     "core_fast_fixture_module", Path(__file__).with_name("test_core_fast.py")
 )
@@ -122,4 +130,24 @@ def test_s1_finalist_test_rejects_zero_finalist_before_provider_calls(
                 finalist_receipt=finalist_path,
                 output_root=tmp_path / "test300",
             )
+        )
+
+
+def test_all_round_preflight_rejects_a_byte_exact_protected_target() -> None:
+    spec = SimpleNamespace(
+        s1_settings=SimpleNamespace(
+            target_capabilities=("product.style_recommendation",),
+            target_surface="action-policy",
+        ),
+        s1_parent=SimpleNamespace(
+            protected_skill_sha256={
+                "product.style_recommendation": "a" * 64,
+            }
+        ),
+    )
+    with pytest.raises(ValueError, match="byte-exact protected"):
+        cycle_preparer._treatment_probe(  # noqa: SLF001
+            parent=fixture_module._bank(),
+            spec=spec,
+            selected=(),
         )

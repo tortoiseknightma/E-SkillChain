@@ -483,7 +483,7 @@
 
   <header class="hero">
     <div class="wrap hero-inner">
-      <p class="eyebrow">Core Fast · S1 Experiment Ledger · Updated 2026-08-14</p>
+      <p class="eyebrow">Core Fast · S1 Experiment Ledger · Updated 2026-08-15</p>
       <h1>S1 实验与算法演进日志</h1>
       <p class="subtitle">
         逐轮记录“做了什么、发生了什么、为什么回滚、下一次改哪里”。本页是可读索引；
@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R12 仍是唯一正式 accepted；R31/R32 条件化周期已结束，0 branch accepted，test 未访问</span>
+        <span>R12 仍是唯一正式 accepted；自适应首批 R34–R38 已结束，0 branch accepted，test 未访问</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>0 / 2</strong><span>new branches accepted</span></div>
+        <div class="hero-stat"><strong>1 / 5</strong><span>adaptive rounds reached valid local screen</span></div>
       </div>
 
       <div class="hero-actions">
@@ -561,21 +561,19 @@
         <strong>当前工程状态</strong>
         tracked spec 已绑定 <code>core-fast-model-generated-action-response-v1</code>、fresh Static SHA
         <code>a9949cd673fff547…2c0805a7</code> 与新 fixed samples；inputs-only 和完整 validate 都通过。
-        双策略 R12 已通过完整 replay 与 body75：selected Bank 为
-        <code>e70ed907…096cd</code>。新的 <code>s1-counterfactual-v1</code> 已终结：fresh R12 parent
-        opt800 800/800；R31 的 9/9 Feedback 通过、Creator 规则因跨 surface 被拒；R32 因证据不足
-        零 Creator 终止；R33 没有 finalist，test300 未访问。R17/R26/R29 及其他 rejected Bank
-        全程未成为 parent 或 fan-in 输入，selected Bank 仍为 R12。两个计划 treatment 实际进入 replay
-        为 <strong>0/2</strong>，所以本周期没有 S1 正增益或负增益结论。下一版机制已完成离线 typed IR、
-        surface Feedback 过滤与全周期 preflight，但真实 R12 preflight 仍阻断 R32；没有新的 provider 调用。
+        双策略 R12 已通过完整 replay 与 body75：selected Bank 为 <code>e70ed907…096cd</code>。
+        条件化 R31–R33 周期仍以 treatment throughput 0/2 终结。其后的自适应首批 R34–R38
+        继续只读 R12 parent：R34、R35、R36、R38 分别在 Feedback 标签、runtime dispatch、Creator
+        单句合同和 protected-target 可行性处 fail closed；只有 R37 进入有效局部 action screen，得到
+        4 gains / 10 regressions 并被固定门拒绝。五轮正式 replay200/body75 均为 0-call，test300、
+        S2/S3/Judge 均未启动；因此首批没有新的 S1 正增益或负增益结论。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
         <strong>当前 campaign 成本口径</strong>
-        双策略 R1–R30 的可追踪 DashScope 累计成本为 ¥33.1941053。新周期另计
-        ¥2.52357745：失败 baseline v2 ¥1.2357178、canonical baseline ¥1.2439722、R31 Feedback
-        ¥0.04388745；v2 另有一个 provider orphan 成本未知。新周期仅 1 个 Creator
-        （35,972 / 823 tokens），人民币 cost basis 不可得。
+        双策略 R1–R30 的可追踪 DashScope 累计成本为 ¥33.1941053。R31–R33 周期另计
+        ¥2.52357745，另有一个 provider orphan 与 Creator 人民币成本未知。自适应首批 R34–R38
+        新增可追踪 DashScope ¥0.3496057、4 个 Creator 会话；Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
 
@@ -1737,6 +1735,83 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <code>src/skillchain/evaluation/core_fast/feedback_selection.py · response eligibility and cluster abstraction</code>
             <code>scripts/prepare_s1_counterfactual_cycle.py · all-round preflight before runnable spec freeze</code>
             <code>real R12 dry preflight: R31 selection 325a858f…3ca76; R32 insufficient_counterfactual_evidence</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260815-adaptive-b01" data-status="analysis" data-capability="recipe,exact,encyclopedia,style">
+          <div class="experiment-head">
+            <div>
+              <h3>Adaptive batch 01 · R34–R38</h3>
+              <p>R12-parent 的首个逐轮复盘批次；每轮先冻结 evidence 与唯一 surface，再把终态写入下一轮 memory。</p>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">R12 preserved</span><span class="tag">2026-08-15</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>1 / 5</strong><span>valid local treatment screens</span></div>
+            <div class="result-box"><strong>0 / 5</strong><span>formal replay200 entries</span></div>
+            <div class="result-box"><strong>0</strong><span>accepted branches</span></div>
+            <div class="result-box"><strong>¥0.3496057</strong><span>traceable DashScope spend</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · Bank <code>e70ed907…096cd</code> · opt SHA <code>4c6bafa6…84fcf</code></dd></div>
+            <div><dt>Batch identity</dt><dd><code>s1-r12-adaptive-v1-b01</code> · 5 pre-registered slots · projected worst case ¥9.38</dd></div>
+            <div><dt>Calls</dt><dd>4 Creator sessions；R37 产生 78 个 local Assistant outer results；其他轮无真实 Assistant provider call</dd></div>
+            <div><dt>Untouched</dt><dd>formal replay200、body75、test300、S2、S3、Judge</dd></div>
+          </dl>
+
+          <div class="table-wrap" role="region" aria-labelledby="adaptive-b01-caption" tabindex="0">
+            <table>
+              <caption id="adaptive-b01-caption">R34–R38 每轮终态；“无算法结论”表示 treatment 未获得可解释的模型执行比较。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">Target</th><th scope="col">最深阶段</th><th scope="col">可复核结果</th><th scope="col">处置</th><th scope="col">CNY</th></tr></thead>
+              <tbody>
+                <tr><th scope="row"><a href="#exp-20260815-r34">R34</a></th><td>Recipe action</td><td>Feedback canary</td><td>1/3 terminal success；2 条在一次格式重试后仍 schema error</td><td>无 Creator；无算法结论</td><td class="num">0.02411475</td></tr>
+                <tr><th scope="row"><a href="#exp-20260815-r35">R35</a></th><td>Exact action</td><td>local screen dispatch</td><td>Feedback 9/9、Creator valid；50/50 local results 因未知 config label 失败，0 provider calls</td><td>无算法结论</td><td class="num">0.0419802</td></tr>
+                <tr><th scope="row"><a href="#exp-20260815-r36">R36</a></th><td>Encyclopedia response</td><td>Creator contract</td><td>Feedback 9/9；<code>then</code> 含四个分号分隔动作，被单句 compiler 拒绝</td><td>无 Assistant；无算法结论</td><td class="num">0.04335405</td></tr>
+                <tr><th scope="row"><a href="#exp-20260815-r37">R37</a></th><td>Encyclopedia action</td><td>valid local screen</td><td>parent 26→candidate 20；4 gains / 10 regressions；2/3 显式 parent-success 回退</td><td>bounded-risk reject</td><td class="num">0.1961074</td></tr>
+                <tr><th scope="row"><a href="#exp-20260815-r38">R38</a></th><td>Style action</td><td>candidate invariant</td><td>Feedback 9/9、Creator valid；target Style 与 byte-exact protected Style 自相矛盾，0 Assistant</td><td>treatment infeasible</td><td class="num">0.0440493</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <section class="card" id="exp-20260815-r34">
+            <h4>R34 · Feedback 双标签合同</h4>
+            <p><span class="kind fact">FACT</span> action suggestion 只按提示输出 <code>[action-policy]</code>，而全局 parser 还要求 disposition；两条 canary 在唯一重试后仍失败，Creator 与 Assistant 均为 0-call。</p>
+            <p><span class="kind decision">DECISION</span> 不评价 Recipe 假设。后续 suggestion 必须同时含 disposition 与 surface；缺 disposition 仍拒绝，不能默认为 compatible。</p>
+          </section>
+          <section class="card" id="exp-20260815-r35">
+            <h4>R35 · runtime label dispatch</h4>
+            <p><span class="kind fact">FACT</span> typed Exact action IR 成功生成，但 <code>s1-parent-control</code> / <code>s1-candidate-treatment</code> 未映射到 S1 runtime，50 个本地结果全部在 provider 前 KeyError。</p>
+            <p><span class="kind decision">DECISION</span> 不评价 Exact treatment。所有动态 <code>s1-*</code> trace label 归一到 S1 runtime treatment，同时继续按 Bank SHA 隔离 runner cache。</p>
+          </section>
+          <section class="card" id="exp-20260815-r36">
+            <h4>R36 · response 单句合同</h4>
+            <p><span class="kind fact">FACT</span> Creator 的 JSON 外层 schema-valid，但 response <code>then</code> 实际是四项 checklist；local compiler 正确在 Assistant 前拒绝。</p>
+            <p><span class="kind decision">DECISION</span> 不评价 source-entailment 假设。把 max length、无分号/换行 pattern 与单句要求直接暴露到 Creator JSON Schema。</p>
+          </section>
+          <section class="card" id="exp-20260815-r37">
+            <h4>R37 · 首个有效 treatment</h4>
+            <p><span class="kind fact">FACT</span> detect→lookup typed action rule在 39 对 local rows 上产生 4 gains、10 regressions、净 −6，且保护例 <code>0266</code>/<code>0269</code> 回退；固定有界风险门正确阻止 formal replay200。</p>
+            <p><span class="kind inference">INFERENCE</span> 把三个实体特定的 <code>must_preserve</code> 描述渲染进 live Skill 可能与通用规则竞争；单次采样波动仍是替代解释。</p>
+            <p><span class="kind decision">DECISION</span> 保留门槛。保护例继续写入 SHA-bound verifier，但 live Skill 只渲染条件规则和通用 otherwise-preserve-parent 句。</p>
+          </section>
+          <section class="card" id="exp-20260815-r38">
+            <h4>R38 · protected target 冲突</h4>
+            <p><span class="kind fact">FACT</span> Style action proposal 合法，但修改目标 Style Skill 必然违反 parent binding 对 R12 Style SHA 的 byte-exact 保护；engine 在 0 Assistant 时 fail closed，且没有生成 StageDecision。</p>
+            <p><span class="kind decision">DECISION</span> 不评价 Style treatment。all-round preflight 新增 protected-target compatibility；任何 target 命中 <code>protected_skill_sha256</code> 都必须在 0 Feedback 阶段拒绝。</p>
+          </section>
+
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>五轮全部保持 R12 selected；只有 R37 是可归因的局部算法比较，且明确未过风险门。正式 replay200/body75 均未访问，因此不能报告系统级 S1 正增益或负增益。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>本批主要瓶颈仍是 treatment throughput，而不是 gate 过严。typed IR 已减少跨 surface 风险，但 preflight 必须同时覆盖 evidence、可消费性、runtime dispatch 与 parent invariant。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>下一批继续从 R12 派生，禁止继承 R34–R38 candidate；不放宽局部或正式门。只有 all-round preflight 全绿后才允许新的 Feedback。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\r34-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\r35-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\r36-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\r37-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\r38-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815\artifacts\batch01-summary.json</code>
           </div></details>
         </article>
 

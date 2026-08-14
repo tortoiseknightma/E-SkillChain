@@ -62,6 +62,17 @@ def test_dual_policy_feedback_labels_normalize_order_without_changing_text() -> 
     )
 
 
+def test_counterfactual_feedback_instruction_requires_disposition_and_surface() -> None:
+    instruction = live_module._single_surface_feedback_instruction(  # noqa: SLF001
+        "action-policy"
+    )
+
+    assert "[policy_compatible] [action-policy]" in instruction
+    assert "[requires_new_evidence] [action-policy]" in instruction
+    assert "[rejected] [action-policy]" in instruction
+    assert "Do not propose response-policy" in instruction
+
+
 def test_live_feedback_reads_the_bound_s1_parent_observations(tmp_path: Path) -> None:
     parent_opt = tmp_path / "r12-parent-opt800.jsonl"
     adapter = LiveCoreFastAdapter(
@@ -74,6 +85,21 @@ def test_live_feedback_reads_the_bound_s1_parent_observations(tmp_path: Path) ->
     )
 
     assert adapter._feedback_baseline_path() == parent_opt
+
+
+@pytest.mark.parametrize(
+    "label",
+    (
+        "s1-parent-control",
+        "s1-candidate-treatment",
+        "s1-parent",
+        "s1-combined",
+        "s1-finalist",
+        "s1-branch-product.multi_search-response-policy-parent",
+    ),
+)
+def test_local_s1_trace_labels_use_the_bound_s1_runtime(label: str) -> None:
+    assert LiveCoreFastAdapter._canonical_config(label) == "s1"  # noqa: SLF001
 
 
 def test_windows_creator_prefers_independently_updated_npm_codex_shim(

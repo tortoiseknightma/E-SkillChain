@@ -125,6 +125,25 @@ def _normalize_dual_policy_feedback_labels(
     return feedback.model_copy(update={"skill_suggestions": tuple(normalized)})
 
 
+def _single_surface_feedback_instruction(target_surface: str) -> str:
+    if target_surface not in _FEEDBACK_SURFACES:
+        raise ValueError("counterfactual Feedback target surface is invalid")
+    forbidden_surface = (
+        "response-policy" if target_surface == "action-policy" else "action-policy"
+    )
+    return (
+        "Every suggestion must start with exactly one disposition label followed "
+        f"by [{target_surface}]. An actionable suggestion must start exactly "
+        f"[policy_compatible] [{target_surface}]. Otherwise start with "
+        f"[requires_new_evidence] [{target_surface}] or [rejected] "
+        f"[{target_surface}]. Discuss only {target_surface}. Do not propose "
+        f"{forbidden_surface}, routing Description, runtime, compiler, scorer, or "
+        "evaluation changes. Action suggestions may name only provider-visible "
+        "tool-loop state and one tool transition; response suggestions may use "
+        "only the fixed public tool outcome and visible evidence."
+    )
+
+
 _QWEN_INPUT_CNY_PER_MILLION = 0.15
 _QWEN_OUTPUT_CNY_PER_MILLION = 1.5
 _ASSISTANT_INPUT_CNY_PER_MILLION = 0.2
@@ -337,7 +356,11 @@ class LiveCoreFastAdapter:
 
     @staticmethod
     def _canonical_config(label: str) -> str:
-        if label.startswith("s1-branch-"):
+        # Local policy screens and fan-in use descriptive trace labels so their
+        # journals remain readable.  The Assistant runtime has one S1 treatment
+        # identity per bound Bank; do not treat those trace labels as registry
+        # keys.
+        if label.startswith("s1-"):
             return "s1"
         return {
             "noskill": "noskill",
@@ -785,25 +808,12 @@ class LiveCoreFastAdapter:
             target_surface = intent.payload.get("target_surface")
             if target_surface not in {"action-policy", "response-policy"}:
                 raise RuntimeError("counterfactual Feedback target surface is invalid")
-            forbidden_surface = (
-                "response-policy"
-                if target_surface == "action-policy"
-                else "action-policy"
-            )
             attribution = canonical_json_bytes(
                 {
                     "selection_class": intent.payload.get("selection_class"),
                     "failure_cluster": intent.payload.get("failure_cluster"),
                     "target_surface": target_surface,
-                    "instruction": (
-                        "A policy-compatible suggestion must start with exactly "
-                        f"[{target_surface}] and may discuss only that surface. "
-                        f"Do not propose {forbidden_surface}, routing Description, "
-                        "runtime, compiler, scorer, or evaluation changes. Action "
-                        "suggestions may name only provider-visible tool-loop state "
-                        "and one tool transition; response suggestions may use only "
-                        "the fixed public tool outcome and visible evidence."
-                    ),
+                    "instruction": _single_surface_feedback_instruction(target_surface),
                 }
             ).decode("utf-8")
             user_content = messages[1]["content"]
@@ -878,7 +888,11 @@ class LiveCoreFastAdapter:
             )
         try:
             parsed = parse_visual_feedback_output_v4(text)
-            if intent.payload.get("attribution_policy") == "dual-policy-attribution-v1":
+            if intent.payload.get("attribution_policy") in {
+                "dual-policy-attribution-v1",
+                "single-surface-counterfactual-v4",
+                "single-surface-counterfactual-v5",
+            }:
                 parsed = _normalize_dual_policy_feedback_labels(parsed)
             require_policy_labeled_suggestions(parsed)
         except (TypeError, ValueError):

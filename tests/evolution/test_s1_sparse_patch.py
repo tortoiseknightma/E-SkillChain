@@ -245,6 +245,10 @@ def test_typed_action_counterfactual_has_no_response_text_channel(
         parent_bank=parent, proposal=proposal
     )
     assert "invoke recipe_lookup exactly once" in compiled.policy_text
+    assert "parent state 1" not in compiled.policy_text
+    assert compiled.policy_text.endswith(
+        "Otherwise preserve the parent behavior in every other provider-visible state."
+    )
     assert "answer" not in compiled.policy_text.casefold()
     assert "cards" not in compiled.policy_text.casefold()
     assert "uncertainty" not in compiled.policy_text.casefold()
@@ -259,6 +263,24 @@ def test_typed_action_counterfactual_has_no_response_text_channel(
             target_surface="action-policy",
             parent_success_query_ids=success_ids,
         )
+
+
+def test_typed_response_schema_exposes_the_single_clause_contract() -> None:
+    schema = counterfactual_typed_policy_patch_output_json_schema(
+        capability_id="knowledge.visual_encyclopedia",
+        parent_skill_sha256="a" * 64,
+        target_surface="response-policy",
+        parent_success_query_ids=("success-1", "success-2", "success-3"),
+    )
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    assert properties["when"]["pattern"] == "^[^;\\r\\n]+$"
+    assert properties["then"]["pattern"] == "^[^;\\r\\n]+$"
+    preserve = properties["must_preserve"]
+    assert (
+        preserve["items"]["anyOf"][0]["properties"]["provider_visible_state"]["pattern"]
+        == "^[^;\\r\\n]+$"
+    )
 
 
 @pytest.fixture(scope="module")

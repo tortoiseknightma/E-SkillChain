@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b01",
+  "rounds": [
+    {
+      "round_id": "r34",
+      "capability": "utility.recipe_guidance",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0272", "r2-core-0273", "r2-core-0448", "r2-core-0674", "r2-core-0799"],
+      "regressions": ["r2-core-0374", "r2-core-0447", "r2-core-0975"],
+      "memory": [{"capability": "utility.recipe_guidance", "hypothesis": "Use one typed provider-visible transition to preserve the stable Recipe action gains without adding response prose.", "historical_signal": "Recipe action repeatedly gained on missing or invalid detect-to-lookup continuation, while broad rules regressed successful termination states.", "forbidden_carry_forward": "Do not copy any rejected Bank or response-policy text."}]
+    },
+    {
+      "round_id": "r35",
+      "capability": "product.exact_match",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0656", "r2-core-0657"],
+      "regressions": ["r2-core-0253", "r2-core-0256", "r2-core-0351", "r2-core-0355", "r2-core-0426", "r2-core-0427", "r2-core-0678", "r2-core-0751", "r2-core-0777", "r2-core-0778", "r2-core-0951", "r2-core-0955"],
+      "memory": [{"capability": "product.exact_match", "hypothesis": "Add one minimal typed invocation transition for the stable Exact action failure cluster while preserving successful image and text termination states.", "historical_signal": "Exact action changes sometimes recovered missing search calls but broad action rules produced repeated protected-success regressions.", "forbidden_carry_forward": "Do not modify response formatting, cards, fallback, or routing Description."}]
+    },
+    {
+      "round_id": "r36",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "gain_seeds": ["r2-core-0444", "r2-core-0795"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0692", "r2-core-0768"],
+      "memory": [{"capability": "knowledge.visual_encyclopedia", "hypothesis": "Add one conditional source-entailment response rule only for the selected fixed-evidence failure cluster.", "historical_signal": "Encyclopedia response branches showed isolated source-grounding gains but regressed nearby supported states when expressed as broad templates.", "forbidden_carry_forward": "Do not modify tool choice, tool arguments, continuation, or routing Description."}]
+    },
+    {
+      "round_id": "r37",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0670", "r2-core-0969"],
+      "regressions": ["r2-core-0268", "r2-core-0366", "r2-core-0367", "r2-core-0368", "r2-core-0369", "r2-core-0444", "r2-core-0445", "r2-core-0667", "r2-core-0669", "r2-core-0691", "r2-core-0767", "r2-core-0793", "r2-core-0795"],
+      "memory": [{"capability": "knowledge.visual_encyclopedia", "hypothesis": "Add one typed detect-to-lookup continuation transition for the selected action failure cluster.", "historical_signal": "Encyclopedia action patches can recover missing lookup calls but wide rules repeatedly damaged successful tool sequences.", "forbidden_carry_forward": "Do not modify evidence, answer, cards, fallback prose, or routing Description."}]
+    },
+    {
+      "round_id": "r38",
+      "capability": "product.style_recommendation",
+      "surface": "action-policy",
+      "gain_seeds": ["r2-core-0263", "r2-core-0265", "r2-core-0436", "r2-core-0438"],
+      "regressions": ["r2-core-0262", "r2-core-0364", "r2-core-0963", "r2-core-0965"],
+      "memory": [{"capability": "product.style_recommendation", "hypothesis": "Refine R12 with one narrower typed action condition for the remaining Style failure cluster while preserving all R12 gains.", "historical_signal": "R12 accepted a Style action branch; this round may only add a condition that leaves its protected successful states unchanged.", "forbidden_carry_forward": "Do not replace the R12 Style Skill wholesale or modify response-policy text."}]
+    }
+  ]
+}

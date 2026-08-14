@@ -359,6 +359,34 @@ manifest SHA。真实 R12 opt800 的只读审计显示：R31 已通过这两类 
 冻结新的、response-qualified regression evidence，不是把该样本强行降格或放宽 gate。R12 仍是唯一
 合法 parent；R33 仍只组合正式 accepted branch，test300 仍只允许一个 frozen finalist 使用一次。
 
+### 自适应首批 R34–R38
+
+`s1-r12-adaptive-v1-b01` 在同一 R12 parent 上预注册 5 个顺序 slot，并在每轮终态后落一份
+create-only retrospective 与下一轮 memory。首批终态不是新的 S1 增益结论：R34 因 Feedback
+disposition/surface 标签冲突停在 canary；R35 因描述性 `s1-*` config 未映射到 S1 runtime 而在
+provider 前失败；R36 的 response `then` 是多条件 checklist，被单句 compiler 拒绝；R38 同时把
+Style 声明为 target 和 byte-exact protected Skill，因 parent invariant 在 0 Assistant 时停止。只有 R37
+获得有效局部 action 比较：Encyclopedia 4 gains / 10 regressions，且 2/3 显式 parent-success 回退，
+因此按既有有界风险门拒绝。五轮均未进入正式 replay200/body75，也未访问 test300/S2/S3/Judge。
+
+本批对应的前向机制修正为：Feedback suggestion 同时携带 disposition 与唯一 surface；动态
+`s1-*` trace label 统一映射到 S1 runtime treatment；response `when/then/must_preserve` 在 JSON
+Schema 层限制为单句且禁止分号/换行；实例化 `must_preserve` 只保留在 verifier 与 receipt，不渲染进
+live Skill；all-round preflight 除 evidence-feasibility 和 treatment-sensitivity 外，新增
+protected-target compatibility。任何 target 命中 `s1_parent.protected_skill_sha256` 时，整个 batch
+必须在 0 Feedback 阶段拒绝。局部/正式门不变，R12 仍是唯一 selected parent。
+
+准备脚本为：
+
+```powershell
+uv run python scripts/prepare_s1_adaptive_batch.py freeze-batch --plan specs/s1-r12-adaptive-batch01.json --bootstrap-receipt <r12-bootstrap-receipt>
+uv run python scripts/prepare_s1_adaptive_batch.py freeze-round --plan specs/s1-r12-adaptive-batch01.json --batch-definition <batch-definition.json> --bootstrap-receipt <r12-bootstrap-receipt> --round-id <round-id> --memory <prior-round-memory.json>
+```
+
+首批证据根为
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b01-20260815`；可追踪 DashScope 成本
+¥0.3496057，4 个 Creator 会话的人民币 cost basis 不可得。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

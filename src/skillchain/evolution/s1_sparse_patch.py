@@ -950,7 +950,13 @@ def counterfactual_policy_patch_output_json_schema(
             "required": ["query_id", "provider_visible_state"],
             "properties": {
                 "query_id": {"type": "string", "enum": [query_id]},
-                "provider_visible_state": {"type": "string", "minLength": 1},
+                "provider_visible_state": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "^[^;\\r\\n]+$",
+                    "description": "One provider-visible state clause; no semicolon or list.",
+                },
             },
         }
         for query_id in parent_success_query_ids
@@ -1012,7 +1018,13 @@ def counterfactual_typed_policy_patch_output_json_schema(
             "required": ["query_id", "provider_visible_state"],
             "properties": {
                 "query_id": {"type": "string", "enum": [query_id]},
-                "provider_visible_state": {"type": "string", "minLength": 1},
+                "provider_visible_state": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "^[^;\\r\\n]+$",
+                    "description": "One provider-visible state clause; no semicolon or list.",
+                },
             },
         }
         for query_id in parent_success_query_ids
@@ -1125,8 +1137,20 @@ def counterfactual_typed_policy_patch_output_json_schema(
     else:
         properties.update(
             {
-                "when": {"type": "string", "minLength": 1},
-                "then": {"type": "string", "minLength": 1},
+                "when": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "^[^;\\r\\n]+$",
+                    "description": "Exactly one provider-visible condition clause; no semicolon or list.",
+                },
+                "then": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "pattern": "^[^;\\r\\n]+$",
+                    "description": "Exactly one response-surface action clause; no semicolon or list.",
+                },
             }
         )
         required.extend(("when", "then"))
@@ -1221,9 +1245,6 @@ def compile_counterfactual_typed_policy_branch(
     parent_bank: StaticBankArtifact,
     proposal: SingleSurfaceCounterfactualPatchV2,
 ) -> CompiledPolicySurfaceBranch:
-    preserved = ", ".join(
-        item.provider_visible_state for item in proposal.must_preserve
-    )
     if proposal.target_surface == "action-policy":
         assert proposal.action_when is not None and proposal.action_then is not None
         when = _render_typed_action_condition(proposal.action_when)
@@ -1231,9 +1252,13 @@ def compile_counterfactual_typed_policy_branch(
     else:
         assert proposal.when is not None and proposal.then is not None
         when, then = proposal.when, proposal.then
+    # The three protected examples remain SHA-bound verifier evidence.  Rendering
+    # their instance-specific prose into the live Skill made the action model key
+    # on entity names and damaged other states in R37.  The treatment itself is
+    # therefore the one conditional rule only; protection stays in the screen.
     policy_text = (
-        f"If and only if {when}, {then}. Otherwise preserve the parent behavior, "
-        f"including {preserved}."
+        f"If and only if {when}, {then}. Otherwise preserve the parent behavior "
+        "in every other provider-visible state."
     )
     surface_payload = PolicySurfaceDraftV1(action="patch", policy_text=policy_text)
     dual = DualPolicyPatchPayloadV1(

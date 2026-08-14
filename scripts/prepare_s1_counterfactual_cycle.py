@@ -261,15 +261,17 @@ def _round_spec(
     *,
     round_id: str,
     parent_binding: dict[str, object],
+    definition: dict[str, object] | None = None,
+    cycle_id: str = CYCLE_ID,
     fixed_samples: dict[str, object] | None = None,
     typed_contract: bool = False,
     preflight_path: Path | None = None,
     preflight_sha256: str | None = None,
 ) -> dict[str, object]:
-    definition = ROUND_DEFINITIONS[round_id]
+    definition = ROUND_DEFINITIONS[round_id] if definition is None else definition
     capability = str(definition["capability"])
     payload = json.loads(json.dumps(base))
-    payload["experiment_id"] = f"{CYCLE_ID}-{round_id}-{capability.replace('.', '-')}"
+    payload["experiment_id"] = f"{cycle_id}-{round_id}-{capability.replace('.', '-')}"
     payload["s1_parent"] = parent_binding
     if fixed_samples is not None:
         payload["fixed_samples"] = fixed_samples
@@ -297,7 +299,7 @@ def _round_spec(
         "required_patch_phrases": {},
         "bounded_edit_surface": "author-fields",
         "prior_experiment_memory": {capability: list(definition["memory"])},
-        "cycle_id": CYCLE_ID,
+        "cycle_id": cycle_id,
         "target_surface": definition["surface"],
         "counterfactual_gain_seed_query_ids": list(definition["gain_seeds"]),
         "counterfactual_regression_query_ids": list(definition["regressions"]),
@@ -317,11 +319,21 @@ def _round_spec(
         "max_feedback_calls": 18,
         "max_creator_calls": 3,
     }
+    cycle_disclosures = (
+        [
+            "R31 and R32 are frozen together before provider calls and each patches one capability and one policy surface.",
+            "body75 is a fixed previously observed gate; mechanism design cannot change after either round, and test300 is consumed once by one frozen finalist.",
+        ]
+        if cycle_id == CYCLE_ID
+        else [
+            "The batch freezes evidence feasibility and treatment sensitivity before provider calls; each round freezes its exact adaptive memory create-only after the preceding retrospective.",
+            "body75 remains a fixed previously observed gate and cannot be used to rewrite the current batch evidence or risk thresholds.",
+        ]
+    )
     payload["disclosures"] = [
         *payload["disclosures"],
         "This forward-only cycle uses accepted R12 as its only legal parent; rejected R17/R26/R29 Banks and Skills are excluded.",
-        "R31 and R32 are frozen together before provider calls and each patches one capability and one policy surface.",
-        "body75 is a fixed previously observed gate; mechanism design cannot change after either round, and test300 is consumed once by one frozen finalist.",
+        *cycle_disclosures,
     ]
     return CoreFastSpec.model_validate_json(
         canonical_json_bytes(payload), strict=True
@@ -363,6 +375,12 @@ def _treatment_probe(
     capability = settings.target_capabilities[0]
     surface = settings.target_surface
     assert surface is not None
+    binding = spec.s1_parent
+    if binding is not None and capability in binding.protected_skill_sha256:
+        raise ValueError(
+            "target capability is byte-exact protected by the S1 parent binding: "
+            f"{capability}"
+        )
     parent_skill = next(
         item for item in parent.skills if item.capability_id == capability
     )
@@ -489,9 +507,11 @@ def _build_cycle_preflight(
     parent_opt: dict[str, AssistantObservation],
     queries: tuple[Query, ...],
     parent_opt_sha256: str,
+    round_ids: tuple[str, ...] = ("r31", "r32"),
+    cycle_id: str = CYCLE_ID,
 ) -> dict[str, object]:
     rounds: dict[str, object] = {}
-    for round_id in ("r31", "r32"):
+    for round_id in round_ids:
         spec = CoreFastSpec.model_validate_json(
             canonical_json_bytes(preliminary_specs[round_id]), strict=True
         )
@@ -551,11 +571,11 @@ def _build_cycle_preflight(
     return {
         "schema_version": 1,
         "kind": "core-fast-s1-counterfactual-cycle-preflight",
-        "cycle_id": CYCLE_ID,
+        "cycle_id": cycle_id,
         "parent_round_id": "r12",
         "parent_bank_sha256": parent.bank_sha256,
         "parent_opt_sha256": parent_opt_sha256,
-        "round_order": ["r31", "r32"],
+        "round_order": list(round_ids),
         "rounds": rounds,
         "provider_calls": 0,
         "passed": passed,
