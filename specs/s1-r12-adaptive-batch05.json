@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b05",
+  "rounds": [
+    {
+      "round_id": "r44",
+      "capability": "utility.recipe_guidance",
+      "surface": "action-policy",
+      "selection_policy": "parent-counterfactual-v8",
+      "gain_seeds": ["r2-core-0225", "r2-core-0397", "r2-core-0399", "r2-core-0472", "r2-core-0474"],
+      "regressions": ["r2-core-0374", "r2-core-0447", "r2-core-0975"],
+      "unstable_parent_successes": ["r2-core-0272", "r2-core-0274", "r2-core-0275", "r2-core-0372", "r2-core-0373", "r2-core-0374", "r2-core-0375", "r2-core-0448", "r2-core-0449", "r2-core-0673", "r2-core-0674", "r2-core-0675", "r2-core-0697", "r2-core-0698", "r2-core-0699", "r2-core-0700", "r2-core-0772", "r2-core-0773", "r2-core-0774", "r2-core-0798", "r2-core-0799", "r2-core-0800", "r2-core-0973", "r2-core-0974", "r2-core-0975"],
+      "memory": [
+        {
+          "capability": "utility.recipe_guidance",
+          "hypothesis": "Retry recipe_lookup exactly once only after its provider-visible invalid-arguments state, regenerating typed arguments from the current user request.",
+          "historical_signal": "R39 showed broad Recipe action rules were not separable from successful states; R12 contains 22 invalid-arguments failures with one explicit post-tool signature.",
+          "forbidden_carry_forward": "Do not change response content, fallback, evidence wording, route Description, or use any rejected Bank as parent."
+        }
+      ]
+    },
+    {
+      "round_id": "r45",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v8",
+      "gain_seeds": ["r2-core-0260", "r2-core-0308", "r2-core-0535", "r2-core-0607", "r2-core-0958"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "unstable_parent_successes": ["r2-core-0234", "r2-core-0257", "r2-core-0259", "r2-core-0260", "r2-core-0358", "r2-core-0360", "r2-core-0384", "r2-core-0433", "r2-core-0434", "r2-core-0435", "r2-core-0658", "r2-core-0682", "r2-core-0683", "r2-core-0685", "r2-core-0757", "r2-core-0759", "r2-core-0760", "r2-core-0784", "r2-core-0958"],
+      "memory": [
+        {
+          "capability": "product.multi_search",
+          "hypothesis": "Add one response-only rule for the item-association family while route, tool trace, public evidence class, cards, and fallback mechanics remain fixed.",
+          "historical_signal": "R42 was a semantic no-op at 0 gains and 0 regressions; v8 splits item-association from card closure and removes live-unstable controls before Feedback.",
+          "forbidden_carry_forward": "Do not add tool-first, retry, argument, DTO template, card closure, fallback, or routing changes."
+        }
+      ]
+    },
+    {
+      "round_id": "r46",
+      "capability": "product.multi_search",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v8",
+      "gain_seeds": ["r2-core-0258", "r2-core-0609", "r2-core-0682", "r2-core-0711"],
+      "regressions": ["r2-core-0359", "r2-core-0659", "r2-core-0783"],
+      "unstable_parent_successes": ["r2-core-0234", "r2-core-0257", "r2-core-0259", "r2-core-0260", "r2-core-0358", "r2-core-0360", "r2-core-0384", "r2-core-0433", "r2-core-0434", "r2-core-0435", "r2-core-0658", "r2-core-0682", "r2-core-0683", "r2-core-0685", "r2-core-0757", "r2-core-0759", "r2-core-0760", "r2-core-0784", "r2-core-0958"],
+      "memory": [
+        {
+          "capability": "product.multi_search",
+          "hypothesis": "Add one response-only rule for card closure after a fixed successful Multi tool outcome, without changing item association or fallback behavior.",
+          "historical_signal": "The R12 response failures contain a separate card-only family that previous broad Multi rules conflated with mapping errors.",
+          "forbidden_carry_forward": "Do not change item mapping, tool use, arguments, fallback, route Description, or copy the rejected R42 Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r47",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v8",
+      "gain_seeds": ["r2-core-0266", "r2-core-0292", "r2-core-0316", "r2-core-0320", "r2-core-0418"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": ["r2-core-0266", "r2-core-0267", "r2-core-0268", "r2-core-0270", "r2-core-0366", "r2-core-0368", "r2-core-0369", "r2-core-0370", "r2-core-0441", "r2-core-0442", "r2-core-0443", "r2-core-0444", "r2-core-0666", "r2-core-0667", "r2-core-0668", "r2-core-0669", "r2-core-0670", "r2-core-0692", "r2-core-0693", "r2-core-0694", "r2-core-0695", "r2-core-0767", "r2-core-0768", "r2-core-0769", "r2-core-0770", "r2-core-0793", "r2-core-0795", "r2-core-0967", "r2-core-0968", "r2-core-0969", "r2-core-0970"],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "Add one response-only abstention rule for unsupported claims while preserving citation closure and every fixed successful evidence boundary.",
+          "historical_signal": "R41 mixed unsupported and uncited failures and regressed two fresh controls; v8 isolates unsupported-claim as one semantic family.",
+          "forbidden_carry_forward": "Do not change detect or lookup actions, source handles, fallback mechanics, route Description, or copy the rejected R41 Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r48",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "response-policy",
+      "selection_policy": "parent-counterfactual-v8",
+      "gain_seeds": ["r2-core-0243", "r2-core-0245", "r2-core-0267", "r2-core-0268", "r2-core-0269"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": ["r2-core-0266", "r2-core-0267", "r2-core-0268", "r2-core-0270", "r2-core-0366", "r2-core-0368", "r2-core-0369", "r2-core-0370", "r2-core-0441", "r2-core-0442", "r2-core-0443", "r2-core-0444", "r2-core-0666", "r2-core-0667", "r2-core-0668", "r2-core-0669", "r2-core-0670", "r2-core-0692", "r2-core-0693", "r2-core-0694", "r2-core-0695", "r2-core-0767", "r2-core-0768", "r2-core-0769", "r2-core-0770", "r2-core-0793", "r2-core-0795", "r2-core-0967", "r2-core-0968", "r2-core-0969", "r2-core-0970"],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "Add one response-only citation-closure rule for claims already supported by the fixed public source evidence, leaving unsupported-claim abstention unchanged.",
+          "historical_signal": "The R12 parent contains a distinct material-claim-uncited family under the same successful detect and lookup boundary.",
+          "forbidden_carry_forward": "Do not change tool use, source selection, unsupported-claim policy, fallback, route Description, or any rejected candidate."
+        }
+      ]
+    }
+  ]
+}
+

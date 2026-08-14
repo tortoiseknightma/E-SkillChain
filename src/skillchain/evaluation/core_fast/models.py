@@ -201,6 +201,7 @@ class S1Settings(FrozenStrictModel):
         "discovery-dual-policy-v5",
         "parent-counterfactual-v6",
         "parent-counterfactual-v7",
+        "parent-counterfactual-v8",
     ] = "discovery-stratified-v1"
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
@@ -227,6 +228,7 @@ class S1Settings(FrozenStrictModel):
     target_surface: Literal["action-policy", "response-policy"] | None = None
     counterfactual_gain_seed_query_ids: tuple[str, ...] = ()
     counterfactual_regression_query_ids: tuple[str, ...] = ()
+    counterfactual_parent_success_exclude_query_ids: tuple[str, ...] = ()
     parent_protection_query_ids: tuple[str, ...] = ()
     cycle_preflight_path: str | None = None
     cycle_preflight_sha256: Sha256 | None = None
@@ -234,6 +236,7 @@ class S1Settings(FrozenStrictModel):
     @field_validator(
         "counterfactual_gain_seed_query_ids",
         "counterfactual_regression_query_ids",
+        "counterfactual_parent_success_exclude_query_ids",
         "parent_protection_query_ids",
         mode="before",
     )
@@ -314,13 +317,13 @@ class S1Settings(FrozenStrictModel):
             "single-surface-counterfactual-fanout-v5",
         }
         if counterfactual:
-            expected_selection = (
-                "parent-counterfactual-v7"
+            expected_selections = (
+                {"parent-counterfactual-v7", "parent-counterfactual-v8"}
                 if self.proposal_mode == "single-surface-counterfactual-fanout-v5"
-                else "parent-counterfactual-v6"
+                else {"parent-counterfactual-v6"}
             )
             if (
-                self.feedback_selection_policy != expected_selection
+                self.feedback_selection_policy not in expected_selections
                 or self.feedback_allocation != "target-focused"
                 or len(targets) != 1
                 or self.max_patched_capabilities != 1
@@ -355,12 +358,18 @@ class S1Settings(FrozenStrictModel):
                     raise ValueError(
                         f"counterfactual {label} must be sorted, unique, and complete"
                     )
+            excluded = self.counterfactual_parent_success_exclude_query_ids
+            if excluded != tuple(sorted(set(excluded))):
+                raise ValueError(
+                    "counterfactual parent-success exclusions must be sorted and unique"
+                )
         elif any(
             (
                 self.cycle_id,
                 self.target_surface,
                 self.counterfactual_gain_seed_query_ids,
                 self.counterfactual_regression_query_ids,
+                self.counterfactual_parent_success_exclude_query_ids,
                 self.parent_protection_query_ids,
                 self.cycle_preflight_path,
                 self.cycle_preflight_sha256,

@@ -48,6 +48,8 @@ def _load_plan(path: Path) -> dict[str, object]:
         surface = row.get("surface")
         gains = row.get("gain_seeds")
         regressions = row.get("regressions")
+        selection_policy = row.get("selection_policy", "parent-counterfactual-v7")
+        exclusions = row.get("unstable_parent_successes", [])
         memory = row.get("memory")
         if (
             not isinstance(round_id, str)
@@ -62,6 +64,11 @@ def _load_plan(path: Path) -> dict[str, object]:
             or not isinstance(regressions, list)
             or regressions != sorted(set(regressions))
             or len(regressions) < 3
+            or selection_policy
+            not in {"parent-counterfactual-v7", "parent-counterfactual-v8"}
+            or not isinstance(exclusions, list)
+            or exclusions != sorted(set(exclusions))
+            or any(not isinstance(item, str) or not item for item in exclusions)
             or not isinstance(memory, list)
             or not memory
             or any(
@@ -144,6 +151,8 @@ def _definition(
         "surface": row["surface"],
         "gain_seeds": tuple(row["gain_seeds"]),
         "regressions": tuple(row["regressions"]),
+        "selection_policy": row.get("selection_policy", "parent-counterfactual-v7"),
+        "parent_success_exclusions": tuple(row.get("unstable_parent_successes", [])),
         "memory": tuple(memory),
     }
 

@@ -320,6 +320,251 @@ def test_response_selector_qualifies_fixed_tool_outcomes_and_abstracts_cardinali
     } == {1, 3}
 
 
+def test_v8_action_selector_requires_a_provider_visible_failure_state(
+    fast_fixture,
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=spec_path.parent / "v8-action-population",
+        adapter=FakeCoreFastAdapter(),
+    )
+    target = "utility.recipe_guidance"
+    target_rows = [
+        query
+        for query in queries
+        if query.split == "opt_pool" and query.canonical_capability == target
+    ]
+    chosen = target_rows[::2][:10]
+    observations = dict(engine.opt_static())
+    for index, query in enumerate(chosen):
+        original = observations[query.query_id]
+        components = dict(original.gcs_components)
+        failed = index < 3
+        components.update(
+            {
+                "route_acceptable": True,
+                "tool_contract_pass": not failed,
+            }
+        )
+        observations[query.query_id] = original.model_copy(
+            update={
+                "selected_capability": target,
+                "tool_trace": (
+                    ToolTraceItem(
+                        tool_name="recipe_lookup",
+                        status="error",
+                        error_code="invalid_arguments",
+                    ),
+                )
+                if failed
+                else (
+                    ToolTraceItem(
+                        tool_name="recipe_lookup",
+                        status="success",
+                        result_sha256="a" * 64,
+                    ),
+                ),
+                "gcs_components": components,
+            }
+        )
+    settings = S1Settings.model_validate(
+        {
+            "round_id": "r44",
+            "feedback_total_count": 9,
+            "feedback_canary_count": 3,
+            "feedback_format_retry_limit": 1,
+            "feedback_selection_policy": "parent-counterfactual-v8",
+            "feedback_allocation": "target-focused",
+            "target_capabilities": (target,),
+            "proposal_mode": "single-surface-counterfactual-fanout-v5",
+            "max_patched_capabilities": 1,
+            "protected_capabilities": tuple(
+                item for item in CAPABILITIES if item != target
+            ),
+            "cycle_id": "s1-r12-adaptive-v1-b04",
+            "target_surface": "action-policy",
+            "counterfactual_gain_seed_query_ids": tuple(
+                sorted(row.query_id for row in chosen[:2])
+            ),
+            "counterfactual_regression_query_ids": tuple(
+                sorted(row.query_id for row in chosen[7:10])
+            ),
+            "counterfactual_parent_success_exclude_query_ids": (chosen[3].query_id,),
+            "parent_protection_query_ids": ("style-protection",),
+            "cycle_preflight_path": "batch-preflight.json",
+            "cycle_preflight_sha256": "b" * 64,
+        },
+        strict=True,
+    )
+    population = build_parent_counterfactual_population(
+        queries=queries,
+        observations=observations,
+        settings=settings,
+    )
+    selected = select_parent_counterfactual_samples(population, settings)
+    failures = [
+        row for row in selected if row["counterfactual_role"] == "cluster_failure"
+    ]
+    successes = [
+        row for row in selected if row["counterfactual_role"] == "parent_success"
+    ]
+    assert {row["action_treatment_separable"] for row in failures} == {True}
+    assert {
+        canonical_json_bytes(row["action_treatment_signature"]) for row in failures
+    } == {
+        canonical_json_bytes(
+            {
+                "phase": "after-tool",
+                "prior_tool_name": "recipe_lookup",
+                "prior_tool_status": "invalid-arguments",
+                "public_evidence": "unknown",
+            }
+        )
+    }
+    assert chosen[3].query_id not in {row["query_id"] for row in successes}
+    manifest = build_parent_counterfactual_manifest(
+        population=population,
+        selected=selected,
+        settings=settings,
+        parent_bank_sha256="c" * 64,
+        parent_opt_sha256="d" * 64,
+    )
+    assert manifest["parent_success_exclude_query_ids"] == [chosen[3].query_id]
+    assert (
+        manifest["selected_samples"][0]["action_treatment_signature"]
+        == (failures[0]["action_treatment_signature"])
+    )
+
+    no_tool = observations[chosen[0].query_id].model_copy(update={"tool_trace": ()})
+    no_tool_population = build_parent_counterfactual_population(
+        queries=queries,
+        observations={**observations, chosen[0].query_id: no_tool},
+        settings=settings,
+    )
+    assert (
+        next(
+            row for row in no_tool_population if row["query_id"] == chosen[0].query_id
+        )["action_treatment_separable"]
+        is False
+    )
+
+
+def test_v8_response_selector_uses_one_failure_family_and_stable_controls(
+    fast_fixture,
+) -> None:
+    spec, spec_path, queries = fast_fixture
+    engine = CoreFastEngine(
+        spec=spec,
+        spec_path=spec_path,
+        output_root=spec_path.parent / "v8-response-population",
+        adapter=FakeCoreFastAdapter(),
+    )
+    target = "product.multi_search"
+    target_rows = [
+        query
+        for query in queries
+        if query.split == "opt_pool" and query.canonical_capability == target
+    ]
+    chosen = target_rows[::2][:13]
+    observations = dict(engine.opt_static())
+    trace = (
+        ToolTraceItem(
+            tool_name="multi_product_search",
+            status="success",
+            result_sha256="a" * 64,
+        ),
+    )
+    for index, query in enumerate(chosen):
+        original = observations[query.query_id]
+        failed = index < 6
+        components = dict(original.gcs_components)
+        components.update(
+            {
+                "route_acceptable": True,
+                "tool_contract_pass": True,
+                "no_hard_error": True,
+                "evidence_grounded": not failed,
+                "output_contract_pass": True,
+            }
+        )
+        context = json.loads(json.dumps(original.replay_context))
+        context["assistant_result"]["visible_cards"] = [{}]
+        context["assistant_result"]["visible_tool_evidence"] = [
+            {
+                "tool_name": "multi_product_search",
+                "status": "success",
+                "cards": [{}],
+                "citations": [],
+                "detections": [],
+            }
+        ]
+        observations[query.query_id] = original.model_copy(
+            update={
+                "selected_capability": target,
+                "tool_trace": trace,
+                "hard_error": False,
+                "gcs_components": components,
+                "gcs_reason_codes": (
+                    ("multi_mapping_invalid",)
+                    if index < 3
+                    else ("card_contract_failed",)
+                    if failed
+                    else ()
+                ),
+                "replay_context": context,
+            }
+        )
+    settings = S1Settings.model_validate(
+        {
+            "round_id": "r45",
+            "feedback_total_count": 9,
+            "feedback_canary_count": 3,
+            "feedback_format_retry_limit": 1,
+            "feedback_selection_policy": "parent-counterfactual-v8",
+            "feedback_allocation": "target-focused",
+            "target_capabilities": (target,),
+            "proposal_mode": "single-surface-counterfactual-fanout-v5",
+            "max_patched_capabilities": 1,
+            "protected_capabilities": tuple(
+                item for item in CAPABILITIES if item != target
+            ),
+            "cycle_id": "s1-r12-adaptive-v1-b04",
+            "target_surface": "response-policy",
+            "counterfactual_gain_seed_query_ids": tuple(
+                sorted(row.query_id for row in chosen[:2])
+            ),
+            "counterfactual_regression_query_ids": tuple(
+                sorted(row.query_id for row in chosen[10:13])
+            ),
+            "counterfactual_parent_success_exclude_query_ids": (chosen[6].query_id,),
+            "parent_protection_query_ids": ("style-protection",),
+            "cycle_preflight_path": "batch-preflight.json",
+            "cycle_preflight_sha256": "b" * 64,
+        },
+        strict=True,
+    )
+    population = build_parent_counterfactual_population(
+        queries=queries,
+        observations=observations,
+        settings=settings,
+    )
+    selected = select_parent_counterfactual_samples(population, settings)
+    failures = [
+        row for row in selected if row["counterfactual_role"] == "cluster_failure"
+    ]
+    successes = [
+        row for row in selected if row["counterfactual_role"] == "parent_success"
+    ]
+    assert {
+        row["response_treatment_signature"]["response_failure_family"]
+        for row in failures
+    } == {"item-association"}
+    assert chosen[6].query_id not in {row["query_id"] for row in successes}
+    assert {row["response_treatment_signature"] for row in successes} == {None}
+
+
 def test_counterfactual_feedback_bundle_keeps_only_the_target_surface(
     fast_fixture, tmp_path: Path
 ) -> None:

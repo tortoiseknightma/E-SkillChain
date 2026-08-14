@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -309,6 +310,51 @@ def test_typed_recipe_action_cannot_bypass_detection_for_lookup() -> None:
     with pytest.raises(S1SparsePatchError, match="typed counterfactual Creator"):
         parse_counterfactual_typed_policy_patch(
             canonical_json_bytes(raw),
+            capability_id="utility.recipe_guidance",
+            parent_skill_sha256="a" * 64,
+            target_surface="action-policy",
+            parent_success_query_ids=("success-1", "success-2", "success-3"),
+        )
+
+
+def test_typed_action_retry_binds_arguments_to_failure_status() -> None:
+    base = {
+        "schema_version": 2,
+        "capability_id": "utility.recipe_guidance",
+        "parent_skill_sha256": "a" * 64,
+        "target_surface": "action-policy",
+        "non_target_surface_action": "inherit",
+        "action_when": {
+            "phase": "after-tool",
+            "prior_tool_name": "recipe_lookup",
+            "prior_tool_status": "invalid-arguments",
+            "public_evidence": "unknown",
+        },
+        "action_then": {
+            "operation": "retry-tool-once",
+            "tool_name": "recipe_lookup",
+            "arguments_from": "current-user-request",
+        },
+        "must_preserve": [
+            {"query_id": query_id, "provider_visible_state": f"state {query_id}"}
+            for query_id in ("success-1", "success-2", "success-3")
+        ],
+    }
+    parsed = parse_counterfactual_typed_policy_patch(
+        canonical_json_bytes(base),
+        capability_id="utility.recipe_guidance",
+        parent_skill_sha256="a" * 64,
+        target_surface="action-policy",
+        parent_success_query_ids=("success-1", "success-2", "success-3"),
+    )
+    assert parsed.action_then is not None
+    assert parsed.action_then.arguments_from == "current-user-request"
+
+    invalid = json.loads(json.dumps(base))
+    invalid["action_then"]["arguments_from"] = "last-valid-arguments"
+    with pytest.raises(S1SparsePatchError, match="typed counterfactual Creator"):
+        parse_counterfactual_typed_policy_patch(
+            canonical_json_bytes(invalid),
             capability_id="utility.recipe_guidance",
             parent_skill_sha256="a" * 64,
             target_surface="action-policy",

@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R43（10/30）：首批只有 R37 进入有效局部 screen；第二阶段 R39–R43 的五个 typed treatment 均进入可归因局部 screen，但分别得到 Recipe action 2 gains / 5 regressions、Exact action 4/4、Encyclopedia response 1/2、Multi response 0/0、Encyclopedia action 8/9，全部被未改变的有界风险门回滚。十轮均未进入正式 replay200/body75，未访问 test300/S2/S3/Judge。两个阶段新增可追踪 DashScope 成本合计 ¥1.02892645；9 次 Creator 会话的人民币 cost basis 不可得。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的自适应周期已完成 R34–R48（15/30）。第三阶段 R44–R48 在任何新调用前一次性通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight：R44 Recipe typed action 在局部 screen 得到 7 gains / 1 regression，并进入正式 replay200，macro +1.6667pp、Recipe +10pp，但 hard-error delta +2pp 超过冻结门而回滚；R45/R46 两个 Multi response family 均为 0/0；R47 在 Creator contract 安全停止、Assistant 0-call；R48 Encyclopedia response 为 0/1。R34–R48 仍无新 accepted branch，未访问 body75/test300/S2/S3/Judge。三个阶段新增可追踪 DashScope 成本合计 ¥2.2644525；14 次 Creator 会话的人民币 cost basis 不可得。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -118,6 +118,18 @@ Feedback terminal gate 与局部可归因执行，但没有一项跨过有界风
 历史 parent-success 在 fresh parent-control 中可能不再成功，R39/R40/R43 则说明合法但过宽的 action
 transition 会同时扰动 failure 与 protected-success。下一预算阶段优先做 live parent-control qualification、
 response semantic no-op 淘汰与 action predicate separability；不放宽 gate，不继承任何 R39–R43 Bank。
+
+自适应第三阶段 R44–R48 使用独立 B05 root，并在任何 Feedback/Creator 调用前同时冻结五轮设计、
+选择结果和离线 treatment probe；五轮均满足 evidence feasible、treatment separable、treatment
+sensitive。R44 的枚举化 Recipe retry rule 首次把本周期 treatment 推进正式 replay200：局部 7/1、
+replay macro `+1.6667pp`、Recipe `+10pp`，但 hard-error 从 40 增至 44（`+2pp`），因此保持
+正式 `≤+1pp` 门并回滚。R45/R46 的 Multi item-association 与 card-closure 都进入局部 response
+screen，但均为 0 gain / 0 regression；R47 的 Encyclopedia unsupported-claim rule 含禁止的评价式
+内容，Creator contract 拒绝且 Assistant 0-call；R48 citation-closure 为 0 gain / 1 regression、net
+`−1`。普通失败 reason 迁移仍只记录，不作为硬拒绝。B05 新增 47 个 Feedback provider calls、
+5 个 Creator 会话、674 个 Assistant outer calls 和可追踪 DashScope ¥1.23552605；R12 仍是唯一 parent
+与 selected Bank，body75/test300/S2/S3/Judge 未访问。下一阶段优先把 response `then` 也收紧为
+typed semantic operation，并让 preflight 证明规则能改变具体评分行为，而不只是生成不同的 policy hash。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
@@ -418,9 +430,9 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 1. 保持历史 deterministic rounds、当前 30 轮 canonical artifacts 及所有 rejected Bank 只读，不追溯重判，也不跨 runtime resume。
 2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
 3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
-4. 每个后续 batch 必须在任何 Feedback 前一次性通过 evidence-feasibility、treatment-sensitivity 与 protected-target compatibility；不能把 R12 Style 同时声明为 byte-exact protected Skill 和可修改 target。
-5. 下一批仍从 R12 出发；先让 response parent-success 通过当轮 live parent-control qualification，淘汰与 parent Body 语义等价的 response no-op，并要求 action predicate 能区分目标 failure 与 protected-success。R34–R43 的失败候选不得作为 parent 或被拼入 fan-in。
-6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；在候选通过正式 replay200/body75 前，不访问 test300，也不启动 S2/S3/Judge。当前自适应进度为 10/30，下一预算阶段从 R44 开始。
+4. 每个后续 batch 必须在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；不能把 R12 Style 同时声明为 byte-exact protected Skill 和可修改 target。
+5. 下一批仍从 R12 出发；保留已验证能进入 replay 的 typed action IR，但不得继承 R44 candidate。response Creator 应改为不可携带评价标签的 typed semantic operation，并要求 treatment probe 预测具体评分行为变化；R34–R48 的失败候选不得作为 parent 或被拼入 fan-in。
+6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；在候选通过正式 replay200/body75 前，不访问 test300，也不启动 S2/S3/Judge。当前自适应进度为 15/30，下一预算阶段从 R49 开始。
 
 ---
 

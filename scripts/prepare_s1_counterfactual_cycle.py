@@ -271,6 +271,14 @@ def _round_spec(
 ) -> dict[str, object]:
     definition = ROUND_DEFINITIONS[round_id] if definition is None else definition
     capability = str(definition["capability"])
+    selection_policy = str(
+        definition.get(
+            "selection_policy",
+            "parent-counterfactual-v7"
+            if typed_contract
+            else "parent-counterfactual-v6",
+        )
+    )
     payload = json.loads(json.dumps(base))
     payload["experiment_id"] = f"{cycle_id}-{round_id}-{capability.replace('.', '-')}"
     payload["s1_parent"] = parent_binding
@@ -282,9 +290,7 @@ def _round_spec(
         "feedback_total_count": 9,
         "feedback_canary_count": 3,
         "feedback_format_retry_limit": 1,
-        "feedback_selection_policy": (
-            "parent-counterfactual-v7" if typed_contract else "parent-counterfactual-v6"
-        ),
+        "feedback_selection_policy": selection_policy,
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
         "proposal_mode": (
@@ -304,6 +310,9 @@ def _round_spec(
         "target_surface": definition["surface"],
         "counterfactual_gain_seed_query_ids": list(definition["gain_seeds"]),
         "counterfactual_regression_query_ids": list(definition["regressions"]),
+        "counterfactual_parent_success_exclude_query_ids": list(
+            definition.get("parent_success_exclusions", ())
+        ),
         "parent_protection_query_ids": list(R12_PROTECTION_IDS),
     }
     if typed_contract:
@@ -366,6 +375,55 @@ def bootstrap(args: argparse.Namespace) -> int:
     return 0
 
 
+def _response_probe_clauses(
+    signature: dict[str, object], capability: str
+) -> tuple[str, str]:
+    family = signature.get("response_failure_family")
+    clauses = {
+        "item-association": (
+            "the fixed successful multi product tool output contains item associations",
+            "state only item associations supported by that public evidence",
+        ),
+        "card-closure": (
+            "the fixed successful multi product tool output contains matched candidates",
+            "emit cards only for candidates referenced by the supported item associations",
+        ),
+        "unsupported-claim": (
+            "a proposed material claim is not supported by the fixed public evidence",
+            "omit that unsupported material claim from the answer",
+        ),
+        "citation-closure": (
+            "a material answer claim is supported by one fixed public source",
+            "attach that exact visible source handle to the same claim",
+        ),
+        "fallback-branch": (
+            "the fixed successful tool output contains no supported evidence",
+            "use only the parent fallback branch for that empty public evidence",
+        ),
+        "style-evidence": (
+            "the fixed public style evidence contains a literal facet and value",
+            "state only that literal facet and value with its visible evidence handle",
+        ),
+        "output-structure": (
+            "the supported answer is ready for the parent response sections",
+            "place it in the parent response sections without adding a material claim",
+        ),
+        "grounding-other": (
+            "the fixed public evidence does not support a proposed material claim",
+            "omit that unsupported material claim",
+        ),
+        "output-other": (
+            "the supported answer is ready for the parent output contract",
+            "preserve the parent output contract around that supported answer",
+        ),
+    }
+    if family not in clauses:
+        raise ValueError(
+            f"response treatment family is not representable for {capability}: {family}"
+        )
+    return clauses[str(family)]
+
+
 def _treatment_probe(
     *,
     parent: StaticBankArtifact,
@@ -412,41 +470,113 @@ def _treatment_probe(
         operators = S1_CAPABILITY_ACTION_TOOLS[capability]
         if not operators:
             raise ValueError(f"action treatment has no operator: {capability}")
-        prior = operators[0] if len(operators) > 1 else None
-        target = operators[1] if len(operators) > 1 else operators[0]
-        payload.update(
-            {
-                "action_when": (
-                    {
-                        "phase": "after-tool",
-                        "prior_tool_name": prior,
-                        "prior_tool_status": "success",
-                        "public_evidence": "nonempty",
-                    }
-                    if prior is not None
-                    else {
-                        "phase": "before-first-tool",
-                        "prior_tool_name": None,
-                        "prior_tool_status": "not-called",
-                        "public_evidence": "unknown",
-                    }
-                ),
-                "action_then": {
-                    "operation": "invoke-tool-once",
-                    "tool_name": target,
-                    "arguments_from": (
-                        "last-visible-tool-output"
-                        if prior is not None
-                        else "current-user-request"
-                    ),
-                },
-            }
+        selected_failure = next(
+            (
+                row
+                for row in selected
+                if row["counterfactual_role"] == "cluster_failure"
+            ),
+            None,
         )
+        action_signature = (
+            selected_failure.get("action_treatment_signature")
+            if isinstance(selected_failure, dict)
+            else None
+        )
+        if (
+            getattr(settings, "feedback_selection_policy", "parent-counterfactual-v7")
+            == "parent-counterfactual-v8"
+        ):
+            if not isinstance(action_signature, dict):
+                raise ValueError(
+                    "action treatment has no provider-visible failure state"
+                )
+            prior = action_signature.get("prior_tool_name")
+            prior_status = action_signature.get("prior_tool_status")
+            if (
+                action_signature.get("phase") != "after-tool"
+                or prior not in operators
+                or prior_status not in {"invalid-arguments", "error"}
+                or action_signature.get("public_evidence") != "unknown"
+            ):
+                raise ValueError("action treatment failure state is not representable")
+            payload.update(
+                {
+                    "action_when": dict(action_signature),
+                    "action_then": {
+                        "operation": "retry-tool-once",
+                        "tool_name": prior,
+                        "arguments_from": (
+                            "current-user-request"
+                            if prior_status == "invalid-arguments"
+                            else "last-valid-arguments"
+                        ),
+                    },
+                }
+            )
+        else:
+            prior = operators[0] if len(operators) > 1 else None
+            target = operators[1] if len(operators) > 1 else operators[0]
+            payload.update(
+                {
+                    "action_when": (
+                        {
+                            "phase": "after-tool",
+                            "prior_tool_name": prior,
+                            "prior_tool_status": "success",
+                            "public_evidence": "nonempty",
+                        }
+                        if prior is not None
+                        else {
+                            "phase": "before-first-tool",
+                            "prior_tool_name": None,
+                            "prior_tool_status": "not-called",
+                            "public_evidence": "unknown",
+                        }
+                    ),
+                    "action_then": {
+                        "operation": "invoke-tool-once",
+                        "tool_name": target,
+                        "arguments_from": (
+                            "last-visible-tool-output"
+                            if prior is not None
+                            else "current-user-request"
+                        ),
+                    },
+                }
+            )
     else:
+        selected_failure = next(
+            (
+                row
+                for row in selected
+                if row["counterfactual_role"] == "cluster_failure"
+            ),
+            None,
+        )
+        response_signature = (
+            selected_failure.get("response_treatment_signature")
+            if isinstance(selected_failure, dict)
+            else None
+        )
+        if (
+            getattr(settings, "feedback_selection_policy", "parent-counterfactual-v7")
+            == "parent-counterfactual-v8"
+        ):
+            if not isinstance(response_signature, dict):
+                raise ValueError(
+                    "response treatment has no provider-visible failure family"
+                )
+            when, then = _response_probe_clauses(response_signature, capability)
+        else:
+            when = "the fixed public tool evidence contains an item association"
+            then = (
+                "preserve only the item association supported by that public evidence"
+            )
         payload.update(
             {
-                "when": "the fixed public tool evidence contains an item association",
-                "then": "preserve only the item association supported by that public evidence",
+                "when": when,
+                "then": then,
             }
         )
     proposal = parse_counterfactual_typed_policy_patch(
@@ -503,10 +633,19 @@ def _treatment_probe(
                 "probe_action_prior_tool_name": payload["action_when"][
                     "prior_tool_name"
                 ],
+                "probe_action_prior_tool_status": payload["action_when"][
+                    "prior_tool_status"
+                ],
                 "probe_action_tool_name": payload["action_then"]["tool_name"],
             }
             if surface == "action-policy"
-            else {}
+            else {
+                "probe_response_failure_family": (
+                    response_signature.get("response_failure_family")
+                    if isinstance(response_signature, dict)
+                    else None
+                )
+            }
         ),
     }
 
@@ -559,9 +698,54 @@ def _build_cycle_preflight(
                     "historical_regression": 3,
                 }
             )
+            treatment_separable = True
+            if spec.s1_settings.feedback_selection_policy == "parent-counterfactual-v8":
+                if spec.s1_settings.target_surface == "action-policy":
+                    failure_signatures = {
+                        canonical_json_bytes(row.get("action_treatment_signature"))
+                        for row in selected
+                        if row["counterfactual_role"] == "cluster_failure"
+                    }
+                    protected_signatures = {
+                        canonical_json_bytes(row.get("action_treatment_signature"))
+                        for row in selected
+                        if row["counterfactual_role"] == "parent_success"
+                    }
+                    treatment_separable = (
+                        len(failure_signatures) == 1
+                        and canonical_json_bytes(None) not in failure_signatures
+                        and failure_signatures.isdisjoint(protected_signatures)
+                    )
+                else:
+                    failure_signatures = {
+                        canonical_json_bytes(row.get("response_treatment_signature"))
+                        for row in selected
+                        if row["counterfactual_role"] == "cluster_failure"
+                    }
+                    protected_signatures = {
+                        canonical_json_bytes(row.get("response_treatment_signature"))
+                        for row in selected
+                        if row["counterfactual_role"] == "parent_success"
+                    }
+                    treatment_separable = (
+                        len(failure_signatures) == 1
+                        and canonical_json_bytes(None) not in failure_signatures
+                        and failure_signatures.isdisjoint(protected_signatures)
+                    )
             rounds[round_id] = {
                 **identity,
                 "evidence_feasible": evidence_feasible,
+                "treatment_separable": treatment_separable,
+                "parent_success_exclusion_count": len(
+                    spec.s1_settings.counterfactual_parent_success_exclude_query_ids
+                ),
+                "parent_success_exclusions_sha256": sha256_bytes(
+                    canonical_json_bytes(
+                        list(
+                            spec.s1_settings.counterfactual_parent_success_exclude_query_ids
+                        )
+                    )
+                ),
                 "selection_manifest_sha256": manifest["manifest_sha256"],
                 "selected_query_ids": list(manifest["selected_query_ids"]),
                 **probe,
@@ -571,12 +755,14 @@ def _build_cycle_preflight(
                 **identity,
                 "evidence_feasible": False,
                 "treatment_sensitive": False,
+                "treatment_separable": False,
                 "failure_reason": str(error),
             }
     passed = all(
         isinstance(item, dict)
         and item.get("evidence_feasible") is True
         and item.get("treatment_sensitive") is True
+        and item.get("treatment_separable") is True
         for item in rounds.values()
     )
     return {

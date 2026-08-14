@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R12 仍是唯一正式 accepted；自适应 R34–R43 已完成 10/30，0 branch accepted，test 未访问</span>
+        <span>R12 仍是唯一正式 accepted；自适应 R34–R48 已完成 15/30，0 branch accepted，test 未访问</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>10 / 30</strong><span>adaptive rounds completed</span></div>
+        <div class="hero-stat"><strong>15 / 30</strong><span>adaptive rounds completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -567,8 +567,11 @@
         单句合同和 protected-target 可行性处 fail closed；只有 R37 进入有效局部 action screen，得到
         4 gains / 10 regressions 并被固定门拒绝。第二阶段 R39–R43 的五个 typed treatment 全部进入
         可归因局部 screen，但分别为 Recipe action 2/5、Exact action 4/4、Encyclopedia response 1/2、
-        Multi response 0/0、Encyclopedia action 8/9，均被原有门回滚。十轮正式 replay200/body75 均为
-        0-call，test300、S2/S3/Judge 均未启动；因此仍没有新的系统级 S1 正增益或负增益结论。
+        Multi response 0/0、Encyclopedia action 8/9，均被原有门回滚。第三阶段 R44–R48 在调用前
+        5/5 通过 evidence-feasibility、treatment-separability 与 treatment-sensitivity preflight；R44
+        Recipe action 局部 7/1 并进入正式 replay200，但因 hard-error delta +2pp 回滚；R45/R46 为
+        Multi response 0/0，R47 停在 Creator contract，R48 Encyclopedia response 为 0/1。body75、
+        test300、S2/S3/Judge 均未启动；因此仍没有新的 accepted S1 或最终 test 结论。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -576,7 +579,8 @@
         双策略 R1–R30 的可追踪 DashScope 累计成本为 ¥33.1941053。R31–R33 周期另计
         ¥2.52357745，另有一个 provider orphan 与 Creator 人民币成本未知。自适应首批 R34–R38
         新增可追踪 DashScope ¥0.3496057、4 个 Creator 会话。R39–R43 再新增 ¥0.67932075、5 个
-        Creator 会话；Creator 人民币 cost basis 仍不可得。
+        Creator 会话。R44–R48 再新增 ¥1.23552605、5 个 Creator 会话；三个自适应阶段合计
+        ¥2.2644525、14 个 Creator 会话。Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
 
@@ -1869,6 +1873,57 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-analysis" id="exp-20260815-adaptive-r44-r48" data-status="analysis" data-capability="recipe,multi,encyclopedia">
+          <div class="experiment-head">
+            <div>
+              <h3>Adaptive stage 03 · R44–R48</h3>
+              <p>先做全轮零调用资格证明，再运行五个可分离的 typed single-surface treatment；门槛与 R12 parent 全程冻结。</p>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">R12 preserved</span><span class="tag">15 / 30 complete</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>5 / 5</strong><span>all-round preflight passed</span></div>
+            <div class="result-box"><strong>1 / 5</strong><span>formal replay200 entries</span></div>
+            <div class="result-box"><strong>0</strong><span>accepted branches</span></div>
+            <div class="result-box"><strong>¥1.23552605</strong><span>traceable DashScope spend</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · Bank <code>e70ed907…096cd</code> · opt SHA <code>4c6bafa6…84fcf</code></dd></div>
+            <div><dt>Lineage</dt><dd><code>s1-r12-adaptive-v1-b05</code> · preflight SHA <code>6395f6fb…f3d</code></dd></div>
+            <div><dt>Calls</dt><dd>5 Creator；47 Feedback attempts（45 terminal success）；674 Assistant outer calls</dd></div>
+            <div><dt>Untouched</dt><dd>body75、fan-in、test300、S2、S3、Judge</dd></div>
+          </dl>
+
+          <div class="table-wrap" role="region" aria-labelledby="adaptive-stage03-caption" tabindex="0">
+            <table>
+              <caption id="adaptive-stage03-caption">R44–R48 的局部与正式结果；普通 failure-reason 迁移只记录，未自动否决。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">Target</th><th scope="col">局部 gain / regression</th><th scope="col">最深 gate</th><th scope="col">处置</th><th scope="col">CNY</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">R44</th><td>Recipe action · invalid-arguments retry</td><td>7 / 1；net +6</td><td>replay macro +1.6667pp；Recipe +10pp；hard error +2pp</td><td>formal hard-error reject</td><td class="num">0.80662745</td></tr>
+                <tr><th scope="row">R45</th><td>Multi response · item association</td><td>0 / 0</td><td>local response screen</td><td>minimum-gain reject</td><td class="num">0.1402993</td></tr>
+                <tr><th scope="row">R46</th><td>Multi response · card closure</td><td>0 / 0；1 ordinary migration</td><td>local response screen</td><td>minimum-gain reject</td><td class="num">0.1394542</td></tr>
+                <tr><th scope="row">R47</th><td>Encyclopedia response · unsupported claim</td><td>未执行</td><td>Creator contract</td><td>candidate null；非算法结果</td><td class="num">0.0448689</td></tr>
+                <tr><th scope="row">R48</th><td>Encyclopedia response · citation closure</td><td>0 / 1；net −1</td><td>local response screen</td><td>bounded-risk reject</td><td class="num">0.1042762</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>所有轮次先在 0 provider call 时证明 3/3/3 evidence 可用、failure 与 success treatment state 可分、离线 probe 会改变目标 surface。R44 是本自适应周期首个进入正式 replay 的 treatment，但新增 4 个 hard errors，触发未改变的 +1pp 上限。R45/R46 安全但无 gain；R47 Assistant 0-call；R48 产生 1 条 parent-success regression。selected Bank 始终是 R12。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>枚举化 action IR 已解决“无法表达 treatment”问题，但 action 改善与 response hard error 有跨 surface 交互。两个 Multi closure family 的 0/0 说明 policy hash 不同不等于评分行为敏感；Encyclopedia Creator 拒绝说明 response 自由文本仍允许生成评价式内容。以上仅指导下一机制，不追认任何候选。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不放宽局部、replay 或 body gate。下一批把 response <code>then</code> 收紧为 typed semantic operation，并要求 preflight 预测具体评分行为变化；不再重复 Multi DTO/card closure 文案。Recipe 的 action hypothesis 只能与未来独立 accepted 的 response branch 组合，R44 Bank 不得继承。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\batch-preflight.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\r44-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\r45-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\r46-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\r47-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\r48-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815\artifacts\b05-stage-summary.json</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -2012,20 +2067,32 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         当前 model-generated fresh Static、no-op qualification 与双策略 30 轮 campaign 均已结束；
         R12 是唯一 accepted Bank。R31 Recipe action、R32 Multi response 与 accepted-only R33
         fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
-        parent 或被复制。自适应 R34–R43 也已结束当前两个预算阶段，仍为 0 个 accepted branch；
+        parent 或被复制。自适应 R34–R48 也已结束当前三个预算阶段，仍为 0 个 accepted branch；
         finalist 为 null，test300 仍 untouched。下一阶段不得事后修文案、缩保护集或重跑挑结果。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">
         <article class="future-card priority" id="future-live-treatment-qualification">
-          <span class="state priority">Next-stage priority</span>
+          <span class="state baseline">Validated in B05</span>
           <h3>ALG-09 · Live treatment qualification</h3>
           <p>把“静态证据可选”进一步收紧为“当轮 parent-control 可保护、候选规则有新颖且可区分的作用域”。</p>
           <dl class="future-fields">
             <div><dt>机制</dt><dd>Feedback 前先执行 create-only parent-control qualification；response parent-success 必须在当前固定 route/tool/evidence 下成功，action failure 与 success 必须能被 provider-visible predicate 区分。</dd></div>
             <div><dt>冗余淘汰</dt><dd>Creator 后、Assistant 前比较规范化 rule 与 parent Body；只重述 parent 既有语义的 response clause 记为 no-treatment，不进入局部 screen。</dd></div>
             <div><dt>证据</dt><dd>R42 的历史 parent-success <code>0384</code> 在本轮两侧都失败；R42 0/0 表明 association clause 近 no-op；R39/R40/R43 的广匹配 action transition 合计产生 14 gains / 18 regressions。</dd></div>
-            <div><dt>可证伪预测</dt><dd>下一批进入局部 screen 的 treatment 不含 unstable protection row 或 semantic no-op；若 evidence 不足则在 0 Feedback/Creator 时停止。</dd></div>
+            <div><dt>结果</dt><dd>B05 五轮在任何调用前均通过 evidence feasibility、live protection、treatment separability 与 sensitivity；R44–R46/R48 进入可归因执行，R47 在 Creator contract 安全停止。资格层已经关闭旧 0/2 吞吐问题，但 response 行为敏感性仍不足。</dd></div>
+          </dl>
+        </article>
+
+        <article class="future-card priority" id="future-typed-response-operation">
+          <span class="state priority">Next-stage priority</span>
+          <h3>ALG-10 · Typed response semantic operation</h3>
+          <p>把自由文本 <code>then</code> 收紧为不可携带评价标签、跨 family checklist 或机械 closure 文案的 response IR。</p>
+          <dl class="future-fields">
+            <div><dt>机制</dt><dd>枚举 claim selection、source entailment、abstain/uncertainty 与 field-to-span 等单一 operation；condition 只绑定公开 evidence family，compiler 只把一个规范化语义规则写入目标 response surface。</dd></div>
+            <div><dt>证据</dt><dd>R45/R46 的不同 policy hash 均为 0/0；R47 因评价式自由文本被拒且 Assistant 0-call；R48 真正执行后为 0/1。</dd></div>
+            <div><dt>可证伪预测</dt><dd>preflight 不仅证明 rule bytes 不同，还能对至少一个选中 failure 预测具体 scorer component 改变；Creator 输出无法表示 response 之外的 surface 或私有评价标签。</dd></div>
+            <div><dt>冻结边界</dt><dd>R12-only parent、局部有界风险门、formal hard-error 门、R33 accepted-only fan-in 与 one-finalist test300 均不变。</dd></div>
           </dl>
         </article>
 

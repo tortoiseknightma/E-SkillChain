@@ -438,10 +438,17 @@ class SingleSurfaceCounterfactualPatchV2(_StrictFrozenModel):
                     condition.phase != "after-tool"
                     or condition.prior_tool_name != directive.tool_name
                     or condition.prior_tool_status not in {"invalid-arguments", "error"}
-                    or directive.arguments_from != "last-valid-arguments"
+                    or (
+                        condition.prior_tool_status == "invalid-arguments"
+                        and directive.arguments_from != "current-user-request"
+                    )
+                    or (
+                        condition.prior_tool_status == "error"
+                        and directive.arguments_from != "last-valid-arguments"
+                    )
                 ):
                     raise ValueError(
-                        "retry action must retry the failed prior tool with its last valid arguments"
+                        "retry action must bind its argument source to the failed prior tool state"
                     )
             elif directive.operation == "stop-action-loop":
                 if condition.phase != "after-tool":
@@ -1046,6 +1053,7 @@ def counterfactual_typed_policy_patch_output_json_schema(
     parent_skill_sha256: str,
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a strict v5 schema with no response-text channel for action."""
 
@@ -1056,6 +1064,17 @@ def counterfactual_typed_policy_patch_output_json_schema(
         or parent_success_query_ids != tuple(sorted(set(parent_success_query_ids)))
     ):
         raise S1SparsePatchError("typed counterfactual Creator identity is invalid")
+    bound_action_condition = (
+        CounterfactualActionConditionV1.model_validate(
+            expected_action_condition, strict=True
+        )
+        if expected_action_condition is not None
+        else None
+    )
+    if expected_action_condition is not None and target_surface != "action-policy":
+        raise S1SparsePatchError(
+            "typed counterfactual action condition targets the wrong surface"
+        )
     preservation_variants = [
         {
             "type": "object",
@@ -1099,6 +1118,24 @@ def counterfactual_typed_policy_patch_output_json_schema(
         "must_preserve",
     ]
     if target_surface == "action-policy":
+        prior_tool_schema: dict[str, object]
+        if bound_action_condition is None:
+            prior_tool_schema = {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "enum": list(S1_CAPABILITY_ACTION_TOOLS[capability_id]),
+                    },
+                    {"type": "null"},
+                ]
+            }
+        elif bound_action_condition.prior_tool_name is None:
+            prior_tool_schema = {"type": "null"}
+        else:
+            prior_tool_schema = {
+                "type": "string",
+                "enum": [bound_action_condition.prior_tool_name],
+            }
         properties.update(
             {
                 "action_when": {
@@ -1113,31 +1150,33 @@ def counterfactual_typed_policy_patch_output_json_schema(
                     "properties": {
                         "phase": {
                             "type": "string",
-                            "enum": ["before-first-tool", "after-tool"],
+                            "enum": (
+                                [bound_action_condition.phase]
+                                if bound_action_condition is not None
+                                else ["before-first-tool", "after-tool"]
+                            ),
                         },
-                        "prior_tool_name": {
-                            "anyOf": [
-                                {
-                                    "type": "string",
-                                    "enum": list(
-                                        S1_CAPABILITY_ACTION_TOOLS[capability_id]
-                                    ),
-                                },
-                                {"type": "null"},
-                            ]
-                        },
+                        "prior_tool_name": prior_tool_schema,
                         "prior_tool_status": {
                             "type": "string",
-                            "enum": [
-                                "not-called",
-                                "success",
-                                "invalid-arguments",
-                                "error",
-                            ],
+                            "enum": (
+                                [bound_action_condition.prior_tool_status]
+                                if bound_action_condition is not None
+                                else [
+                                    "not-called",
+                                    "success",
+                                    "invalid-arguments",
+                                    "error",
+                                ]
+                            ),
                         },
                         "public_evidence": {
                             "type": "string",
-                            "enum": ["unknown", "empty", "nonempty"],
+                            "enum": (
+                                [bound_action_condition.public_evidence]
+                                if bound_action_condition is not None
+                                else ["unknown", "empty", "nonempty"]
+                            ),
                         },
                     },
                 },
@@ -1240,6 +1279,7 @@ def parse_counterfactual_typed_policy_patch(
     parent_skill_sha256: str,
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
+    expected_action_condition: Mapping[str, object] | None = None,
 ) -> SingleSurfaceCounterfactualPatchV2:
     try:
         raw = parse_strict_json(
@@ -1258,6 +1298,14 @@ def parse_counterfactual_typed_policy_patch(
         != parent_success_query_ids
     ):
         raise S1SparsePatchError("S1 typed counterfactual proposal binding drifted")
+    if expected_action_condition is not None:
+        expected = CounterfactualActionConditionV1.model_validate(
+            expected_action_condition, strict=True
+        )
+        if proposal.action_when != expected:
+            raise S1SparsePatchError(
+                "S1 typed counterfactual action condition drifted from evidence"
+            )
     return proposal
 
 

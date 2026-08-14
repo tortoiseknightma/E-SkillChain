@@ -113,7 +113,7 @@ _COUNTERFACTUAL_PROPOSAL_MODES = frozenset(
     }
 )
 _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
-    {"parent-counterfactual-v6", "parent-counterfactual-v7"}
+    {"parent-counterfactual-v6", "parent-counterfactual-v7", "parent-counterfactual-v8"}
 )
 
 
@@ -2372,6 +2372,7 @@ class CoreFastEngine:
         counterfactual_surface: Literal["action-policy", "response-policy"]
         | None = None,
         counterfactual_parent_success_ids: tuple[str, ...] = (),
+        counterfactual_action_condition: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         capability_enum = list(CAPABILITIES)
         if stage == "s1":
@@ -2391,6 +2392,7 @@ class CoreFastEngine:
                         parent_skill_sha256=by_capability[capability].skill_sha256,
                         target_surface=counterfactual_surface,
                         parent_success_query_ids=counterfactual_parent_success_ids,
+                        expected_action_condition=counterfactual_action_condition,
                     )
                 return counterfactual_policy_patch_output_json_schema(
                     capability_id=capability,
@@ -2638,6 +2640,10 @@ class CoreFastEngine:
                 not isinstance(item, dict)
                 or item.get("evidence_feasible") is not True
                 or item.get("treatment_sensitive") is not True
+                or (
+                    settings.feedback_selection_policy == "parent-counterfactual-v8"
+                    and item.get("treatment_separable") is not True
+                )
                 for item in rounds.values()
             )
         ):
@@ -2903,6 +2909,24 @@ class CoreFastEngine:
                     "selection_class": sample["selection_class"],
                     "failure_cluster": sample["failure_cluster"],
                     "cluster_sha256": sample["cluster_sha256"],
+                    **(
+                        {
+                            "action_treatment_signature": sample[
+                                "action_treatment_signature"
+                            ]
+                        }
+                        if "action_treatment_signature" in sample
+                        else {}
+                    ),
+                    **(
+                        {
+                            "response_treatment_signature": sample[
+                                "response_treatment_signature"
+                            ]
+                        }
+                        if "response_treatment_signature" in sample
+                        else {}
+                    ),
                     "baseline_observation": project_feedback_observation(opt[query_id]),
                     "status": result.status,
                     "feedback": self._parse_feedback_result(result),
@@ -4420,6 +4444,33 @@ class CoreFastEngine:
                 if row.get("sample_role") == "parent_success"
             )
         )
+        expected_action_condition: Mapping[str, object] | None = None
+        if (
+            settings.feedback_selection_policy == "parent-counterfactual-v8"
+            and settings.target_surface == "action-policy"
+        ):
+            action_conditions = {
+                canonical_json_bytes(row.get("action_treatment_signature"))
+                for row in evidence_rows
+                if row.get("sample_role") == "cluster_failure"
+            }
+            if (
+                len(action_conditions) != 1
+                or canonical_json_bytes(None) in action_conditions
+            ):
+                raise FastPathError(
+                    "counterfactual action evidence lacks one bound treatment state"
+                )
+            raw_condition = next(
+                row.get("action_treatment_signature")
+                for row in evidence_rows
+                if row.get("sample_role") == "cluster_failure"
+            )
+            if not isinstance(raw_condition, dict):
+                raise FastPathError(
+                    "counterfactual action treatment state is not an object"
+                )
+            expected_action_condition = raw_condition
         branch_records: list[dict[str, object]] = [
             {
                 "capability": capability,
@@ -4506,6 +4557,9 @@ class CoreFastEngine:
                         == "single-surface-counterfactual-fanout-v5"
                         and settings.target_surface == "action-policy"
                     ),
+                    "action_condition_is_bound_to_selected_failure_state": (
+                        expected_action_condition
+                    ),
                     "action_transition_obeys_capability_tool_order": (
                         settings.proposal_mode
                         == "single-surface-counterfactual-fanout-v5"
@@ -4529,6 +4583,7 @@ class CoreFastEngine:
                     parent=parent,
                     counterfactual_surface=settings.target_surface,
                     counterfactual_parent_success_ids=parent_success_ids,
+                    counterfactual_action_condition=expected_action_condition,
                 ),
             },
         )
@@ -4549,6 +4604,7 @@ class CoreFastEngine:
                     parent_skill_sha256=parent_by_capability[target].skill_sha256,
                     target_surface=settings.target_surface,
                     parent_success_query_ids=parent_success_ids,
+                    expected_action_condition=expected_action_condition,
                 )
                 compiled = compile_counterfactual_typed_policy_branch(
                     parent_bank=parent, proposal=typed_proposal

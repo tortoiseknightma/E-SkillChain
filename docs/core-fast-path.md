@@ -421,6 +421,43 @@ action condition 必须具有能区分 failure 与 protected-success 的 provide
 roots 为 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b02-20260815` 与
 `D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b03-20260815`。
 
+### 自适应第三阶段 R44–R48
+
+B04 先以 0 provider 调用完成了一次旧 schema preflight；随后 action condition 与 response failure
+family 的 active contract 收紧，因此它被 create-only 标记为 superseded。独立 B05 在任何新
+Feedback/Creator 调用前一次性冻结并复核 R44–R48：五轮均为 3 failure + 3 live parent-success +
+3 historical regression，且全部通过 `evidence_feasible`、`treatment_separable` 与
+`treatment_sensitive`。action failure 只允许 provider-visible 的 post-tool error / invalid-arguments
+状态；response failure 按 item association、card closure、unsupported claim、citation closure 等
+语义 family 聚合，不再以精确 card 数量制造簇身份。R12 与八个 Style 保护样本始终冻结。
+
+| Round | Target surface | 局部 screen | 最深 gate | 终态 |
+|---|---|---:|---|---|
+| R44 | Recipe action：invalid-arguments retry | 7 gains / 1 regression | replay200：macro +1.6667pp；Recipe +10pp；hard error +2pp | 正式 hard-error 门回滚 |
+| R45 | Multi response：item association | 0 / 0 | local response screen | 最小 gain/net 门回滚 |
+| R46 | Multi response：card closure | 0 / 0；1 条普通 reason 迁移 | local response screen | 最小 gain/net 门回滚 |
+| R47 | Encyclopedia response：unsupported claim | 未执行 | Creator contract | 禁止评价式内容；candidate null |
+| R48 | Encyclopedia response：citation closure | 0 / 1；net −1 | local response screen | 有界风险门回滚 |
+
+R44 证明枚举化 action IR 与 surface-filtered Feedback 可以把可分离 treatment 推进正式 replay；
+但 tool completion 改善后暴露出额外 response hard error，因此不能放宽 `hard-error delta ≤ +1pp`，
+也不能把被拒的 R44 Bank 与未来 response patch 拼接。R45/R46 表明两个 Multi closure 文本 family
+虽然安全，却没有改变评分行为；R47 不能记为算法负结果，因为 Assistant 为 0-call；R48 则真实产生
+1 条 parent-success regression。普通失败到另一普通 reason 的迁移均只进入诊断，没有触发硬拒绝。
+
+B05 合计 47 个 Feedback provider calls（45 个 terminal success、2 个格式失败 attempt）、5 个
+Creator、674 个 Assistant outer calls；Feedback 为 `218,949 / 138,219` input/output tokens，Assistant
+为 `3,652,448 / 331,082`，新增可追踪 DashScope 成本 ¥1.23552605。Creator 为
+`187,533 / 4,378` tokens，人民币 cost basis 不可得。仅 R44 访问正式 replay200；body75、fan-in、
+test300、S2/S3/Judge 均未访问。R12 `e70ed907…096cd` 仍是唯一 parent 与 selected Bank。
+
+下一阶段不重复 Multi DTO/card closure 文案。优先把 response `then` 从自由文本收紧为 typed
+semantic operation，使评价标签和跨 family 内容不可表达；同时让 treatment-sensitivity probe 绑定
+一个可预测的评分行为变化，而不只验证 policy text/hash 不同。所有轮次仍须在新 Feedback 前一次性
+通过 evidence feasibility、treatment separability、treatment sensitivity 与 parent protection；
+局部、replay、body 与 R33/test300 规则全部保持不变。canonical root 为
+`D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b05-20260815`。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

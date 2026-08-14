@@ -179,3 +179,50 @@ def test_treatment_probe_uses_capability_action_order_not_bank_storage_order() -
 
     assert probe["probe_action_prior_tool_name"] == "object_detect"
     assert probe["probe_action_tool_name"] == "encyclopedia_lookup"
+
+
+def test_v8_treatment_probe_uses_the_selected_provider_visible_failure() -> None:
+    spec = SimpleNamespace(
+        s1_settings=SimpleNamespace(
+            target_capabilities=("utility.recipe_guidance",),
+            target_surface="action-policy",
+            feedback_selection_policy="parent-counterfactual-v8",
+        ),
+        s1_parent=SimpleNamespace(
+            protected_skill_sha256={"product.style_recommendation": "a" * 64}
+        ),
+    )
+    selected = (
+        *(
+            {
+                "query_id": f"failure-{index}",
+                "counterfactual_role": "cluster_failure",
+                "action_treatment_signature": {
+                    "phase": "after-tool",
+                    "prior_tool_name": "recipe_lookup",
+                    "prior_tool_status": "invalid-arguments",
+                    "public_evidence": "unknown",
+                },
+            }
+            for index in range(1, 4)
+        ),
+        *(
+            {
+                "query_id": f"success-{index}",
+                "counterfactual_role": "parent_success",
+                "action_treatment_signature": None,
+            }
+            for index in range(1, 4)
+        ),
+    )
+
+    probe = cycle_preparer._treatment_probe(  # noqa: SLF001
+        parent=fixture_module._bank(),
+        spec=spec,
+        selected=selected,
+    )
+
+    assert probe["treatment_sensitive"] is True
+    assert probe["probe_action_prior_tool_name"] == "recipe_lookup"
+    assert probe["probe_action_prior_tool_status"] == "invalid-arguments"
+    assert probe["probe_action_tool_name"] == "recipe_lookup"
