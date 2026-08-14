@@ -54,12 +54,82 @@ def _public_evidence_shape(observation: AssistantObservation) -> dict[str, objec
     }
 
 
+def _response_evidence_class(observation: AssistantObservation) -> dict[str, object]:
+    """Abstract the fixed public boundary without exact-cardinality overfitting."""
+
+    shape = _public_evidence_shape(observation)
+    evidence = shape["tool_evidence"]
+    assert isinstance(evidence, list)
+    has_cards = int(shape["visible_cards"]) > 0 or any(
+        isinstance(item, dict) and int(item.get("cards", 0)) > 0 for item in evidence
+    )
+    has_citations = any(
+        isinstance(item, dict) and int(item.get("citations", 0)) > 0
+        for item in evidence
+    )
+    has_detections = any(
+        isinstance(item, dict) and int(item.get("detections", 0)) > 0
+        for item in evidence
+    )
+    return {
+        "tool_names": [
+            str(item["tool_name"])
+            for item in evidence
+            if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
+        ],
+        "outcome": (
+            "nonempty"
+            if has_cards or has_citations or has_detections
+            else "successful-empty"
+        ),
+        "evidence_kinds": [
+            name
+            for name, present in (
+                ("cards", has_cards),
+                ("citations", has_citations),
+                ("detections", has_detections),
+            )
+            if present
+        ],
+    }
+
+
+def _surface_eligible(
+    observation: AssistantObservation,
+    surface: str,
+    capability: str,
+) -> bool:
+    """Qualify rows before clustering action and response failure surfaces."""
+
+    if (
+        observation.selected_capability != capability
+        or not observation.gcs_components["route_acceptable"]
+    ):
+        return False
+    context = observation.replay_context
+    if not isinstance(context.get("response"), dict) or not isinstance(
+        context.get("receipt"), dict
+    ):
+        return False
+    if surface == "action-policy":
+        return True
+    if surface != "response-policy":
+        raise CounterfactualEvidenceError(f"unknown counterfactual surface: {surface}")
+    trace = tuple(observation.tool_trace)
+    return bool(
+        observation.gcs_components["tool_contract_pass"]
+        and observation.gcs_components["no_hard_error"]
+        and trace
+        and all(item.status == "success" for item in trace)
+    )
+
+
 def _surface_success(
     observation: AssistantObservation,
     surface: str,
     capability: str,
 ) -> bool:
-    if observation.selected_capability != capability:
+    if not _surface_eligible(observation, surface, capability):
         return False
     components = observation.gcs_components
     if surface == "action-policy":
@@ -106,6 +176,7 @@ def _counterfactual_state(
         }
     return {
         **common,
+        "response_evidence_class": _response_evidence_class(observation),
         "failed_response_components": [
             name
             for name in (
@@ -116,6 +187,24 @@ def _counterfactual_state(
             if not observation.gcs_components[name]
         ],
         "response_reason_codes": list(observation.gcs_reason_codes),
+    }
+
+
+def _counterfactual_cluster_state(
+    state: Mapping[str, object], surface: str
+) -> dict[str, object]:
+    """Cluster on the causal surface and retain the detailed state separately."""
+
+    if surface == "action-policy":
+        trace = state.get("tool_trace")
+        assert isinstance(trace, list)
+        return {
+            "tool_called": bool(trace),
+            "failed_action_components": state.get("failed_action_components"),
+        }
+    return {
+        "response_evidence_class": state.get("response_evidence_class"),
+        "failed_response_components": state.get("failed_response_components"),
     }
 
 
@@ -142,7 +231,9 @@ def build_parent_counterfactual_population(
                 f"parent counterfactual input lacks oracle coverage: {query.query_id}"
             )
         state = _counterfactual_state(query, observation, settings.target_surface)
+        eligible = _surface_eligible(observation, settings.target_surface, target)
         success = _surface_success(observation, settings.target_surface, target)
+        cluster_state = _counterfactual_cluster_state(state, settings.target_surface)
         rows.append(
             {
                 "query_ordinal": ordinal,
@@ -152,6 +243,7 @@ def build_parent_counterfactual_population(
                 "capability": target,
                 "surface": settings.target_surface,
                 "role": "parent_success" if success else "parent_failure",
+                "surface_eligible": eligible,
                 "surface_success": success,
                 "state": state,
                 "state_sha256": _hash(state),
@@ -159,7 +251,7 @@ def build_parent_counterfactual_population(
                     {
                         "surface": settings.target_surface,
                         "capability": target,
-                        "state": state,
+                        "state": cluster_state,
                     }
                 ),
             }
@@ -179,7 +271,9 @@ def select_parent_counterfactual_samples(
     seeds = [
         by_id[query_id]
         for query_id in settings.counterfactual_gain_seed_query_ids
-        if query_id in by_id and not bool(by_id[query_id]["surface_success"])
+        if query_id in by_id
+        and bool(by_id[query_id]["surface_eligible"])
+        and not bool(by_id[query_id]["surface_success"])
     ]
     if not seeds:
         raise CounterfactualEvidenceError(
@@ -189,7 +283,7 @@ def select_parent_counterfactual_samples(
     current_failures = Counter(
         str(row["cluster_sha256"])
         for row in population
-        if not bool(row["surface_success"])
+        if bool(row["surface_eligible"]) and not bool(row["surface_success"])
     )
     selected_cluster = min(
         cluster_support,
@@ -203,7 +297,8 @@ def select_parent_counterfactual_samples(
         (
             row
             for row in population
-            if not bool(row["surface_success"])
+            if bool(row["surface_eligible"])
+            and not bool(row["surface_success"])
             and row["cluster_sha256"] == selected_cluster
             and row["query_id"] not in settings.counterfactual_regression_query_ids
         ),
@@ -247,9 +342,8 @@ def select_parent_counterfactual_samples(
         assert isinstance(state, dict)
         if settings.target_surface == "response-policy":
             exact_boundary = int(
-                state.get("tool_trace") != exemplar_state.get("tool_trace")
-                or state.get("public_evidence_shape")
-                != exemplar_state.get("public_evidence_shape")
+                state.get("response_evidence_class")
+                != exemplar_state.get("response_evidence_class")
             )
         else:
             exact_boundary = int(
@@ -267,7 +361,8 @@ def select_parent_counterfactual_samples(
         (
             row
             for row in population
-            if bool(row["surface_success"])
+            if bool(row["surface_eligible"])
+            and bool(row["surface_success"])
             and row["query_id"] not in settings.counterfactual_regression_query_ids
         ),
         key=success_rank,
@@ -282,7 +377,7 @@ def select_parent_counterfactual_samples(
     regressions = [
         by_id[query_id]
         for query_id in settings.counterfactual_regression_query_ids
-        if query_id in by_id
+        if query_id in by_id and bool(by_id[query_id]["surface_eligible"])
     ]
     take(regressions, 9)
     if len(selected) != 9:

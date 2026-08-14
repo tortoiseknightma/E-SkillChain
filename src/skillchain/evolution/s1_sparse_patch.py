@@ -55,7 +55,16 @@ S1_SPARSE_COMPILATION_POLICY_VERSION = "portfolio-s1-sparse-compilation-v1"
 S1_SPARSE_SCREENED_BANK_POLICY_VERSION = "portfolio-s1-screened-sparse-bank-v1"
 S1_DUAL_POLICY_PATCH_VERSION = "portfolio-s1-dual-policy-patch-v1"
 S1_COUNTERFACTUAL_POLICY_VERSION = "single-surface-counterfactual-fanout-v4"
+S1_COUNTERFACTUAL_TYPED_POLICY_VERSION = "single-surface-counterfactual-fanout-v5"
 S1_POLICY_SURFACES = ("action-policy", "response-policy")
+S1_CAPABILITY_ACTION_TOOLS = {
+    "knowledge.visual_encyclopedia": ("object_detect", "encyclopedia_lookup"),
+    "product.exact_match": ("image_product_search", "text_product_search"),
+    "product.multi_search": ("multi_product_search",),
+    "product.style_recommendation": ("style_similar_search",),
+    "utility.document_reading": ("document_ocr",),
+    "utility.recipe_guidance": ("object_detect", "recipe_lookup"),
+}
 ENCYCLOPEDIA_CAPABILITY = "knowledge.visual_encyclopedia"
 ENCYCLOPEDIA_FALLBACK_MARKER = "not enough evidence"
 ENCYCLOPEDIA_TOOL_SEQUENCE = ("object_detect", "encyclopedia_lookup")
@@ -293,6 +302,142 @@ class SingleSurfaceCounterfactualPatchV1(_StrictFrozenModel):
         ids = tuple(item.query_id for item in self.must_preserve)
         if ids != tuple(sorted(set(ids))):
             raise ValueError("must_preserve query IDs must be sorted and unique")
+        return self
+
+
+class CounterfactualActionConditionV1(_StrictFrozenModel):
+    """Provider-visible action-loop state; it cannot carry response prose."""
+
+    phase: Literal["before-first-tool", "after-tool"]
+    prior_tool_name: str | None
+    prior_tool_status: Literal["not-called", "success", "invalid-arguments", "error"]
+    public_evidence: Literal["unknown", "empty", "nonempty"]
+
+    @model_validator(mode="after")
+    def validate_state(self) -> Self:
+        if self.phase == "before-first-tool":
+            if (
+                self.prior_tool_name is not None
+                or self.prior_tool_status != "not-called"
+                or self.public_evidence != "unknown"
+            ):
+                raise ValueError("before-first-tool action state is inconsistent")
+        elif self.prior_tool_name is None or self.prior_tool_status == "not-called":
+            raise ValueError("after-tool action state requires one prior tool")
+        if self.prior_tool_status != "success" and self.public_evidence != "unknown":
+            raise ValueError("failed tool states cannot claim public evidence")
+        return self
+
+
+class CounterfactualActionDirectiveV1(_StrictFrozenModel):
+    """One typed action transition with no answer/card/evidence text channel."""
+
+    operation: Literal["invoke-tool-once", "retry-tool-once", "stop-action-loop"]
+    tool_name: str | None
+    arguments_from: Literal[
+        "current-user-request",
+        "last-visible-tool-output",
+        "last-valid-arguments",
+        "none",
+    ]
+
+    @model_validator(mode="after")
+    def validate_transition(self) -> Self:
+        if self.operation == "stop-action-loop":
+            if self.tool_name is not None or self.arguments_from != "none":
+                raise ValueError("stop action cannot express a tool or arguments")
+        elif self.tool_name is None or self.arguments_from == "none":
+            raise ValueError("tool action requires a tool and argument source")
+        return self
+
+
+class SingleSurfaceCounterfactualPatchV2(_StrictFrozenModel):
+    """v5 single-surface IR: action is typed; response remains one clause."""
+
+    schema_version: Literal[2] = 2
+    capability_id: str
+    parent_skill_sha256: Sha256
+    target_surface: Literal["action-policy", "response-policy"]
+    non_target_surface_action: Literal["inherit"]
+    action_when: CounterfactualActionConditionV1 | None = None
+    action_then: CounterfactualActionDirectiveV1 | None = None
+    when: str | None = None
+    then: str | None = None
+    must_preserve: tuple[CounterfactualPreservationV1, ...] = Field(
+        min_length=3, max_length=3
+    )
+
+    @field_validator("must_preserve", mode="before")
+    @classmethod
+    def _coerce_preserve(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("when", "then")
+    @classmethod
+    def _validate_response_clause(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if (
+            value != value.strip()
+            or not value
+            or "\n" in value
+            or ";" in value
+            or value.startswith(("-", "*", "1."))
+        ):
+            raise ValueError("counterfactual response fields must each be one clause")
+        lowered = value.casefold()
+        if any(
+            marker in lowered
+            for marker in (
+                "ground truth",
+                "canonical capability",
+                "gcs",
+                "score label",
+                "evaluation label",
+                "private path",
+            )
+        ):
+            raise ValueError("counterfactual response references evaluation-only state")
+        static_authoring_module._scan_untrusted_text(  # noqa: SLF001
+            value, "S1 counterfactual response rule"
+        )
+        return value
+
+    @model_validator(mode="after")
+    def validate_surface_ir(self) -> Self:
+        ids = tuple(item.query_id for item in self.must_preserve)
+        if ids != tuple(sorted(set(ids))):
+            raise ValueError("must_preserve query IDs must be sorted and unique")
+        allowed_tools = S1_CAPABILITY_ACTION_TOOLS.get(self.capability_id)
+        if allowed_tools is None:
+            raise ValueError("counterfactual capability has no action-tool contract")
+        if self.target_surface == "action-policy":
+            if (
+                self.action_when is None
+                or self.action_then is None
+                or self.when is not None
+                or self.then is not None
+            ):
+                raise ValueError("action patch must use only the typed action IR")
+            referenced_tools = tuple(
+                item
+                for item in (
+                    self.action_when.prior_tool_name,
+                    self.action_then.tool_name,
+                )
+                if item is not None
+            )
+            if any(item not in allowed_tools for item in referenced_tools):
+                raise ValueError(
+                    "action patch references a tool outside the capability"
+                )
+        elif (
+            self.when is None
+            or self.then is None
+            or self.action_when is not None
+            or self.action_then is not None
+        ):
+            raise ValueError("response patch cannot express an action transition")
         return self
 
 
@@ -844,6 +989,155 @@ def counterfactual_policy_patch_output_json_schema(
     }
 
 
+def counterfactual_typed_policy_patch_output_json_schema(
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+) -> dict[str, object]:
+    """Return a strict v5 schema with no response-text channel for action."""
+
+    if (
+        capability_id not in S1_CAPABILITY_ACTION_TOOLS
+        or not _SHA_RE.fullmatch(parent_skill_sha256)
+        or len(parent_success_query_ids) != 3
+        or parent_success_query_ids != tuple(sorted(set(parent_success_query_ids)))
+    ):
+        raise S1SparsePatchError("typed counterfactual Creator identity is invalid")
+    preservation_variants = [
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["query_id", "provider_visible_state"],
+            "properties": {
+                "query_id": {"type": "string", "enum": [query_id]},
+                "provider_visible_state": {"type": "string", "minLength": 1},
+            },
+        }
+        for query_id in parent_success_query_ids
+    ]
+    properties: dict[str, object] = {
+        "schema_version": {"type": "integer", "enum": [2]},
+        "capability_id": {"type": "string", "enum": [capability_id]},
+        "parent_skill_sha256": {
+            "type": "string",
+            "enum": [parent_skill_sha256],
+        },
+        "target_surface": {"type": "string", "enum": [target_surface]},
+        "non_target_surface_action": {"type": "string", "enum": ["inherit"]},
+        "must_preserve": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {"anyOf": preservation_variants},
+        },
+    }
+    required = [
+        "schema_version",
+        "capability_id",
+        "parent_skill_sha256",
+        "target_surface",
+        "non_target_surface_action",
+        "must_preserve",
+    ]
+    if target_surface == "action-policy":
+        properties.update(
+            {
+                "action_when": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "phase",
+                        "prior_tool_name",
+                        "prior_tool_status",
+                        "public_evidence",
+                    ],
+                    "properties": {
+                        "phase": {
+                            "type": "string",
+                            "enum": ["before-first-tool", "after-tool"],
+                        },
+                        "prior_tool_name": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": list(
+                                        S1_CAPABILITY_ACTION_TOOLS[capability_id]
+                                    ),
+                                },
+                                {"type": "null"},
+                            ]
+                        },
+                        "prior_tool_status": {
+                            "type": "string",
+                            "enum": [
+                                "not-called",
+                                "success",
+                                "invalid-arguments",
+                                "error",
+                            ],
+                        },
+                        "public_evidence": {
+                            "type": "string",
+                            "enum": ["unknown", "empty", "nonempty"],
+                        },
+                    },
+                },
+                "action_then": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["operation", "tool_name", "arguments_from"],
+                    "properties": {
+                        "operation": {
+                            "type": "string",
+                            "enum": [
+                                "invoke-tool-once",
+                                "retry-tool-once",
+                                "stop-action-loop",
+                            ],
+                        },
+                        "tool_name": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "enum": list(
+                                        S1_CAPABILITY_ACTION_TOOLS[capability_id]
+                                    ),
+                                },
+                                {"type": "null"},
+                            ]
+                        },
+                        "arguments_from": {
+                            "type": "string",
+                            "enum": [
+                                "current-user-request",
+                                "last-visible-tool-output",
+                                "last-valid-arguments",
+                                "none",
+                            ],
+                        },
+                    },
+                },
+            }
+        )
+        required.extend(("action_when", "action_then"))
+    else:
+        properties.update(
+            {
+                "when": {"type": "string", "minLength": 1},
+                "then": {"type": "string", "minLength": 1},
+            }
+        )
+        required.extend(("when", "then"))
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": required,
+        "properties": properties,
+    }
+
+
 def parse_counterfactual_policy_patch(
     raw_final: bytes,
     *,
@@ -868,6 +1162,101 @@ def parse_counterfactual_policy_patch(
     ):
         raise S1SparsePatchError("S1 counterfactual proposal binding drifted")
     return proposal
+
+
+def parse_counterfactual_typed_policy_patch(
+    raw_final: bytes,
+    *,
+    capability_id: str,
+    parent_skill_sha256: str,
+    target_surface: Literal["action-policy", "response-policy"],
+    parent_success_query_ids: tuple[str, ...],
+) -> SingleSurfaceCounterfactualPatchV2:
+    try:
+        raw = parse_strict_json(
+            raw_final, label="S1 typed counterfactual Creator output"
+        )
+        proposal = SingleSurfaceCounterfactualPatchV2.model_validate(raw, strict=True)
+    except (ArtifactFormatError, ValidationError) as error:
+        raise S1SparsePatchError(
+            "S1 typed counterfactual Creator output is invalid"
+        ) from error
+    if (
+        proposal.capability_id != capability_id
+        or proposal.parent_skill_sha256 != parent_skill_sha256
+        or proposal.target_surface != target_surface
+        or tuple(item.query_id for item in proposal.must_preserve)
+        != parent_success_query_ids
+    ):
+        raise S1SparsePatchError("S1 typed counterfactual proposal binding drifted")
+    return proposal
+
+
+def _render_typed_action_condition(value: CounterfactualActionConditionV1) -> str:
+    if value.phase == "before-first-tool":
+        return "the action loop is before its first tool call"
+    assert value.prior_tool_name is not None
+    evidence = (
+        ""
+        if value.public_evidence == "unknown"
+        else f" with {value.public_evidence} public evidence"
+    )
+    return (
+        f"the visible prior {value.prior_tool_name} call has status "
+        f"{value.prior_tool_status}{evidence}"
+    )
+
+
+def _render_typed_action_directive(value: CounterfactualActionDirectiveV1) -> str:
+    if value.operation == "stop-action-loop":
+        return "stop the action loop without another tool call"
+    assert value.tool_name is not None
+    verb = "invoke" if value.operation == "invoke-tool-once" else "retry"
+    source = value.arguments_from.replace("-", " ")
+    return f"{verb} {value.tool_name} exactly once using {source}"
+
+
+def compile_counterfactual_typed_policy_branch(
+    *,
+    parent_bank: StaticBankArtifact,
+    proposal: SingleSurfaceCounterfactualPatchV2,
+) -> CompiledPolicySurfaceBranch:
+    preserved = ", ".join(
+        item.provider_visible_state for item in proposal.must_preserve
+    )
+    if proposal.target_surface == "action-policy":
+        assert proposal.action_when is not None and proposal.action_then is not None
+        when = _render_typed_action_condition(proposal.action_when)
+        then = _render_typed_action_directive(proposal.action_then)
+    else:
+        assert proposal.when is not None and proposal.then is not None
+        when, then = proposal.when, proposal.then
+    policy_text = (
+        f"If and only if {when}, {then}. Otherwise preserve the parent behavior, "
+        f"including {preserved}."
+    )
+    surface_payload = PolicySurfaceDraftV1(action="patch", policy_text=policy_text)
+    dual = DualPolicyPatchPayloadV1(
+        capability_id=proposal.capability_id,
+        parent_skill_sha256=proposal.parent_skill_sha256,
+        action_policy=(
+            surface_payload
+            if proposal.target_surface == "action-policy"
+            else PolicySurfaceDraftV1(action="inherit", policy_text=None)
+        ),
+        response_policy=(
+            surface_payload
+            if proposal.target_surface == "response-policy"
+            else PolicySurfaceDraftV1(action="inherit", policy_text=None)
+        ),
+    )
+    compiled = compile_policy_surface_branch(
+        parent_bank=parent_bank,
+        proposal=dual,
+        surface=proposal.target_surface,
+    )
+    assert compiled is not None
+    return compiled
 
 
 def compile_counterfactual_policy_branch(
@@ -1791,19 +2180,27 @@ __all__ = [
     "sparse_author_content_lexical_guard",
     "S1_DUAL_POLICY_PATCH_VERSION",
     "S1_COUNTERFACTUAL_POLICY_VERSION",
+    "S1_COUNTERFACTUAL_TYPED_POLICY_VERSION",
+    "S1_CAPABILITY_ACTION_TOOLS",
     "S1_POLICY_SURFACES",
     "CompiledPolicySurfaceBranch",
     "SingleSurfaceCounterfactualPatchV1",
+    "SingleSurfaceCounterfactualPatchV2",
+    "CounterfactualActionConditionV1",
+    "CounterfactualActionDirectiveV1",
     "DualPolicyPatchPayloadV1",
     "PolicySurfaceCompilationReceiptV1",
     "PolicySurfaceCompositionReceiptV1",
     "ComposedPolicySurfaceBranch",
     "compile_policy_surface_branch",
     "compile_counterfactual_policy_branch",
+    "compile_counterfactual_typed_policy_branch",
     "compose_policy_surface_branches",
     "dual_policy_patch_output_json_schema",
     "counterfactual_policy_patch_output_json_schema",
+    "counterfactual_typed_policy_patch_output_json_schema",
     "parse_dual_policy_patch",
     "parse_counterfactual_policy_patch",
+    "parse_counterfactual_typed_policy_patch",
     "sparse_patch_output_json_schema",
 ]

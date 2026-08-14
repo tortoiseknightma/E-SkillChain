@@ -565,7 +565,9 @@
         <code>e70ed907…096cd</code>。新的 <code>s1-counterfactual-v1</code> 已终结：fresh R12 parent
         opt800 800/800；R31 的 9/9 Feedback 通过、Creator 规则因跨 surface 被拒；R32 因证据不足
         零 Creator 终止；R33 没有 finalist，test300 未访问。R17/R26/R29 及其他 rejected Bank
-        全程未成为 parent 或 fan-in 输入，selected Bank 仍为 R12。
+        全程未成为 parent 或 fan-in 输入，selected Bank 仍为 R12。两个计划 treatment 实际进入 replay
+        为 <strong>0/2</strong>，所以本周期没有 S1 正增益或负增益结论。下一版机制已完成离线 typed IR、
+        surface Feedback 过滤与全周期 preflight，但真实 R12 preflight 仍阻断 R32；没有新的 provider 调用。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -1708,6 +1710,36 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-analysis" id="exp-20260815-counterfactual-v5-preflight" data-status="analysis" data-capability="recipe,multi">
+          <div class="experiment-head">
+            <div><h3>Counterfactual v5 · treatment-throughput mechanism correction</h3><p>把 0/2 treatment 的两个入口失败改成类型与 preflight 约束；本条是零 provider 的机制验收，不是新的 S1 实验。</p></div>
+            <div class="experiment-labels"><span class="state baseline">offline only · 0 calls</span><span class="tag">2026-08-15</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>0 / 2</strong><span>prior treatments reached replay</span></div>
+            <div class="result-box"><strong>R31 pass</strong><span>real R12 offline preflight</span></div>
+            <div class="result-box"><strong>R32 blocked</strong><span>regression evidence infeasible</span></div>
+            <div class="result-box"><strong>¥0</strong><span>new provider spend</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · <code>e70ed907…096cd</code> · opt SHA <code>4c6bafa6…84fcf</code></dd></div>
+            <div><dt>Mechanism</dt><dd><code>single-surface-counterfactual-fanout-v5</code> + <code>parent-counterfactual-v7</code></dd></div>
+            <div><dt>Action contract</dt><dd>枚举化 action-loop state 与单一 transition；schema 不提供 response <code>when/then</code> 字段</dd></div>
+            <div><dt>Response eligibility</dt><dd>route/tool/no-hard/successful-trace 先验；按 public evidence kind 与 empty/nonempty 抽象 cluster</dd></div>
+          </dl>
+          <div class="analysis-grid">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator action 输出不再能表达 answer、cards 或 fallback；Feedback 只有精确匹配目标 surface 的 <code>[policy_compatible]</code> suggestion 能进入 Creator。全部预注册轮次必须在任一 Feedback 前同时通过 3/3/3 evidence-feasibility 与离线 treatment-sensitivity；engine 在 validate 和首次 Feedback 前复核 receipt SHA 与 selection manifest。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>typed IR 应消除 R31 的跨-surface schema-valid proposal；更抽象的 evidence class 应减少由精确 card 数量造成的伪稀缺。这两点尚未经过新的 Assistant replay，不能写成 S1 效果提升。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>真实 R12 preflight 中 R31 evidence 与 treatment probe 均通过；R32 的旧 historical regression <code>r2-core-0784</code> 是无成功 tool trace 的 hard/action failure，不具 response-policy 资格，因此整个未来周期继续 fail closed。下一周期必须事前换成可复核的 response-qualified regression evidence；不在 selector 中凑数，不放宽 gate，R33/test 规则不变。</p></div>
+          </div>
+          <details open><summary>Offline evidence</summary><div class="artifact-list">
+            <code>src/skillchain/evolution/s1_sparse_patch.py · typed action IR/compiler</code>
+            <code>src/skillchain/evaluation/core_fast/feedback_selection.py · response eligibility and cluster abstraction</code>
+            <code>scripts/prepare_s1_counterfactual_cycle.py · all-round preflight before runnable spec freeze</code>
+            <code>real R12 dry preflight: R31 selection 325a858f…3ca76; R32 insufficient_counterfactual_evidence</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -2056,7 +2088,7 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
   <footer>
     <div class="wrap">
       <strong>ECommerceSkillChain S1 Experiment Ledger</strong><br>
-      最后更新：2026-08-14 · 本页为可读索引，不替代 canonical experiment artifacts。
+      最后更新：2026-08-15 · 本页为可读索引，不替代 canonical experiment artifacts。
     </div>
   </footer>
 

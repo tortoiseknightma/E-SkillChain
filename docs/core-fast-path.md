@@ -341,6 +341,24 @@ parent-success，以 `insufficient_counterfactual_evidence`、Creator 0-call 终
 accepted branch、`finalist=null`、`test300_allowed=false`。周期可追踪 DashScope 合计
 ¥2.52357745；唯一 Creator 成本不可得。test300、S2/S3/Judge 均未访问，selected Bank 保持 R12。
 
+这个终态是**安全性成功、实验吞吐失败**：两个计划 treatment 进入 replay 的数量为 0/2，所以不报告
+S1 增益或负增益，也不调整局部有界风险门、replay/body gate 或 R33 规则。后续机制版本
+`single-surface-counterfactual-fanout-v5` 做三项离线收口：action Creator 只能输出 typed tool-loop
+condition/transition，不能表达 answer/cards/evidence/fallback 文本；每条 Feedback 必须精确归属目标
+surface，跨 surface 或无标签 suggestion 在 Creator 前剔除；response 样本必须先满足可固定 route/tool、
+成功 tool trace、无 hard error，再按公开 evidence 类型与 empty/nonempty 分支聚类，而不要求相同的精确
+cardinality。
+
+`freeze-cycle` 在生成可运行 spec 前，会对所有预注册轮次一次性执行零 provider 的
+evidence-feasibility 与 treatment-sensitivity preflight。每轮必须同时提供 3 个同簇 failure、3 个
+合格 parent-success、3 个合格 historical regression，并证明 probe 只改变目标 Skill 的目标 surface；
+任一轮失败时只落 preflight 诊断，不生成 runnable round specs。Core Fast 在 `validate` 以及第一次
+Feedback 前都会复核 preflight 文件 SHA、R12 parent/opt 身份、所有轮次通过状态和当前 selection
+manifest SHA。真实 R12 opt800 的只读审计显示：R31 已通过这两类 preflight；R32 的旧证据中
+`r2-core-0784` 没有成功 tool trace且为 hard/action failure，因此仍被阻断。修复方式是下一周期事前
+冻结新的、response-qualified regression evidence，不是把该样本强行降格或放宽 gate。R12 仍是唯一
+合法 parent；R33 仍只组合正式 accepted branch，test300 仍只允许一个 frozen finalist 使用一次。
+
 ## 实测并发与配速
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |

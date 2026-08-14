@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。新的 `s1-counterfactual-v1` 已按预注册执行：fresh R12 parent opt800 为 800/800；R31 Recipe action 的 9/9 Feedback 通过，但唯一 Creator 规则跨入 response surface，被 compiler 拒绝；R32 Multi response 因不足 3 个 matched parent-success 零调用终止。R33 因 0 个 accepted branch 冻结为无 finalist，test300 未访问；S2/S3/Judge 继续保持 0-call。**
+> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成；R12 的 Style action-policy 仍是唯一通过正式 replay/body gate 的候选，selected Bank 为 `e70ed907…096cd`。`s1-counterfactual-v1` 的安全边界通过、实验吞吐失败：R31/R32 两个预注册 treatment 实际进入 replay 为 0/2，因此没有 S1 正增益或负增益结论，也没有放宽 gate。后续机制已离线升级为 typed action IR、surface-filtered Feedback、response evidence 资格/cluster 抽象与全轮次 preflight；真实 R12 只读 preflight 中 R31 可行，R32 因一个历史 regression 不具 response 资格而继续 fail closed。没有新的 provider 调用，R33/test300/S2/S3/Judge 均未启动。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -89,6 +89,15 @@ lineage 为 799 success + 1 non-retryable provider failure，已知成本 ¥1.23
 orphan 成本未知；它未参与 selection。终态 R31/R32/R33 位于 `...-v4-20260814`，R31 的 9 条
 Qwen3.8 Feedback 成本 ¥0.04388745，唯一 Creator 为 `35,972 / 823` input/output tokens、人民币
 cost basis 不可得。周期可追踪总成本 ¥2.52357745，Assistant replay/body 与 test 均为 0-call。
+
+本周期的结果只能表述为 **treatment throughput 0/2**，不能写成 S1 增益或负增益。下一版
+`single-surface-counterfactual-fanout-v5` 将 action Creator 限制为枚举化的 tool-loop state 与单一
+transition，schema 中不再存在 response `when/then` 文本通道；Feedback 必须带且只带目标
+`[action-policy]` 或 `[response-policy]` 标签。response selector 先要求 route 正确、tool contract
+通过、无 hard error、成功 tool trace 可固定，再按 tool/evidence 类型和 empty/nonempty 分支聚类，
+不再用精确 card 数量制造伪稀缺。任何新 Feedback 前，所有预注册轮次必须一次性通过 3/3/3
+evidence-feasibility 与离线 treatment-sensitivity preflight；一项失败即阻止整个周期。R12 仍是唯一
+parent，R33 accepted-only fan-in 与 one-finalist test300 规则不变。
 
 新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
 每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
@@ -389,7 +398,8 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 1. 保持历史 deterministic rounds、当前 30 轮 canonical artifacts 及所有 rejected Bank 只读，不追溯重判，也不跨 runtime resume。
 2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
 3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
-4. 若开始下一阶段，仍从 R12 出发；本周期的跨-surface Creator 拒绝与 Multi 证据不足只作为算法诊断，不能事后改写本周期或拼装 rejected Bank。
+4. 下一周期冻结前先让全部轮次通过离线 evidence-feasibility/treatment-sensitivity preflight；当前 R12 审计中 R32 的 `r2-core-0784` 属于无成功 tool trace 的 action/hard failure，不能伪装成 response regression。应重新预注册合格证据，而不是在 selector 中凑数。
+5. 若开始下一阶段，仍从 R12 出发；本周期的跨-surface Creator 拒绝与 Multi 证据不足只作为算法诊断，不能事后改写本周期或拼装 rejected Bank。
 
 ---
 

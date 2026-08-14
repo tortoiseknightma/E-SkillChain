@@ -778,6 +778,41 @@ class LiveCoreFastAdapter:
                 text_part.get("text"), str
             )
             text_part["text"] += "\n\nLOCAL S1 ATTRIBUTION CONTRACT:\n" + attribution
+        elif intent.payload.get("attribution_policy") in {
+            "single-surface-counterfactual-v4",
+            "single-surface-counterfactual-v5",
+        }:
+            target_surface = intent.payload.get("target_surface")
+            if target_surface not in {"action-policy", "response-policy"}:
+                raise RuntimeError("counterfactual Feedback target surface is invalid")
+            forbidden_surface = (
+                "response-policy"
+                if target_surface == "action-policy"
+                else "action-policy"
+            )
+            attribution = canonical_json_bytes(
+                {
+                    "selection_class": intent.payload.get("selection_class"),
+                    "failure_cluster": intent.payload.get("failure_cluster"),
+                    "target_surface": target_surface,
+                    "instruction": (
+                        "A policy-compatible suggestion must start with exactly "
+                        f"[{target_surface}] and may discuss only that surface. "
+                        f"Do not propose {forbidden_surface}, routing Description, "
+                        "runtime, compiler, scorer, or evaluation changes. Action "
+                        "suggestions may name only provider-visible tool-loop state "
+                        "and one tool transition; response suggestions may use only "
+                        "the fixed public tool outcome and visible evidence."
+                    ),
+                }
+            ).decode("utf-8")
+            user_content = messages[1]["content"]
+            assert isinstance(user_content, list)
+            text_part = user_content[1]
+            assert isinstance(text_part, dict) and isinstance(
+                text_part.get("text"), str
+            )
+            text_part["text"] += "\n\nLOCAL S1 ATTRIBUTION CONTRACT:\n" + attribution
         started = time.perf_counter()
         try:
             response = llm.chat(

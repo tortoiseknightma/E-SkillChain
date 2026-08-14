@@ -200,6 +200,7 @@ class S1Settings(FrozenStrictModel):
         "discovery-attributed-v4",
         "discovery-dual-policy-v5",
         "parent-counterfactual-v6",
+        "parent-counterfactual-v7",
     ] = "discovery-stratified-v1"
     feedback_allocation: Literal["target-focused", "balanced-six-capability"] = (
         "balanced-six-capability"
@@ -210,6 +211,7 @@ class S1Settings(FrozenStrictModel):
         "six-capability-fanout-fanin-v2",
         "six-capability-dual-policy-fanout-fanin-v3",
         "single-surface-counterfactual-fanout-v4",
+        "single-surface-counterfactual-fanout-v5",
     ] = "sparse-parent-patch-v1"
     max_patched_capabilities: int = Field(default=3, ge=1, le=6)
     protected_capabilities: tuple[str, ...] = ()
@@ -226,6 +228,8 @@ class S1Settings(FrozenStrictModel):
     counterfactual_gain_seed_query_ids: tuple[str, ...] = ()
     counterfactual_regression_query_ids: tuple[str, ...] = ()
     parent_protection_query_ids: tuple[str, ...] = ()
+    cycle_preflight_path: str | None = None
+    cycle_preflight_sha256: Sha256 | None = None
 
     @field_validator(
         "counterfactual_gain_seed_query_ids",
@@ -305,10 +309,18 @@ class S1Settings(FrozenStrictModel):
             raise ValueError(
                 "S1 cannot patch more capabilities than its frozen targets"
             )
-        counterfactual = self.proposal_mode == "single-surface-counterfactual-fanout-v4"
+        counterfactual = self.proposal_mode in {
+            "single-surface-counterfactual-fanout-v4",
+            "single-surface-counterfactual-fanout-v5",
+        }
         if counterfactual:
+            expected_selection = (
+                "parent-counterfactual-v7"
+                if self.proposal_mode == "single-surface-counterfactual-fanout-v5"
+                else "parent-counterfactual-v6"
+            )
             if (
-                self.feedback_selection_policy != "parent-counterfactual-v6"
+                self.feedback_selection_policy != expected_selection
                 or self.feedback_allocation != "target-focused"
                 or len(targets) != 1
                 or self.max_patched_capabilities != 1
@@ -323,6 +335,17 @@ class S1Settings(FrozenStrictModel):
                     "counterfactual S1 requires one target/surface, five protected "
                     "capabilities, target-focused 9-row Feedback with canary3"
                 )
+            if self.proposal_mode == "single-surface-counterfactual-fanout-v5" and (
+                not self.cycle_preflight_path or not self.cycle_preflight_sha256
+            ):
+                raise ValueError(
+                    "typed counterfactual S1 requires a frozen all-round preflight"
+                )
+            if self.proposal_mode == "single-surface-counterfactual-fanout-v4" and (
+                self.cycle_preflight_path is not None
+                or self.cycle_preflight_sha256 is not None
+            ):
+                raise ValueError("legacy counterfactual S1 cannot bind a v5 preflight")
             for label, values, minimum in (
                 ("gain seeds", self.counterfactual_gain_seed_query_ids, 2),
                 ("regression IDs", self.counterfactual_regression_query_ids, 3),
@@ -339,6 +362,8 @@ class S1Settings(FrozenStrictModel):
                 self.counterfactual_gain_seed_query_ids,
                 self.counterfactual_regression_query_ids,
                 self.parent_protection_query_ids,
+                self.cycle_preflight_path,
+                self.cycle_preflight_sha256,
             )
         ):
             raise ValueError(
@@ -485,7 +510,10 @@ class CoreFastSpec(FrozenStrictModel):
             "high",
         ):
             raise ValueError("Creator/optimizers must use gpt-5.6-sol/high")
-        if self.s1_settings.proposal_mode == "single-surface-counterfactual-fanout-v4":
+        if self.s1_settings.proposal_mode in {
+            "single-surface-counterfactual-fanout-v4",
+            "single-surface-counterfactual-fanout-v5",
+        }:
             if self.s1_parent is None:
                 raise ValueError(
                     "counterfactual S1 requires an accepted parent binding"

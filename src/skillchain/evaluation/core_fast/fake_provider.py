@@ -93,6 +93,16 @@ class FakeCoreFastAdapter:
                         "stopping conditions explicit"
                         if intent.payload.get("attribution_policy")
                         == "dual-policy-attribution-v1"
+                        else (
+                            "[policy_compatible] "
+                            f"[{intent.payload['target_surface']}] make only the "
+                            "frozen target surface conditional"
+                        )
+                        if intent.payload.get("attribution_policy")
+                        in {
+                            "single-surface-counterfactual-v4",
+                            "single-surface-counterfactual-v5",
+                        }
                         else "[policy_compatible] make the existing contract explicit"
                     ),
                 ),
@@ -123,27 +133,51 @@ class FakeCoreFastAdapter:
                     if isinstance(item, dict)
                     and item.get("capability_id") == capability
                 )
-                return self._result(
-                    intent,
-                    {
-                        "schema_version": 1,
-                        "capability_id": capability,
-                        "parent_skill_sha256": skill["skill_sha256"],
-                        "target_surface": surface,
-                        "non_target_surface_action": "inherit",
-                        "when": "the provider-visible target state matches the frozen failure cluster",
-                        "then": "apply only the requested policy-surface correction",
-                        "must_preserve": [
-                            {
-                                "query_id": query_id,
-                                "provider_visible_state": (
-                                    f"the provider-visible success state for {query_id} remains unchanged"
-                                ),
-                            }
-                            for query_id in success_ids
-                        ],
-                    },
-                )
+                payload: dict[str, object] = {
+                    "schema_version": (
+                        2
+                        if intent.payload.get("proposal_mode")
+                        == "single-surface-counterfactual-fanout-v5"
+                        else 1
+                    ),
+                    "capability_id": capability,
+                    "parent_skill_sha256": skill["skill_sha256"],
+                    "target_surface": surface,
+                    "non_target_surface_action": "inherit",
+                    "must_preserve": [
+                        {
+                            "query_id": query_id,
+                            "provider_visible_state": (
+                                f"the provider-visible success state for {query_id} remains unchanged"
+                            ),
+                        }
+                        for query_id in success_ids
+                    ],
+                }
+                if payload["schema_version"] == 2 and surface == "action-policy":
+                    payload.update(
+                        {
+                            "action_when": {
+                                "phase": "before-first-tool",
+                                "prior_tool_name": None,
+                                "prior_tool_status": "not-called",
+                                "public_evidence": "unknown",
+                            },
+                            "action_then": {
+                                "operation": "invoke-tool-once",
+                                "tool_name": skill["operators"][0],
+                                "arguments_from": "current-user-request",
+                            },
+                        }
+                    )
+                else:
+                    payload.update(
+                        {
+                            "when": "the provider-visible target state matches the frozen failure cluster",
+                            "then": "apply only the requested policy-surface correction",
+                        }
+                    )
+                return self._result(intent, payload)
             if operation in {"s1_creator", "s1_dual_policy_creator"}:
                 if "s1" in self.reject_stages:
                     return self._result(intent, {"invalid": True})

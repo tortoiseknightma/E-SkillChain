@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import sys
+from collections import Counter
 from pathlib import Path
 
 
@@ -17,11 +18,21 @@ from skillchain.evaluation.core_fast.models import (  # noqa: E402
     AssistantObservation,
     CoreFastSpec,
 )
+from skillchain.evaluation.core_fast.feedback_selection import (  # noqa: E402
+    build_parent_counterfactual_manifest,
+    build_parent_counterfactual_population,
+    select_parent_counterfactual_samples,
+)
+from skillchain.evolution.s1_sparse_patch import (  # noqa: E402
+    compile_counterfactual_typed_policy_branch,
+    parse_counterfactual_typed_policy_patch,
+)
+from skillchain.schemas import Query  # noqa: E402
 from skillchain.static_authoring import StaticBankArtifact  # noqa: E402
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes  # noqa: E402
 
 
-CYCLE_ID = "s1-counterfactual-v1"
+CYCLE_ID = "s1-counterfactual-v2"
 R12_ROOT = Path(
     r"D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2"
     r"\runs\r12-counterfactual-rule"
@@ -251,6 +262,9 @@ def _round_spec(
     round_id: str,
     parent_binding: dict[str, object],
     fixed_samples: dict[str, object] | None = None,
+    typed_contract: bool = False,
+    preflight_path: Path | None = None,
+    preflight_sha256: str | None = None,
 ) -> dict[str, object]:
     definition = ROUND_DEFINITIONS[round_id]
     capability = str(definition["capability"])
@@ -265,10 +279,16 @@ def _round_spec(
         "feedback_total_count": 9,
         "feedback_canary_count": 3,
         "feedback_format_retry_limit": 1,
-        "feedback_selection_policy": "parent-counterfactual-v6",
+        "feedback_selection_policy": (
+            "parent-counterfactual-v7" if typed_contract else "parent-counterfactual-v6"
+        ),
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
-        "proposal_mode": "single-surface-counterfactual-fanout-v4",
+        "proposal_mode": (
+            "single-surface-counterfactual-fanout-v5"
+            if typed_contract
+            else "single-surface-counterfactual-fanout-v4"
+        ),
         "max_patched_capabilities": 1,
         "protected_capabilities": sorted(
             item for item in payload["capabilities"] if item != capability
@@ -283,6 +303,15 @@ def _round_spec(
         "counterfactual_regression_query_ids": list(definition["regressions"]),
         "parent_protection_query_ids": list(R12_PROTECTION_IDS),
     }
+    if typed_contract:
+        if preflight_path is None or preflight_sha256 is None:
+            raise ValueError("typed cycle spec requires its all-round preflight")
+        payload["s1_settings"].update(
+            {
+                "cycle_preflight_path": str(preflight_path),
+                "cycle_preflight_sha256": preflight_sha256,
+            }
+        )
     payload["limits"] = {
         **payload["limits"],
         "max_feedback_calls": 18,
@@ -322,6 +351,215 @@ def bootstrap(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _treatment_probe(
+    *,
+    parent: StaticBankArtifact,
+    spec: CoreFastSpec,
+    selected: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    settings = spec.s1_settings
+    capability = settings.target_capabilities[0]
+    surface = settings.target_surface
+    assert surface is not None
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = tuple(
+        sorted(
+            str(row["query_id"])
+            for row in selected
+            if row["counterfactual_role"] == "parent_success"
+        )
+    )
+    payload: dict[str, object] = {
+        "schema_version": 2,
+        "capability_id": capability,
+        "parent_skill_sha256": parent_skill.skill_sha256,
+        "target_surface": surface,
+        "non_target_surface_action": "inherit",
+        "must_preserve": [
+            {
+                "query_id": query_id,
+                "provider_visible_state": (
+                    f"the provider visible success state {query_id} remains unchanged"
+                ),
+            }
+            for query_id in success_ids
+        ],
+    }
+    if surface == "action-policy":
+        operators = tuple(parent_skill.operators)
+        if not operators:
+            raise ValueError(f"action treatment has no operator: {capability}")
+        prior = operators[0] if len(operators) > 1 else None
+        target = operators[1] if len(operators) > 1 else operators[0]
+        payload.update(
+            {
+                "action_when": (
+                    {
+                        "phase": "after-tool",
+                        "prior_tool_name": prior,
+                        "prior_tool_status": "success",
+                        "public_evidence": "nonempty",
+                    }
+                    if prior is not None
+                    else {
+                        "phase": "before-first-tool",
+                        "prior_tool_name": None,
+                        "prior_tool_status": "not-called",
+                        "public_evidence": "unknown",
+                    }
+                ),
+                "action_then": {
+                    "operation": "invoke-tool-once",
+                    "tool_name": target,
+                    "arguments_from": (
+                        "last-visible-tool-output"
+                        if prior is not None
+                        else "current-user-request"
+                    ),
+                },
+            }
+        )
+    else:
+        payload.update(
+            {
+                "when": "the fixed public tool evidence contains an item association",
+                "then": "preserve only the item association supported by that public evidence",
+            }
+        )
+    proposal = parse_counterfactual_typed_policy_patch(
+        canonical_json_bytes(payload),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface=surface,
+        parent_success_query_ids=success_ids,
+    )
+    compiled = compile_counterfactual_typed_policy_branch(
+        parent_bank=parent, proposal=proposal
+    )
+    candidate_skill = next(
+        item for item in compiled.bank.skills if item.capability_id == capability
+    )
+    expected_heading = (
+        "## S1 action policy overlay"
+        if surface == "action-policy"
+        else "## S1 response policy overlay"
+    )
+    forbidden_heading = (
+        "## S1 response policy overlay"
+        if surface == "action-policy"
+        else "## S1 action policy overlay"
+    )
+    protected_exact = all(
+        left == right
+        for left, right in zip(parent.skills, compiled.bank.skills, strict=True)
+        if left.capability_id != capability
+    )
+    sensitive = bool(
+        candidate_skill.skill_sha256 != parent_skill.skill_sha256
+        and candidate_skill.description == parent_skill.description
+        and candidate_skill.operators == parent_skill.operators
+        and expected_heading in candidate_skill.body
+        and forbidden_heading not in candidate_skill.body
+        and protected_exact
+    )
+    return {
+        "treatment_sensitive": sensitive,
+        "probe_candidate_bank_sha256": compiled.bank.bank_sha256,
+        "probe_candidate_skill_sha256": candidate_skill.skill_sha256,
+        "probe_policy_text_sha256": sha256_bytes(compiled.policy_text.encode("utf-8")),
+        "target_skill_changed": candidate_skill.skill_sha256
+        != parent_skill.skill_sha256,
+        "target_description_unchanged": candidate_skill.description
+        == parent_skill.description,
+        "target_operators_unchanged": candidate_skill.operators
+        == parent_skill.operators,
+        "non_target_surface_absent": forbidden_heading not in candidate_skill.body,
+        "protected_skills_byte_exact": protected_exact,
+    }
+
+
+def _build_cycle_preflight(
+    *,
+    preliminary_specs: dict[str, dict[str, object]],
+    parent: StaticBankArtifact,
+    parent_opt: dict[str, AssistantObservation],
+    queries: tuple[Query, ...],
+    parent_opt_sha256: str,
+) -> dict[str, object]:
+    rounds: dict[str, object] = {}
+    for round_id in ("r31", "r32"):
+        spec = CoreFastSpec.model_validate_json(
+            canonical_json_bytes(preliminary_specs[round_id]), strict=True
+        )
+        identity = {
+            "target_capability": spec.s1_settings.target_capabilities[0],
+            "target_surface": spec.s1_settings.target_surface,
+        }
+        try:
+            population = build_parent_counterfactual_population(
+                queries=queries,
+                observations=parent_opt,
+                settings=spec.s1_settings,
+            )
+            selected = select_parent_counterfactual_samples(
+                population, spec.s1_settings
+            )
+            manifest = build_parent_counterfactual_manifest(
+                population=population,
+                selected=selected,
+                settings=spec.s1_settings,
+                parent_bank_sha256=parent.bank_sha256,
+                parent_opt_sha256=parent_opt_sha256,
+            )
+            probe = _treatment_probe(
+                parent=parent,
+                spec=spec,
+                selected=selected,
+            )
+            roles = Counter(str(row["counterfactual_role"]) for row in selected)
+            evidence_feasible = roles == Counter(
+                {
+                    "cluster_failure": 3,
+                    "parent_success": 3,
+                    "historical_regression": 3,
+                }
+            )
+            rounds[round_id] = {
+                **identity,
+                "evidence_feasible": evidence_feasible,
+                "selection_manifest_sha256": manifest["manifest_sha256"],
+                "selected_query_ids": list(manifest["selected_query_ids"]),
+                **probe,
+            }
+        except (KeyError, TypeError, ValueError) as error:
+            rounds[round_id] = {
+                **identity,
+                "evidence_feasible": False,
+                "treatment_sensitive": False,
+                "failure_reason": str(error),
+            }
+    passed = all(
+        isinstance(item, dict)
+        and item.get("evidence_feasible") is True
+        and item.get("treatment_sensitive") is True
+        for item in rounds.values()
+    )
+    return {
+        "schema_version": 1,
+        "kind": "core-fast-s1-counterfactual-cycle-preflight",
+        "cycle_id": CYCLE_ID,
+        "parent_round_id": "r12",
+        "parent_bank_sha256": parent.bank_sha256,
+        "parent_opt_sha256": parent_opt_sha256,
+        "round_order": ["r31", "r32"],
+        "rounds": rounds,
+        "provider_calls": 0,
+        "passed": passed,
+    }
 
 
 def freeze_cycle(args: argparse.Namespace) -> int:
@@ -368,6 +606,42 @@ def freeze_cycle(args: argparse.Namespace) -> int:
         )
         for round_id, definition in ROUND_DEFINITIONS.items()
     }
+    parent_bank = StaticBankArtifact.model_validate_json(
+        Path(str(parent_binding["bank_path"])).read_bytes(), strict=True
+    )
+    parent_opt = {
+        observation.query_id: observation
+        for observation in (
+            AssistantObservation.model_validate(row, strict=True)
+            for row in _read_jsonl(opt_path)
+        )
+    }
+    typed_preflight_path = cycle_root / "cycle-preflight.json"
+    preliminary_specs = {
+        round_id: _round_spec(
+            base,
+            round_id=round_id,
+            parent_binding=parent_binding,
+            fixed_samples=fixed_samples,
+            typed_contract=True,
+            preflight_path=typed_preflight_path,
+            preflight_sha256="0" * 64,
+        )
+        for round_id in ("r31", "r32")
+    }
+    preflight = _build_cycle_preflight(
+        preliminary_specs=preliminary_specs,
+        parent=parent_bank,
+        parent_opt=parent_opt,
+        queries=tuple(Query.model_validate(row, strict=True) for row in queries),
+        parent_opt_sha256=opt_sha,
+    )
+    _write_create_only(typed_preflight_path, preflight)
+    if preflight["passed"] is not True:
+        raise ValueError(
+            "counterfactual cycle preflight failed; no runnable specs were frozen"
+        )
+    preflight_sha = _sha(typed_preflight_path)
     specs: dict[str, dict[str, object]] = {}
     spec_paths: dict[str, Path] = {}
     for round_id in ("r31", "r32"):
@@ -376,6 +650,9 @@ def freeze_cycle(args: argparse.Namespace) -> int:
             round_id=round_id,
             parent_binding=parent_binding,
             fixed_samples=fixed_samples,
+            typed_contract=True,
+            preflight_path=typed_preflight_path,
+            preflight_sha256=preflight_sha,
         )
         path = cycle_root / "specs" / f"{round_id}.json"
         specs[round_id] = spec
@@ -403,6 +680,8 @@ def freeze_cycle(args: argparse.Namespace) -> int:
         "parent_round_id": "r12",
         "parent_bank_sha256": R12_BANK_SHA,
         "parent_opt_sha256": opt_sha,
+        "cycle_preflight_path": str(typed_preflight_path),
+        "cycle_preflight_sha256": preflight_sha,
         "round_order": ["r31", "r32", "r33"],
         "round_specs": {
             round_id: {

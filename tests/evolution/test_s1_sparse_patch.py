@@ -14,6 +14,7 @@ from skillchain.evolution.s1_sparse_patch import (
     bind_sparse_patch_draft,
     compile_sparse_s1_candidate,
     compile_counterfactual_policy_branch,
+    compile_counterfactual_typed_policy_branch,
     compose_screened_sparse_bank,
     compile_policy_surface_branch,
     compose_policy_surface_branches,
@@ -22,6 +23,8 @@ from skillchain.evolution.s1_sparse_patch import (
     load_sparse_patch_draft,
     parse_dual_policy_patch,
     parse_counterfactual_policy_patch,
+    parse_counterfactual_typed_policy_patch,
+    counterfactual_typed_policy_patch_output_json_schema,
     sparse_patch_output_json_schema,
     _body_sections,
     _decode_parent_authoring_content,
@@ -184,6 +187,77 @@ def test_counterfactual_creator_rejects_cross_surface_or_unprovided_success() ->
             parent_skill_sha256="a" * 64,
             target_surface="response-policy",
             parent_success_query_ids=("p1", "p2", "p3"),
+        )
+
+
+def test_typed_action_counterfactual_has_no_response_text_channel(
+    parent_materials,
+) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "utility.recipe_guidance"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = ("parent-success-1", "parent-success-2", "parent-success-3")
+    schema = counterfactual_typed_policy_patch_output_json_schema(
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="action-policy",
+        parent_success_query_ids=success_ids,
+    )
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    assert "when" not in properties and "then" not in properties
+    proposal = parse_counterfactual_typed_policy_patch(
+        canonical_json_bytes(
+            {
+                "schema_version": 2,
+                "capability_id": capability,
+                "parent_skill_sha256": parent_skill.skill_sha256,
+                "target_surface": "action-policy",
+                "non_target_surface_action": "inherit",
+                "action_when": {
+                    "phase": "after-tool",
+                    "prior_tool_name": "object_detect",
+                    "prior_tool_status": "success",
+                    "public_evidence": "nonempty",
+                },
+                "action_then": {
+                    "operation": "invoke-tool-once",
+                    "tool_name": "recipe_lookup",
+                    "arguments_from": "last-visible-tool-output",
+                },
+                "must_preserve": [
+                    {
+                        "query_id": query_id,
+                        "provider_visible_state": f"parent state {index} remains unchanged",
+                    }
+                    for index, query_id in enumerate(success_ids, start=1)
+                ],
+            }
+        ),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="action-policy",
+        parent_success_query_ids=success_ids,
+    )
+    compiled = compile_counterfactual_typed_policy_branch(
+        parent_bank=parent, proposal=proposal
+    )
+    assert "invoke recipe_lookup exactly once" in compiled.policy_text
+    assert "answer" not in compiled.policy_text.casefold()
+    assert "cards" not in compiled.policy_text.casefold()
+    assert "uncertainty" not in compiled.policy_text.casefold()
+
+    invalid = proposal.model_dump(mode="json")
+    invalid["then"] = "write answer, evidence, and uncertainty sections"
+    with pytest.raises(S1SparsePatchError, match="typed counterfactual Creator"):
+        parse_counterfactual_typed_policy_patch(
+            canonical_json_bytes(invalid),
+            capability_id=capability,
+            parent_skill_sha256=parent_skill.skill_sha256,
+            target_surface="action-policy",
+            parent_success_query_ids=success_ids,
         )
 
 

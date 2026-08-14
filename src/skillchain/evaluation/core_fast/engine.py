@@ -26,16 +26,19 @@ from skillchain.evolution.s1_sparse_patch import (
     S1SparsePatchError,
     bind_sparse_patch_draft,
     compile_counterfactual_policy_branch,
+    compile_counterfactual_typed_policy_branch,
     compile_sparse_s1_candidate,
     compile_policy_surface_branch,
     compose_policy_surface_branches,
     compose_screened_sparse_bank,
     counterfactual_policy_patch_output_json_schema,
+    counterfactual_typed_policy_patch_output_json_schema,
     decode_sparse_parent_content,
     dual_policy_patch_output_json_schema,
     load_sparse_compilation_receipt,
     parse_dual_policy_patch,
     parse_counterfactual_policy_patch,
+    parse_counterfactual_typed_policy_patch,
     sparse_author_content_lexical_guard,
     sparse_patch_output_json_schema,
 )
@@ -103,6 +106,15 @@ _S1_CAPABILITY_MIN_NET_GAIN = 1
 _S1_CAPABILITY_MAX_REGRESSIONS = 2
 _S1_CAPABILITY_MIN_GAIN_REGRESSION_RATIO = 4.0
 _S1_CAPABILITY_MAX_FAILURE_SEVERITY_ESCALATIONS = 0
+_COUNTERFACTUAL_PROPOSAL_MODES = frozenset(
+    {
+        "single-surface-counterfactual-fanout-v4",
+        "single-surface-counterfactual-fanout-v5",
+    }
+)
+_COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
+    {"parent-counterfactual-v6", "parent-counterfactual-v7"}
+)
 
 
 class _S1CandidateRejected(ValueError):
@@ -734,6 +746,7 @@ class CoreFastEngine:
         opt_static = self.opt_static()
         s1_parent = self.s1_parent_bank()
         s1_parent_opt = self.s1_parent_opt()
+        self._require_counterfactual_cycle_preflight()
         self.opt_attribution()
         fold_roles = self.opt_fold_roles()
         self.val_gate_roles()
@@ -2370,6 +2383,15 @@ class CoreFastEngine:
                 if len(targets) != 1:
                     raise ValueError("counterfactual schema requires one target")
                 capability = targets[0]
+                if self.spec.s1_settings.proposal_mode == (
+                    "single-surface-counterfactual-fanout-v5"
+                ):
+                    return counterfactual_typed_policy_patch_output_json_schema(
+                        capability_id=capability,
+                        parent_skill_sha256=by_capability[capability].skill_sha256,
+                        target_surface=counterfactual_surface,
+                        parent_success_query_ids=counterfactual_parent_success_ids,
+                    )
                 return counterfactual_policy_patch_output_json_schema(
                     capability_id=capability,
                     parent_skill_sha256=by_capability[capability].skill_sha256,
@@ -2582,6 +2604,61 @@ class CoreFastEngine:
             return
         atomic_write_json(path, payload)
 
+    def _require_counterfactual_cycle_preflight(
+        self, prepared: Mapping[str, object] | None = None
+    ) -> dict[str, object] | None:
+        """Fail before provider calls unless every pre-registered round is viable."""
+
+        settings = self.spec.s1_settings
+        if settings.proposal_mode != "single-surface-counterfactual-fanout-v5":
+            return None
+        if (
+            settings.cycle_preflight_path is None
+            or settings.cycle_preflight_sha256 is None
+        ):
+            raise FastPathError("typed counterfactual cycle preflight is not bound")
+        path = Path(settings.cycle_preflight_path)
+        if not path.is_absolute():
+            path = (self.spec_path.parent / path).resolve()
+        if not path.is_file() or _file_sha(path) != settings.cycle_preflight_sha256:
+            raise FastPathError("typed counterfactual cycle preflight SHA differs")
+        receipt = load_json(path)
+        rounds = receipt.get("rounds")
+        binding = self.spec.s1_parent
+        if (
+            receipt.get("kind") != "core-fast-s1-counterfactual-cycle-preflight"
+            or receipt.get("passed") is not True
+            or receipt.get("cycle_id") != settings.cycle_id
+            or binding is None
+            or receipt.get("parent_bank_sha256") != binding.bank_sha256
+            or receipt.get("parent_opt_sha256") != binding.opt_results_sha256
+            or not isinstance(rounds, dict)
+            or len(rounds) < 2
+            or any(
+                not isinstance(item, dict)
+                or item.get("evidence_feasible") is not True
+                or item.get("treatment_sensitive") is not True
+                for item in rounds.values()
+            )
+        ):
+            raise FastPathError("typed counterfactual all-round preflight did not pass")
+        current = rounds.get(settings.round_id)
+        if (
+            not isinstance(current, dict)
+            or current.get("target_capability") != settings.target_capabilities[0]
+            or current.get("target_surface") != settings.target_surface
+        ):
+            raise FastPathError("typed counterfactual round preflight identity differs")
+        if prepared is not None:
+            manifest = prepared.get("selection_manifest")
+            if not isinstance(manifest, dict) or current.get(
+                "selection_manifest_sha256"
+            ) != manifest.get("manifest_sha256"):
+                raise FastPathError(
+                    "typed counterfactual evidence selection differs from preflight"
+                )
+        return receipt
+
     def prepare_feedback_selection(self) -> dict[str, object]:
         """Freeze discovery600 summary and selection without provider calls."""
 
@@ -2607,7 +2684,7 @@ class CoreFastEngine:
         )
         counterfactual = (
             self.spec.s1_settings.feedback_selection_policy
-            == "parent-counterfactual-v6"
+            in _COUNTERFACTUAL_SELECTION_POLICIES
         )
         opt = self.s1_parent_opt() if counterfactual else self.opt_static()
         roles = self.opt_fold_roles()
@@ -2728,8 +2805,12 @@ class CoreFastEngine:
             "sample_role": sample["role"],
             "selection_class": sample["selection_class"],
             "failure_cluster": sample["failure_cluster"],
+            "target_surface": self.spec.s1_settings.target_surface,
             "attribution_policy": (
-                "single-surface-counterfactual-v4"
+                "single-surface-counterfactual-v5"
+                if self.spec.s1_settings.proposal_mode
+                == "single-surface-counterfactual-fanout-v5"
+                else "single-surface-counterfactual-v4"
                 if self.spec.s1_settings.proposal_mode
                 == "single-surface-counterfactual-fanout-v4"
                 else "dual-policy-attribution-v1"
@@ -2974,9 +3055,13 @@ class CoreFastEngine:
                     continue
                 normalized = " ".join(suggestion.split())
                 surface: str | None = None
-                if self.spec.s1_settings.proposal_mode == (
-                    "six-capability-dual-policy-fanout-fanin-v3"
-                ):
+                surface_labeled = (
+                    self.spec.s1_settings.proposal_mode
+                    == "six-capability-dual-policy-fanout-fanin-v3"
+                    or self.spec.s1_settings.proposal_mode
+                    in _COUNTERFACTUAL_PROPOSAL_MODES
+                )
+                if surface_labeled:
                     body = normalized.removeprefix("[policy_compatible] ")
                     surface_matches = tuple(
                         candidate
@@ -2987,17 +3072,24 @@ class CoreFastEngine:
                         rejected_counts["missing_or_ambiguous_policy_surface"] += 1
                         continue
                     surface = surface_matches[0]
+                    target_surface = self.spec.s1_settings.target_surface
+                    if (
+                        self.spec.s1_settings.proposal_mode
+                        in _COUNTERFACTUAL_PROPOSAL_MODES
+                        and surface != target_surface
+                    ):
+                        rejected_counts["cross_surface_suggestion"] += 1
+                        continue
                 key = (str(row["capability"]), normalized.casefold())
                 counterfactual_failure = (
                     self.spec.s1_settings.proposal_mode
-                    == "single-surface-counterfactual-fanout-v4"
+                    in _COUNTERFACTUAL_PROPOSAL_MODES
                     and row.get("sample_role") == "cluster_failure"
                 )
                 actionable_failure = counterfactual_failure or (
                     row.get("sample_role") == "failure"
                     and (
-                        self.spec.s1_settings.proposal_mode
-                        != "six-capability-dual-policy-fanout-fanin-v3"
+                        not surface_labeled
                         and self.spec.s1_settings.feedback_selection_policy
                         != "discovery-attributed-v4"
                         or row.get("selection_class")
@@ -4349,7 +4441,7 @@ class CoreFastEngine:
                 "parent_bank_file_sha256": binding.bank_file_sha256,
                 "parent_decision_file_sha256": binding.decision_file_sha256,
                 "parent_manifest_file_sha256": binding.manifest_file_sha256,
-                "fanout_policy": "single-surface-counterfactual-fanout-v4",
+                "fanout_policy": settings.proposal_mode,
                 "target_capability": target,
                 "target_surface": settings.target_surface,
                 "explicit_parent_success_query_ids": list(parent_success_ids),
@@ -4392,6 +4484,7 @@ class CoreFastEngine:
                 "operation": "s1_single_surface_counterfactual_creator",
                 "cycle_id": settings.cycle_id,
                 "round_id": settings.round_id,
+                "proposal_mode": settings.proposal_mode,
                 "parent_bank_sha256": parent.bank_sha256,
                 "parent_bank": parent.model_dump(mode="json"),
                 "parent_skill": parent_by_capability[target].model_dump(mode="json"),
@@ -4408,6 +4501,11 @@ class CoreFastEngine:
                     "one_conditional_rule_only": True,
                     "when_provider_visible_state_only": True,
                     "then_target_surface_only": settings.target_surface,
+                    "action_output_is_typed_ir_without_response_text": (
+                        settings.proposal_mode
+                        == "single-surface-counterfactual-fanout-v5"
+                        and settings.target_surface == "action-policy"
+                    ),
                     "non_target_surface": "inherit",
                     "must_preserve_exactly": list(parent_success_ids),
                     "canonical_compilation": (
@@ -4434,16 +4532,28 @@ class CoreFastEngine:
                 or creator.output is None
             ):
                 raise S1SparsePatchError("counterfactual Creator result is invalid")
-            proposal = parse_counterfactual_policy_patch(
-                canonical_json_bytes(creator.output),
-                capability_id=target,
-                parent_skill_sha256=parent_by_capability[target].skill_sha256,
-                target_surface=settings.target_surface,
-                parent_success_query_ids=parent_success_ids,
-            )
-            compiled = compile_counterfactual_policy_branch(
-                parent_bank=parent, proposal=proposal
-            )
+            if settings.proposal_mode == "single-surface-counterfactual-fanout-v5":
+                typed_proposal = parse_counterfactual_typed_policy_patch(
+                    canonical_json_bytes(creator.output),
+                    capability_id=target,
+                    parent_skill_sha256=parent_by_capability[target].skill_sha256,
+                    target_surface=settings.target_surface,
+                    parent_success_query_ids=parent_success_ids,
+                )
+                compiled = compile_counterfactual_typed_policy_branch(
+                    parent_bank=parent, proposal=typed_proposal
+                )
+            else:
+                proposal = parse_counterfactual_policy_patch(
+                    canonical_json_bytes(creator.output),
+                    capability_id=target,
+                    parent_skill_sha256=parent_by_capability[target].skill_sha256,
+                    target_surface=settings.target_surface,
+                    parent_success_query_ids=parent_success_ids,
+                )
+                compiled = compile_counterfactual_policy_branch(
+                    parent_bank=parent, proposal=proposal
+                )
         except S1SparsePatchError:
             target_record.update(
                 {
@@ -4683,8 +4793,7 @@ class CoreFastEngine:
         if existing is not None:
             return existing
         counterfactual = (
-            self.spec.s1_settings.proposal_mode
-            == "single-surface-counterfactual-fanout-v4"
+            self.spec.s1_settings.proposal_mode in _COUNTERFACTUAL_PROPOSAL_MODES
         )
         parent = self.s1_parent_bank() if counterfactual else self.static_bank()
         opt = self.s1_parent_opt() if counterfactual else self.opt_static()
@@ -4733,6 +4842,7 @@ class CoreFastEngine:
             raise
         manifest = prepared["selection_manifest"]
         assert isinstance(manifest, dict)
+        self._require_counterfactual_cycle_preflight(prepared)
         samples = manifest["selected_samples"]
         assert isinstance(samples, list)
         canary_count = self.spec.s1_settings.feedback_canary_count
