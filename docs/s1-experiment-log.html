@@ -2342,6 +2342,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r9-style-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r9-style-multi-boundary\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r10" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R10 · STYLE SINGLE-REFERENCE</div><h3>收窄 Style 后达到 3 gains / 1 regression，但显式保护例仍回退</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">near boundary</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>3</strong><span>global gains</span></div><div class="result-box"><strong>1</strong><span>regression</span></div><div class="result-box"><strong>+2</strong><span>net gain</span></div><div class="result-box"><strong>3 : 1</strong><span>below frozen 4:1</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Packet</dt><dd><code>052a516c…9821</code>；保护 R9 的 <code>0684/0766/0956</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>53ffa6b2…2780</code> / <code>8e02d09c…fa8f</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0209312；Creator cost unavailable</dd></div>
+            <div><dt>Gate</dt><dd><code>0956</code> 显式保护回退，且 3&lt;4×1；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R9 的 Multi <code>0684</code> 与 Encyclopedia <code>0766</code> 已恢复；唯一回退 <code>0956</code> 从 Exact 路由到 Style。该对话先请求原品牌原款，后放宽为无品牌替代，但仍要求精确文字图案、包边和适配机型。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>R10 把“放宽 exact-match 到 variants”整体归 Style，覆盖面仍过大。设备兼容、字面印花和身份结构等约束仍应保持 Exact，即使品牌被放宽。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R10 回滚。R11 只修改 Style boundary 的这一条件：Style alternatives 不得要求 device fit、literal printed text、original model/brand 或 identity-defining geometry；其余 R10 机制不扩张，gate 不变。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r10-style-single-reference\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r10-style-single-reference\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
