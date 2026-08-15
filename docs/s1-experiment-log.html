@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>25 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>26 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥1.4436098；25 个尝试中 24 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥1.4618440；26 个尝试中 25 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2653,6 +2653,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R25 回滚。v2 compiler 增加目标长度提示、完整词尾检查、slash/backslash 与悬空连接词拒绝；R26 用新 root 重做同簇。正式 gate 个案不进入 Creator memory。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r25-style-contrastive-ir\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r25-style-contrastive-ir\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r26" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R26 · COMPLETE CONTRASTIVE IR</div><h3>完整短 slots 可编译，但 Style→Exact 仍为 1 gain / 1 regression</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">valid v2 treatment</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>f4ff2e93…6b75</code></dd></div>
+            <div><dt>Packet / rule</dt><dd>Style→Exact；<code>051ae2f1…d4f6</code> / <code>8b337120…eccb</code></dd></div>
+            <div><dt>Local screen</dt><dd>gain <code>0965</code>；regression <code>0448</code>；net 0；protected6 0 regression</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0182342；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>include slot 为 recommendations/similar alternatives/outfit coordination，exclude slot 为 same product/original model/exact visual match；均短于目标长度、完整且无禁用 token。候选通过 v2 compiler，但 local gain 与 regression 抵消。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>R26 排除了 R25 截断这一混杂后，Style→Exact 仍没有净收益，说明表示修复不足以让该 cluster 稳定改进。该方向应停止，不再归咎于 compiler。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R26 回滚到 S2R17，停止 Style→Exact。R27 用同一已验证 v2 IR 测尚未在 v2 下运行的 Style→Multi，并把 <code>0448/0684/0956</code> 作为保护；门不变。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r26-style-contrastive-complete\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r26-style-contrastive-complete\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
