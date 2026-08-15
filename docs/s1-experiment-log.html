@@ -2381,6 +2381,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r11-style-identity-exclusion\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r11-style-identity-exclusion\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r12" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R12 · STYLE CONCISE REPLACEMENT</div><h3>短 replacement Description 成功生成；单条 route schema error 导致 operational stop</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Operational stop</span><span class="tag">algorithm not scored</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Packet / candidate</dt><dd><code>0e6705be…4889</code> / <code>eaf90394…768b</code></dd></div>
+            <div><dt>Rule</dt><dd><code>409b8fc5…d4ff</code>；短于 320 字符并替换旧 Style Description</dd></div>
+            <div><dt>Failure</dt><dd><code>r2-core-0257</code> 返回单元素数组而非字符串：<code>{selected_capability:[product.multi_search]}</code></dd></div>
+            <div><dt>Cost / access</dt><dd>200 route_only + 1 Creator；priced DashScope ¥0.0170528；protected6 与 route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator 输出和 candidate compilation 均成功；route replay 200 条已全部落盘，但一条 schema-invalid route 没有合法 selected_capability，因此无法形成矩形比较。resume 使用缓存 0 新调用并写出 rejected decision。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该终态不能说明短 Description 有效或无效；把单元素数组静默归一化会使 local screen 与生产 strict router 不一致，因此不采用。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R12 保留为 operational stop。engine 以后把 route-only schema/provider failure 保存为 rejected decision，不再留下悬空 root；R13 用新 root 重做短 replacement 假设，不复用 R12 route 输出。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r12-style-concise-replacement\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r12-style-concise-replacement\calls\route_only\s2r12-candidate-replay200-route-r2-core-0257.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>

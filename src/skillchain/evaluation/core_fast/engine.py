@@ -6570,12 +6570,20 @@ class CoreFastEngine:
             reasons.extend(violations)
             if not reasons:
                 metrics["dev_smoke24_accessed"] = False
-                local_ok, local_reasons, local_metrics = self._s2_local_route_screen(
-                    candidate=candidate,
-                    packet=packet,
-                )
                 metrics["local_replay_accessed"] = True
-                metrics["local_route_screen"] = local_metrics
+                try:
+                    local_ok, local_reasons, local_metrics = (
+                        self._s2_local_route_screen(
+                            candidate=candidate,
+                            packet=packet,
+                        )
+                    )
+                except FastPathError as error:
+                    local_ok = False
+                    local_reasons = ("S2 route replay operational failure",)
+                    metrics["local_route_screen_error"] = str(error)
+                else:
+                    metrics["local_route_screen"] = local_metrics
                 reasons.extend(local_reasons)
                 if local_ok:
                     gate_queries = self._queries_for_val_gate("route_gate")
