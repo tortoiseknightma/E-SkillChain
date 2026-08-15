@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>22 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>23 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥1.1608158；22 个尝试中 21 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥1.1798498；23 个尝试中 22 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2596,6 +2596,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R22 回滚到 S2R17。selector 增加可选、spec/SHA-bound 的 predicted-cluster 约束；默认仍选最大簇。R23 明确预注册 Style→Multi，避免再次把两个 failure mechanism 混为 Style 总体重试。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r22-style-local-regression-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r22-style-local-regression-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r23" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R23 · EXPLICIT STYLE→MULTI CLUSTER</div><h3>第二大 confusion 簇可运行，但 2 gains / 2 protected regressions</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">cluster override verified</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>8b26dab7…a826</code></dd></div>
+            <div><dt>Packet / rule</dt><dd>Style→Multi；<code>6a8dc5fb…dac9</code> / <code>fb6092e7…abda</code></dd></div>
+            <div><dt>Local screen</dt><dd>gains <code>0761/0965</code>；regressions <code>0684/0956</code>；两条均为显式保护</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0190340；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>新 <code>target_predicted_capability=product.multi_search</code> 被 spec、packet 与 decision SHA-bound，并成功绕过默认最大 Style→Exact 簇；运行链本身有效。候选仍以“one same-category alternative defined by broad visual traits”为充分条件，造成两条保护例回退。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>cluster selection 已不再是阻塞；剩余问题是 Description 把 attribute inventory 当意图，而没有要求用户明确提出 recommend/style/coordinate/alternative 的目标。一次条件语义修正仍有可证伪价值。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R23 回滚。R24 保持 Style→Multi 与单 Description，不复制 candidate；把 <code>0684/0956</code> 设为历史保护，并在 memory 中冻结“显式用户目标是必要条件，属性列表不足以触发”的单一修正。若仍失败，停止该簇。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r23-style-to-multi-cluster\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r23-style-to-multi-cluster\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
