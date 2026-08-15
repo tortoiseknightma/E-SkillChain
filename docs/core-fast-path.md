@@ -132,20 +132,22 @@ Encyclopedia `+9.8361pp`，capability macro `+1.6393pp`，CI95 lower `0pp`，har
 不把 R52 自动提升为最终 Bank。机器可读边界见
 [`specs/s2-r52-preparatory-branch-v1.json`](../specs/s2-r52-preparatory-branch-v1.json)。
 
-### Adaptive S2 runtime（离线 ready，真实调用尚未开始）
+### Adaptive S2 runtime（live ready，30 轮闭环已完成）
 
 S2 不再复用旧的一次性 `s2-route-optimizer-once`/hybrid attribution 路径。新的 forward-only
 round 绑定 R52 或上一轮 accepted S2 Bank、source decision、source manifest、机器可读的 R52
 preparatory authorization，以及该 working parent 的 fresh route-only opt800。每轮只允许一个
-target capability；Creator 不能自由重写 Description，只能输出一条
-`when / route_to / must_preserve_query_ids` typed rule。runtime 将它规范化追加到目标
+target capability；Creator 不能自由重写 Description，只能输出一条 v1
+`when / route_to / must_preserve_query_ids` rule，或一条 v2
+`include_intent / exclude_intent / route_to` contrastive rule；显式保护 query IDs 始终由 runner 绑定。
+runtime 将规则规范化追加到目标
 Description，并强制其余五个 Description 以及六个 Skill 的 Body/operators/static refs byte-exact。
 
 无 provider 的 `prepare-s2-round` 从 discovery600 选择一个 dominant confusion cluster：3 个失败、
 3 个 parent-success、3 个历史 regression/额外 parent-success；不足 9 条时在 Creator 前停止。
-候选先在 route-only replay200 上接受有界风险筛查：`gains >= 1`、`net >= 1`、
+候选直接在 route-only replay200 上接受有界风险筛查：`gains >= 1`、`net >= 1`、
 `regressions <= 2`、`gains >= 4 × regressions`，且 6 个显式保护例必须 0 regression。通过后才执行
-smoke24 与冻结 `route_gate75` 的 parent/candidate 各 75 条完整 Assistant；不再误用 val200。
+冻结 `route_gate75` 的 parent/candidate 各 75 条完整 Assistant；不再运行无归因价值的 smoke24，也不误用 val200。
 accepted S2 Bank 可以成为下一轮 parent；rejected round 只回滚到 working parent，不能作为新
 source。无论 working branch 如何，Portfolio selected 在新的最终选择前仍为 R12。
 
@@ -180,9 +182,23 @@ uv run python scripts/run_core_experiment.py --spec <round-spec.json> `
 
 parent route800 对同一 accepted parent 可跨 rejected rounds 复用；只有 accepted S2 改变了 Bank 时才
 需要新的 route800 profile。按当前保守单价，profile 最坏约 CNY 4；完成 profile 后单轮 ceiling 为
-206 route-only + 174 Assistant + 1 Creator，DashScope 预计 CNY 6.25。两段必须分阶段汇报，避免把
-合计 CNY 10.25 放入同一个自主预算窗口。`s2-readiness` 本身 0-call，并保持 S3、Judge、已消费的
+206 route-only + 150 Assistant + 1 Creator，DashScope 预计 CNY 5.53。两段合计保守上限约 CNY 9.53，
+仍须在运行前由 `s2-readiness` 复核。该命令本身 0-call，并保持 S3、Judge、已消费的
 test300 与五配置矩阵 sealed。
+
+本次 live campaign 位于
+`D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815`。初始 R52 route800 为
+760/800 correct；S2R17 接受后以该 Bank fresh 生成的新 route800 为 767/800 correct。S2R17 的
+Exact typed Description 在局部 route screen 为 6 gains / 1 regression，6 个显式 parent-success
+零回退；正式 `route_gate75` 的 route macro-F1 从 `0.9162` 升至 `0.9773`，corrected/broken 为
+`4/0`，capability-macro GCS `+2.3485pp`，hard errors `−1`，因此接受 Bank
+`3767a383bb17c99b992a492cf2e0f00cbc92486e6ab0803f9d096cdfe57978a2`。
+
+R18–R30 均从 S2R17 前向独立派生并回滚。最后的 R30 Multi rule 得到 4 gains / 1 regression，
+满足普通 4:1 有界风险门，但唯一回退命中预注册的显式 parent-success `r2-core-0658`，因此在
+route_gate75 前停止。30/30 后不追加随机重试或放宽保护门；本周期最终 selected S2 Bank 保持
+S2R17。adaptive S2 新增可追踪 DashScope ¥1.5343752，30 次尝试中 29 个 Creator 会话；Creator
+人民币 cost basis 不可得。S3、Judge、test300 与五配置矩阵均为 0-call。
 
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。

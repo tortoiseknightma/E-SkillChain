@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>S2 campaign 进行中：S2R17 已通过局部 route screen 与 route_gate75，selected S2 Bank 为 3767a383…78a2；R12 仍是独立 Portfolio selected</span>
+        <span>S2 campaign 已完成 30/30：最终 selected S2 Bank 为 S2R17 3767a383…78a2；R12 仍是独立 Portfolio selected</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>29 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>30 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -588,7 +588,10 @@
         或局部有界风险门停止；S2R17 的 Exact concise Description 得到 replay route 6 gains / 1
         regression、六个显式保护例 0 regression，并在 route_gate75 达到 route macro-F1 0.9773
         （parent 0.9162）、corrected 4 / broken 0、capability-macro GCS +2.3485pp、hard errors −1，
-        因而成为首个 accepted S2 Bank <code>3767a383…78a2</code>。S3/Judge 仍未访问。
+        因而成为首个 accepted S2 Bank <code>3767a383…78a2</code>。R18–R30 均以前向独立候选运行且全部回滚；
+        R30 的 Multi boundary 得到 4 gains / 1 regression，虽满足普通 4:1 风险门，但唯一 regression
+        命中显式 parent-success <code>0658</code>，因此按保护门停止且未访问 route_gate75。30/30 后不再追加轮次，
+        最终 selected S2 Bank 保持 S2R17；S3/Judge/test300 均未在本 S2 campaign 访问。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -599,8 +602,8 @@
         Creator 会话。R44–R48 再新增 ¥1.23552605、5 个 Creator 会话；R49–R54 新增
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
-        一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥1.5162330；29 个尝试中 28 个 Creator 会话，人民币 cost basis 不可得。
+        一次性 test300 另计 ¥0.9376664。adaptive S2 完成 30/30（含 R52 与 S2R17 route800）新增可追踪
+        DashScope ¥1.5343752；30 个尝试中 29 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2731,6 +2734,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R29 回滚。R30 仍从 S2R17 派生，保护 <code>0448/0658/0258</code> 并保持同一 v2 surface；要求仍是 gains≥1、net≥1、regressions≤2、4:1。R30 后强制停止本周期。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r29-multi-regression-closed\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r29-multi-regression-closed\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r30" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R30 · MULTI FINAL REFINEMENT</div><h3>普通 4:1 风险门达标，但显式 parent-success 回退触发硬保护</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Protected-success rollback</span><span class="tag">campaign 30 / 30 complete</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>4</strong><span>gains</span></div><div class="result-box"><strong>1</strong><span>regression</span></div><div class="result-box"><strong>+3</strong><span>net gain</span></div><div class="result-box"><strong>4 : 1</strong><span>bounded-risk ratio</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>792cc314…2ce6</code></dd></div>
+            <div><dt>Packet / rule</dt><dd><code>368e7cdf…063d</code> / <code>0a7347e0…7458</code></dd></div>
+            <div><dt>Transitions</dt><dd>gains <code>0352/0428/0431/0952</code>；regression <code>0658</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0181422；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R30 第三次复现相同四条 Multi→Exact 修正，并把 paired regression 降到一条；gains≥1、net≥1、regressions≤2 和 4:1 均满足。但唯一 regression <code>0658</code> 是 packet 中显式选择的 parent-success，因此更高优先级的零回退保护门拒绝候选。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Multi 的 include boundary 有稳定正向信号，但当前自然语言 Description 无法在保住 <code>0658</code> 的同时可靠覆盖四个收益状态。继续追加随机 Creator 轮次更可能围绕同一边界振荡，而不是产生新的可归因机制。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R30 回滚到 S2R17；30/30 周期强制停止，不放宽 protected-success 或 formal gate。最终最佳 S2 Bank 为 <code>3767a383…78a2</code>，其 accepted Exact 分支覆盖一个 capability；R18–R30 rejected candidates 均不得携带。S3、Judge 与已消费的 test300 均不访问。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r30-multi-final-refinement\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r30-multi-final-refinement\artifacts\s2-conditional-route-rule.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\specs\s2r30-multi-final-refinement.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->

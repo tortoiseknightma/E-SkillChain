@@ -7,11 +7,11 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：以 accepted R12 为唯一 parent 的 R34–R63 自适应周期已完成 30/30。R52 Encyclopedia citation closure 是唯一通过 local/replay/body 三层门的新增分支（Bank `67b92b61…55bc8`），并成为唯一冻结 finalist；最后三轮中，R61 因本地 Feedback projection 漏接 v9 标签而在 provider 前停止、没有算法结论，R62 Recipe stop-after-first-success 局部 9/1、replay macro +1.1111pp，但 body macro 0pp 且 hard-error +1.3333pp，R63 Encyclopedia stop rule 局部 5/8，均按原门回滚。唯一一次 paired test300 已永久消费：R52 在 test 上 Encyclopedia +9.8361pp、capability macro +1.6393pp、CI95 lower 0pp、hard-error +1pp；因 macro 未达到冻结 +2pp 门而失败，最终 selected Bank 回滚为 R12 `e70ed907…096cd`。没有运行 Judge、S2、S3 或五配置矩阵；test300 此后不再是 untouched 五配置 test。B09 新增可追踪 DashScope ¥1.24871935、2 个 Creator 会话，test300 新增 ¥0.9376664；Creator 人民币 cost basis 不可得。**
+> **S1 周期终态：以 accepted R12 为唯一 parent 的 R34–R63 自适应周期已完成 30/30。R52 Encyclopedia citation closure 是唯一通过 local/replay/body 三层门的新增分支（Bank `67b92b61…55bc8`），并成为唯一冻结 finalist；最后三轮中，R61 因本地 Feedback projection 漏接 v9 标签而在 provider 前停止、没有算法结论，R62 Recipe stop-after-first-success 局部 9/1、replay macro +1.1111pp，但 body macro 0pp 且 hard-error +1.3333pp，R63 Encyclopedia stop rule 局部 5/8，均按原门回滚。唯一一次 paired test300 已永久消费：R52 在 test 上 Encyclopedia +9.8361pp、capability macro +1.6393pp、CI95 lower 0pp、hard-error +1pp；因 macro 未达到冻结 +2pp 门而失败，最终 selected Bank 回滚为 R12 `e70ed907…096cd`。该 S1 周期当时没有运行 Judge、S2、S3 或五配置矩阵；test300 此后不再是 untouched 五配置 test。B09 新增可追踪 DashScope ¥1.24871935、2 个 Creator 会话，test300 新增 ¥0.9376664；Creator 人民币 cost basis 不可得。**
 
-> **前向阶段决定（2026-08-15）：R52 现冻结为进入 S2 前的正式预备分支。S2 的工作 parent 使用 R52 Bank `67b92b61…55bc8`，只允许 Description-only 修改；这不追认 R52 的 test300、也不把它改称 deployable。S2 尚未启动，在 S2 正式通过独立 route gate 前，Portfolio 最终 selected Bank 仍是 R12。机器可读绑定见 [`specs/s2-r52-preparatory-branch-v1.json`](specs/s2-r52-preparatory-branch-v1.json)。**
+> **前向阶段决定（2026-08-15）：R52 已作为 S2 正式预备分支启动真实多轮优化；其 test300 结论仍不被追认，也不改称 deployable。初始 S2 working parent 为 R52 Bank `67b92b61…55bc8`，只允许 Description-only 修改；机器可读绑定见 [`specs/s2-r52-preparatory-branch-v1.json`](specs/s2-r52-preparatory-branch-v1.json)。Portfolio 最终 selected Bank 仍是 R12。**
 
-> **S2 runtime readiness（2026-08-15）：多轮 forward-only S2 已完成离线实现与 fake-provider 因果回归，真实 provider 仍为 0-call。每轮绑定 R52 或上一轮 accepted S2 Bank，fresh/reuse 该 parent 的 route-only opt800，只允许一个 capability 的一条 typed conditional route rule；先过 replay200 有界风险 screen，再只访问冻结 route_gate75。已接受轮可成为下一轮 parent，rejected 轮 byte-exact 回滚到 working parent；Portfolio selected 仍保持 R12。**
+> **S2 runtime ready（2026-08-15）：forward-only S2 已完成 30/30 次真实实验闭环。S2R17 的 Exact Description 以局部 6 gains / 1 regression、显式保护 0 regression 进入 route_gate75，并取得 route macro-F1 `0.9162→0.9773`、corrected/broken `4/0`、GCS macro `+2.3485pp`、hard errors `−1`，接受 Bank `3767a383…78a2`；后续 R18–R30 全部按门回滚到它。每轮绑定 R52 或上一轮 accepted S2 Bank，fresh/reuse parent route800，只允许一个 capability 的一条 typed conditional route rule。S3、Judge 和已消费的 test300 均保持 sealed。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -276,8 +276,8 @@ Skill 被拆成影响路由的 Description 与影响执行的 Body。每个阶�
 | 阶段 | 主要输入 | 允许的变化 | 接受条件 | V1 状态 |
 | --- | --- | --- | --- | --- |
 | S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 六能力 fan-out Body patch；每项再拆 action / response surface，未改项 byte-exact inherit | 两类 surface 独立 screen、capability 内组合、六能力 fan-in replay 后一次正式 GCS 接受门 | fresh Static 与 30 轮完成；R12 Style action-policy accepted，覆盖 `1/6` |
-| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；R52 已冻结为正式预备 working parent，S2 尚未启动 |
-| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否从 R12 推进 |
+| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 局部有界风险 + 显式保护 0 回退 + route_gate75 通过；Body SHA 不变 | 多轮 runtime 已实跑 30/30；S2R17 accepted，后续轮可从 accepted Bank 前向续接 |
+| S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否以 S2R17 为 working parent，Portfolio fallback 仍为 R12 |
 
 候选 Bank 保存 parent / candidate lineage 与内容哈希。Gate 失败时，系统恢复到逐字节一致的 Parent Bank，而不是在失败候选上继续“补丁式调参”。
 
