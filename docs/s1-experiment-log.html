@@ -2400,6 +2400,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r12-style-concise-replacement\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r12-style-concise-replacement\calls\route_only\s2r12-candidate-replay200-route-r2-core-0257.result.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r13" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R13 · STYLE CONCISE RETRY</div><h3>Creator 回显了错误的审计样本并在长度上限处截断，treatment 未生成</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Creator contract stop</span><span class="tag">treatment not screened</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…5bc8</code>；packet <code>7ac358bd…dfbf</code></dd></div>
+            <div><dt>Creator</dt><dd>1 session；20,793 input / 584 output tokens；Codex cost basis unavailable</dd></div>
+            <div><dt>Candidate / Assistant</dt><dd><code>null</code>；route replay、protected6 与 route_gate75 均 0 call</dd></div>
+            <div><dt>Unvisited</dt><dd>S3、Judge、test300</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Provider 返回通过 strict schema 的单条 Style rule，但 <code>must_preserve_query_ids</code> 填入了 failure-cluster 的 <code>0386/0839/0864</code>，没有回显冻结的历史 regression <code>0684/0766/0956</code>；<code>when</code> 又恰好达到 320 字符并以未完成短语结束。local compiler 按约拒绝，未产生 Bank 或任何 route treatment。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>保护样本集合是 runner 已冻结并由 local screen 强制执行的审计状态，要求 Creator 再复制一遍不会增加算法自由度，只会制造 schema-valid 但不可编译的吞吐损失。该轮不能说明 concise replacement 的路由效果。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R13 终态回滚，不重采。后续 schema 只让 Creator 输出目标 capability、条件和 route；compiler 从 evidence packet 注入精确 protected IDs，screen 继续逐条强制 0 regression。R14 使用新 root 重新评估同一 Style 边界，风险门不变。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r13-style-concise-retry\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r13-style-concise-retry\calls\creator</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>

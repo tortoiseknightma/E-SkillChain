@@ -2832,7 +2832,6 @@ class CoreFastEngine:
                                 "capability_id",
                                 "when",
                                 "route_to",
-                                "must_preserve_query_ids",
                             ],
                             "properties": {
                                 "capability_id": {
@@ -2845,12 +2844,6 @@ class CoreFastEngine:
                                     "maxLength": 320,
                                 },
                                 "route_to": {"type": "string", "const": target},
-                                "must_preserve_query_ids": {
-                                    "type": "array",
-                                    "minItems": 6,
-                                    "maxItems": 6,
-                                    "items": {"type": "string"},
-                                },
                             },
                         },
                     }
@@ -6409,11 +6402,9 @@ class CoreFastEngine:
             "capability_id",
             "when",
             "route_to",
-            "must_preserve_query_ids",
         }:
             return None, None
         when = edit.get("when")
-        preserve = edit.get("must_preserve_query_ids")
         protected_ids = sorted(
             str(example["query"]["query_id"])
             for example in packet["examples"]
@@ -6441,9 +6432,6 @@ class CoreFastEngine:
             or when.count(";") > 1
             or not when.startswith("Route here when ")
             or any(token in when.casefold() for token in forbidden)
-            or not isinstance(preserve, list)
-            or sorted(preserve) != protected_ids
-            or len(set(preserve)) != len(preserve)
         ):
             return None, None
         parent_skill = _bank_by_capability(parent)[target]

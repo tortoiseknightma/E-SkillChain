@@ -386,12 +386,6 @@ class FakeCoreFastAdapter:
                     skills[0],
                 )
                 if operation == "s2_counterfactual_route_optimizer":
-                    packet = intent.payload["evidence_packet"]
-                    protected = sorted(
-                        str(item["query"]["query_id"])
-                        for item in packet["examples"]
-                        if item["role"] in {"parent_success", "historical_regression"}
-                    )
                     return self._result(
                         intent,
                         {
@@ -403,7 +397,6 @@ class FakeCoreFastAdapter:
                                         "boundary cues; preserve the parent boundary otherwise"
                                     ),
                                     "route_to": skill["capability_id"],
-                                    "must_preserve_query_ids": protected,
                                 }
                             ]
                         },
