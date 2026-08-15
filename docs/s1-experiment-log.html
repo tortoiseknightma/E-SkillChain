@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>S2 campaign 已完成 30/30；Qwen3.5 route qualification 为 719/800，确认存在更大但偏 Exact 的路由优化空间</span>
+        <span>Qwen3.5 已正式成为 full Assistant 与 route-only active model；对称 Static、R52 route800 与 gate75 均已冻结，S2 runtime ready</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -532,7 +532,7 @@
       <div class="metric-strip">
         <div class="metric"><strong>removed</strong><span>deterministic response compiler</span></div>
         <div class="metric"><strong>restored</strong><span>model tool choice + final response</span></div>
-        <div class="metric"><strong>qualified</strong><span>fresh Static + parent/no-op</span></div>
+        <div class="metric"><strong>Qwen3.5</strong><span>symmetric active lineage ready</span></div>
         <div class="metric"><strong>1 accepted</strong><span>adaptive S2 · R17</span></div>
       </div>
 
@@ -559,8 +559,9 @@
 
       <div class="callout" style="margin-top: 1rem;">
         <strong>当前工程状态</strong>
-        tracked spec 已绑定 <code>core-fast-model-generated-action-response-v1</code>、fresh Static SHA
-        <code>a9949cd673fff547…2c0805a7</code> 与新 fixed samples；inputs-only 和完整 validate 都通过。
+        tracked spec 已绑定 <code>core-fast-model-generated-action-response-v1</code>、active Qwen3.5
+        full Assistant / route-only、fresh Static SHA <code>819363d8a3dcab09…79e1cb6950d</code> 与新
+        fixed samples；inputs-only 和完整 validate 都通过。
         双策略 R12 已通过完整 replay 与 body75：selected Bank 为 <code>e70ed907…096cd</code>。
         条件化 R31–R33 周期仍以 treatment throughput 0/2 终结。其后的自适应首批 R34–R38
         继续只读 R12 parent：R34、R35、R36、R38 分别在 Feedback 标签、runtime dispatch、Creator
@@ -593,8 +594,10 @@
         命中显式 parent-success <code>0658</code>，因此按保护门停止且未访问 route_gate75。30/30 后不再追加轮次，
         最终 selected S2 Bank 保持 S2R17；S3/Judge/test300 均未在本 S2 campaign 访问。随后对同一 R52
         Bank 做隔离 route-model qualification：Qwen3.5 为 719/800、macro-F1 0.9142，低于 Qwen3.7 的
-        760/800、0.9581；新增 41 条错误主要来自 Exact→Multi。该结果只证明更大的 route headroom，
-        不自动改变默认模型，也不允许用 route-only Qwen3.5 搭配 full Assistant Qwen3.7 启动 S2。
+        760/800、0.9581；新增 41 条错误主要来自 Exact→Multi。随后正式采用 Qwen3.5，并建立 full
+        Assistant / route-only 对称 lineage：fresh Static opt800 800/800，R52 route800 为 717/800，
+        full-Assistant gate75 的 route macro-F1 为 0.9531481、hard errors 为 0。tracked spec、parent gate
+        和 `s2-readiness` 均已冻结通过；新的 S2 candidate 尚未启动。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -608,6 +611,8 @@
         一次性 test300 另计 ¥0.9376664。adaptive S2 完成 30/30（含 R52 与 S2R17 route800）新增可追踪
         DashScope ¥1.5343752；30 个尝试中 29 个 Creator 会话，人民币 cost basis 不可得。隔离的
         Qwen3.5 route800 qualification 另计 ¥0.0688110、800 个 route-only calls、0 Creator。
+        正式 Qwen3.5 对称 lineage 另计 ¥1.7463182：fresh Static ¥1.5291572、R52 route800
+        ¥0.068897、full-Assistant gate75 ¥0.148264；Creator 0-call。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2778,6 +2783,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>保留为候选 route baseline，不修改 tracked 默认模型。当前 qualification spec 的 full Assistant 仍是 Qwen3.7，runtime 已验证会拒绝启动 S2。若采用 Qwen3.5，必须先冻结 route/full-Assistant 同模型的新 lineage、重跑 symmetric parent baseline，并重新验证容量与正式 route gate；不得把这次 719/800 与旧 S2 candidate 拼成增益结论。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\route800.jsonl</code><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\route-model-comparison.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\run\s2-parent-route800-bootstrap.json</code></div></details>
+        </article>
+
+        <article class="experiment status-baseline" id="exp-20260815-s2-qwen35-symmetric-lineage" data-status="baseline" data-capability="runtime">
+          <div class="experiment-head">
+            <div><div class="experiment-id">S2 ACTIVE MODEL MIGRATION · QWEN3.5 SYMMETRIC LINEAGE</div><h3>full Assistant、route-only 与正式 gate 已对称冻结，S2 runtime ready</h3></div>
+            <div class="experiment-labels"><span class="state baseline">正式基线</span><span class="tag">no S2 candidate</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>800 / 800</strong><span>fresh Static success</span></div><div class="result-box"><strong>717 / 800</strong><span>R52 route correct</span></div><div class="result-box"><strong>0.9531481</strong><span>gate75 route macro-F1</span></div><div class="result-box"><strong>¥1.7463182</strong><span>traceable total cost</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Active identity</dt><dd><code>qwen3.5-flash-2026-02-23</code> for full Assistant + route-only；16 workers / 8 req/s</dd></div>
+            <div><dt>Static</dt><dd>SHA <code>819363d8…6950d</code>；248/800 GCS success；17 hard errors；¥1.5291572</dd></div>
+            <div><dt>R52 parent profile</dt><dd>route SHA <code>c6e48eca…f4e1e</code>；gate SHA <code>62350d1d…e44f</code></dd></div>
+            <div><dt>Calls / tokens</dt><dd>3,748 traceable provider calls；6,059,311 / 267,228 input/output tokens；0 Creator</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>fresh Static 为 800/800 outer success/schema-valid，含 2,697 个 Qwen3.5 inner calls；R52 route800 为 800/800、正式采样得到 717 correct；full-Assistant route_gate75 为 75/75、251 个 inner calls、GCS macro 0.2901515、hard errors 0。所有可审计 requested/returned model 均为 Qwen3.5，未出现 provider/capacity error。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>相比历史 Qwen3.7，新的 active model 为 S2 留出更大的 route headroom；但正式 717/800 与隔离 qualification 的 719/800 差异说明独立采样仍会波动，后续增益只能相对本 symmetric parent 与 frozen gate 成对解释。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>正式采用 Qwen3.5，不再允许 Qwen3.5 route-only 与 Qwen3.7 full Assistant 混用。tracked default spec、fresh Static SHA、fixed samples、R52 parent route800、full-Assistant gate75 和 9-case Exact→Multi packet 已冻结；inputs-only、完整 validate 与 <code>s2-readiness</code> 均通过。本条只发布可启动的基线，不代表 S2 candidate 已运行或取得增益。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-qwen35-symmetric-s2-v1-20260815\artifacts\static-opt800.jsonl</code><code>D:\athena\experiment-runs\portfolio-core-qwen35-symmetric-s2-v1-20260815\artifacts\r52-route800.jsonl</code><code>D:\athena\experiment-runs\portfolio-core-qwen35-symmetric-s2-v1-20260815\artifacts\r52-route-gate75.jsonl</code><code>D:\athena\experiment-runs\portfolio-core-qwen35-symmetric-s2-v1-20260815\specs\s2r1-formal.json</code><code>evidence packet 157b7d1e…86d6</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->

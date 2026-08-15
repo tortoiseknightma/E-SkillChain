@@ -302,6 +302,7 @@ class CoreFastEngine:
         self._s1_parent_opt: dict[str, AssistantObservation] | None = None
         self._s2_parent_bank: StaticBankArtifact | None = None
         self._s2_parent_routes: dict[str, S2RouteObservation] | None = None
+        self._s2_parent_gate: dict[str, AssistantObservation] | None = None
         self._opt_attribution: dict[str, dict[str, object]] | None = None
         self._opt_fold_roles: dict[str, str] | None = None
         self._val_gate_roles: dict[str, str] | None = None
@@ -609,6 +610,47 @@ class CoreFastEngine:
         self._s2_parent_routes = rows
         return rows
 
+    def s2_parent_gate(self) -> dict[str, AssistantObservation]:
+        """Load the frozen full-Assistant route_gate75 baseline for S2."""
+
+        binding = self.spec.s2_parent
+        if binding is None:
+            raise FastPathError("S2 adaptive round requires an S2 parent binding")
+        if self._s2_parent_gate is not None:
+            return self._s2_parent_gate
+        if binding.gate_results_path is None or binding.gate_results_sha256 is None:
+            raise FastPathError("S2 parent full-Assistant gate75 is not frozen")
+        path = self._bound_path(binding.gate_results_path)
+        if _file_sha(path) != binding.gate_results_sha256:
+            raise FastPathError("S2 parent gate75 SHA-256 drifted")
+        rows: dict[str, AssistantObservation] = {}
+        for index, raw in enumerate(_read_jsonl(path), start=1):
+            payload = raw.get("observation", raw) if isinstance(raw, dict) else raw
+            try:
+                row = AssistantObservation.model_validate(payload, strict=True)
+            except ValidationError as error:
+                raise FastPathError(f"invalid S2 parent gate75 row {index}") from error
+            if row.query_id in rows:
+                raise FastPathError(f"duplicate S2 parent gate75 query: {row.query_id}")
+            rows[row.query_id] = row
+        expected = {
+            query.query_id for query in self._queries_for_val_gate("route_gate")
+        }
+        if set(rows) != expected or len(rows) != 75:
+            raise FastPathError("S2 parent gate75 must cover route_gate75 exactly")
+        self._validate_opt_static_model_identity(rows)
+        parent_sha = self.s2_parent_bank().bank_sha256
+        for query_id, row in rows.items():
+            result = row.replay_context.get("assistant_result")
+            if (
+                not isinstance(result, dict)
+                or result.get("bank_sha256") != parent_sha
+                or row.assistant_contract != self.spec.runtime.assistant_contract
+            ):
+                raise FastPathError(f"S2 parent gate75 identity differs: {query_id}")
+        self._s2_parent_gate = rows
+        return rows
+
     def s1_authoring_input(self) -> AuthoringInput:
         if self._s1_authoring_input is not None:
             return self._s1_authoring_input
@@ -910,6 +952,8 @@ class CoreFastEngine:
         if self.spec.s2_parent is not None:
             self.s2_parent_bank()
             self.s2_parent_routes()
+            if self.spec.s2_parent.gate_results_sha256 is not None:
+                self.s2_parent_gate()
         self._require_counterfactual_cycle_preflight()
         self.opt_attribution()
         fold_roles = self.opt_fold_roles()
@@ -1381,6 +1425,73 @@ class CoreFastEngine:
             if load_json(manifest_path) != payload:
                 raise FastPathError(
                     "S2 parent route800 output root belongs to another run"
+                )
+        else:
+            atomic_write_json(manifest_path, payload)
+
+    def initialize_s2_parent_gate75(self) -> None:
+        """Initialize a create-only full-Assistant gate75 parent baseline."""
+
+        binding = self.spec.s2_parent
+        if binding is None or binding.gate_results_path is None:
+            raise FastPathError(
+                "s2-parent-gate75 requires an S2 parent gate results path"
+            )
+        if (
+            self.spec.models["assistant"].requested_model
+            != self.spec.models["route_only"].requested_model
+        ):
+            raise FastPathError(
+                "S2 parent gate75 requires symmetric Assistant/route-only models"
+            )
+        destination = self._bound_path(binding.gate_results_path)
+        manifest_path = self.output_root / "s2-parent-gate75-manifest.json"
+        if destination.exists() and not manifest_path.exists():
+            raise FastPathError(
+                "S2 parent gate75 destination predates this run manifest; "
+                "use a new lineage"
+            )
+        gate_queries = self._queries_for_val_gate("route_gate")
+        if len(gate_queries) != 75:
+            raise FastPathError("S2 parent gate must bind exactly 75 queries")
+        parent = self.s2_parent_bank()
+        if self.spec.runtime.adapter != "python":
+            raise FastPathError(
+                "fresh S2 parent gate75 requires the reviewed Python adapter"
+            )
+        model = self.spec.models["assistant"]
+        if model.credential_env and not os.environ.get(model.credential_env):
+            raise FastPathError(
+                f"missing credential {model.credential_env} for assistant"
+            )
+        runtime_validator = getattr(self.adapter, "validate_runtime", None)
+        if runtime_validator is not None:
+            try:
+                runtime_validator()
+            except (OSError, RuntimeError, ValueError) as error:
+                raise FastPathError(f"runtime adapter is not ready: {error}") from error
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-parent-gate75-run",
+            "experiment_id": self.spec.experiment_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "assistant_model": model.model_dump(mode="json"),
+            "assistant_contract": self.spec.runtime.assistant_contract,
+            "concurrency": self.spec.concurrency.model_dump(mode="json"),
+            "queries_sha256": _file_sha(self._path("queries")),
+            "val_gate_assignments_sha256": self.spec.val_gate_assignments_sha256,
+            "parent_bank_file_sha256": binding.bank_file_sha256,
+            "parent_bank_sha256": parent.bank_sha256,
+            "source_decision_file_sha256": binding.decision_file_sha256,
+            "source_manifest_file_sha256": binding.manifest_file_sha256,
+            "destination": str(destination),
+        }
+        if manifest_path.exists():
+            if load_json(manifest_path) != payload:
+                raise FastPathError(
+                    "S2 parent gate75 output root belongs to another run"
                 )
         else:
             atomic_write_json(manifest_path, payload)
@@ -3089,6 +3200,77 @@ class CoreFastEngine:
         if bootstrap_path.exists():
             if load_json(bootstrap_path) != bootstrap:
                 raise FastPathError("S2 parent route800 bootstrap differs on resume")
+        else:
+            atomic_write_json(bootstrap_path, bootstrap)
+        return bootstrap
+
+    def run_s2_parent_gate75(self) -> dict[str, object]:
+        """Execute and freeze the full-Assistant route_gate75 S2 parent."""
+
+        binding = self.spec.s2_parent
+        if binding is None or binding.gate_results_path is None:
+            raise FastPathError(
+                "s2-parent-gate75 requires an S2 parent gate results path"
+            )
+        destination = self._bound_path(binding.gate_results_path)
+        queries = self._queries_for_val_gate("route_gate")
+        parent = self.s2_parent_bank()
+        parent_config = (
+            "s1-candidate" if binding.source_stage == "s1" else "s2-candidate"
+        )
+        rows = self._assistant_many(
+            split=f"s2-parent-route-gate75-{binding.source_round_id}",
+            config=parent_config,
+            queries=queries,
+            bank=parent,
+        )
+        self._validate_opt_static_model_identity(rows)
+        for query_id, observation in rows.items():
+            result = observation.replay_context.get("assistant_result")
+            if (
+                not isinstance(result, dict)
+                or result.get("bank_sha256") != parent.bank_sha256
+                or observation.assistant_contract
+                != self.spec.runtime.assistant_contract
+            ):
+                raise FastPathError(
+                    f"fresh S2 parent gate75 identity differs: {query_id}"
+                )
+        payloads = [rows[query.query_id].model_dump(mode="json") for query in queries]
+        expected_bytes = b"".join(canonical_json_bytes(row) for row in payloads)
+        if destination.exists():
+            if destination.read_bytes() != expected_bytes:
+                raise FastPathError(
+                    "S2 parent gate75 destination differs from the completed journal"
+                )
+        else:
+            atomic_write_jsonl(destination, payloads)
+        observed_sha256 = _file_sha(destination)
+        metrics = self._summary(rows, queries)
+        bootstrap = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-parent-gate75-bootstrap",
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "parent_bank_sha256": parent.bank_sha256,
+            "parent_bank_file_sha256": binding.bank_file_sha256,
+            "source_decision_file_sha256": binding.decision_file_sha256,
+            "source_manifest_file_sha256": binding.manifest_file_sha256,
+            "assistant_model": self.spec.models["assistant"].requested_model,
+            "assistant_contract": self.spec.runtime.assistant_contract,
+            "val_gate_assignments_sha256": self.spec.val_gate_assignments_sha256,
+            "gate_results_path": str(destination),
+            "gate_results_sha256": observed_sha256,
+            "row_count": len(rows),
+            "route_macro_f1": self._route_macro_f1(rows, queries),
+            "gcs_macro": metrics["capability_macro_gcs"],
+            "hard_error_count": metrics["hard_errors"],
+            "observed_dashscope_cost_cny": self.calls.observed_cost(),
+        }
+        bootstrap_path = self.output_root / "s2-parent-gate75-bootstrap.json"
+        if bootstrap_path.exists():
+            if load_json(bootstrap_path) != bootstrap:
+                raise FastPathError("S2 parent gate75 bootstrap differs on resume")
         else:
             atomic_write_json(bootstrap_path, bootstrap)
         return bootstrap
@@ -6278,13 +6460,24 @@ class CoreFastEngine:
                 "route-model qualification cannot start adaptive S2 until "
                 "Assistant and route-only model identities match"
             )
+        if (
+            self.spec.models["assistant"].requested_model
+            == project_config.ASSISTANT_MODEL
+            and binding.gate_results_sha256 is None
+        ):
+            raise FastPathError(
+                "active symmetric S2 requires a frozen full-Assistant parent gate75"
+            )
         self.initialize()
+        parent_gate = (
+            self.s2_parent_gate() if binding.gate_results_sha256 is not None else None
+        )
         packet = self._require_s2_prepared_packet()
         if self._existing_decision("s2") is not None:
             raise FastPathError("S2 readiness is only for a not-yet-decided round")
         call_ceiling = {
             "creator": 1,
-            "assistant": 75 + 75,
+            "assistant": 75,
             "route_only": 200 + 6,
             "feedback": 0,
             "judge": 0,
@@ -6321,6 +6514,14 @@ class CoreFastEngine:
             "within_autonomous_stage_budget": True,
             "creator_session_ceiling": 1,
             "route_gate_query_count": 75,
+            "parent_gate_results_sha256": binding.gate_results_sha256,
+            "parent_gate_route_macro_f1": (
+                None
+                if parent_gate is None
+                else self._route_macro_f1(
+                    parent_gate, self._queries_for_val_gate("route_gate")
+                )
+            ),
             "sealed_stages": ["s3", "judge", "test300", "five-config-matrix"],
             "provider_calls": 0,
         }
@@ -6697,11 +6898,15 @@ class CoreFastEngine:
                         if binding.source_stage == "s1"
                         else "s2-candidate"
                     )
-                    parent_rows = self._assistant_many(
-                        split=f"{settings.round_id}-route-gate75-parent",
-                        config=parent_config,
-                        queries=gate_queries,
-                        bank=parent,
+                    parent_rows = (
+                        self.s2_parent_gate()
+                        if binding.gate_results_sha256 is not None
+                        else self._assistant_many(
+                            split=f"{settings.round_id}-route-gate75-parent",
+                            config=parent_config,
+                            queries=gate_queries,
+                            bank=parent,
+                        )
                     )
                     candidate_rows = self._assistant_many(
                         split=f"{settings.round_id}-route-gate75-candidate",

@@ -3,18 +3,18 @@ from skillchain.evaluation.core_fast.live_adapter import _assistant_cost
 from skillchain.evaluation.core_fast.models import Concurrency
 
 
-def test_qwen37_assistant_capacity_profile_is_bound() -> None:
+def test_active_qwen35_assistant_capacity_profile_is_bound() -> None:
     capacity = Concurrency()
 
-    assert config.ASSISTANT_MODEL == "qwen3.7-flash-2026-07-15"
+    assert config.ASSISTANT_MODEL == "qwen3.5-flash-2026-02-23"
     assert (capacity.assistant, capacity.assistant_requests_per_second) == (
-        60,
-        20.0,
+        16,
+        8.0,
     )
 
 
-def test_qwen37_assistant_cost_uses_the_under_32k_tier() -> None:
-    assert _assistant_cost(1_400, 30) == 0.000304
+def test_active_qwen35_assistant_cost_uses_the_under_128k_tier() -> None:
+    assert _assistant_cost(1_400, 30) == 0.00034
 
 
 def test_qwen35_route_qualification_profile_and_cost_are_bound() -> None:
@@ -33,4 +33,10 @@ def test_qwen35_route_qualification_profile_and_cost_are_bound() -> None:
             config.QWEN35_ROUTE_QUALIFICATION_MODEL,
         )
         == 0.00034
+    )
+
+
+def test_historical_qwen37_cost_remains_explicit() -> None:
+    assert (
+        _assistant_cost(1_400, 30, config.QWEN37_CORE_FAST_ASSISTANT_MODEL) == 0.000304
     )

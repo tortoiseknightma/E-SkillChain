@@ -51,6 +51,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="run create-only route-only opt800 under a SHA-bound S2 parent",
     )
     commands.add_parser(
+        "s2-parent-gate75",
+        help="run create-only full-Assistant route_gate75 under an S2 parent",
+    )
+    commands.add_parser(
         "prepare-feedback-selection",
         help="freeze or verify discovery600 Feedback summary/selection without provider calls",
     )
@@ -125,6 +129,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "s2-parent-route800":
             engine.initialize_s2_parent_route800()
             result = engine.run_s2_parent_route800()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "s2-parent-gate75":
+            engine.initialize_s2_parent_gate75()
+            result = engine.run_s2_parent_gate75()
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         if args.command == "prepare-feedback-selection":

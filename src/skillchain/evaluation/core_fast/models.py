@@ -224,6 +224,18 @@ class S2ParentBinding(FrozenStrictModel):
     route_results_path: str
     # ``None`` is valid only for the create-only s2-parent-route800 bootstrap.
     route_results_sha256: Sha256 | None = None
+    gate_results_path: str | None = None
+    # ``None`` is valid only while the create-only full-Assistant parent
+    # route_gate75 baseline is being generated.
+    gate_results_sha256: Sha256 | None = None
+
+    @model_validator(mode="after")
+    def validate_symmetric_gate_binding(self) -> Self:
+        if (self.gate_results_path is None) != (self.gate_results_sha256 is None):
+            # A configured path with no SHA is the intentional bootstrap state.
+            if self.gate_results_path is None:
+                raise ValueError("S2 parent gate SHA requires a results path")
+        return self
 
 
 class S2Settings(FrozenStrictModel):
@@ -522,8 +534,8 @@ class Concurrency(FrozenStrictModel):
                 config.ASSISTANT_REQUESTS_PER_SECOND,
             ),
             (
-                config.QWEN35_ROUTE_QUALIFICATION_CONCURRENCY,
-                config.QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND,
+                config.QWEN37_CORE_FAST_ASSISTANT_CONCURRENCY,
+                config.QWEN37_CORE_FAST_ASSISTANT_REQUESTS_PER_SECOND,
             ),
         }
         if (

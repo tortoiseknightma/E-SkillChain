@@ -21,7 +21,6 @@ from skillchain.codex_authoring import (
 )
 from skillchain.tools.serialization import canonical_json_bytes, sha256_bytes
 import scripts.approve_codex_authoring as approval_script
-import scripts.build_codex_authoring_approval_package as package_builder
 from scripts.run_codex_authoring import (
     _event_audit,
     _run_capped_process,
@@ -29,12 +28,7 @@ from scripts.run_codex_authoring import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FREEZE_PATH = (
-    ROOT
-    / "specs"
-    / "authoring"
-    / "authoring-freeze-lock-codex-high-v2.json"
-)
+FREEZE_PATH = ROOT / "specs" / "authoring" / "authoring-freeze-lock-codex-high-v2.json"
 
 
 def _script_env() -> dict[str, str]:
@@ -80,7 +74,7 @@ def test_model_roles_are_explicit_and_historical_qwen_is_separate() -> None:
         config.ASSISTANT_PROVIDER,
         config.ASSISTANT_MODEL,
         config.ASSISTANT_MODEL_REVISION,
-    ) == ("qwen", "qwen3.7-flash-2026-07-15", "2026-07-15")
+    ) == ("qwen", "qwen3.5-flash-2026-02-23", "2026-02-23")
     assert (
         config.AUTHOR_PROVIDER,
         config.AUTHOR_MODEL,
@@ -194,13 +188,9 @@ def test_codex_v2_approved_preclaim_history_remains_byte_bound() -> None:
     output_directory = f"runs/formal-authoring/{CODEX_AUTHOR_RUN_ID}"
     assert paths == {
         "approval_record_file": (
-            "specs/authoring/"
-            f"{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
+            f"specs/authoring/{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
         ),
-        "claim_file": (
-            "specs/authoring/"
-            f"{CODEX_AUTHOR_RUN_ID}-attempt-claim.json"
-        ),
+        "claim_file": (f"specs/authoring/{CODEX_AUTHOR_RUN_ID}-attempt-claim.json"),
         "output_directory": output_directory,
         "receipt_file": f"{output_directory}/invocation-receipt.json",
         "run_id": CODEX_AUTHOR_RUN_ID,
@@ -262,10 +252,14 @@ def test_codex_packet_and_runtime_do_not_claim_api_provider_evidence() -> None:
     )
     assert source_manifest["schema_version"] == 2
     distributions = source_manifest["distributions"]
-    assert {
-        item["requested_name"] for item in distributions
-    } >= {"pydantic", "pydantic_core", "python-dotenv"}
-    assert all(item["files"] and len(item["tree_sha256"]) == 64 for item in distributions)
+    assert {item["requested_name"] for item in distributions} >= {
+        "pydantic",
+        "pydantic_core",
+        "python-dotenv",
+    }
+    assert all(
+        item["files"] and len(item["tree_sha256"]) == 64 for item in distributions
+    )
 
 
 def test_codex_event_audit_accepts_exact_clean_turn() -> None:
@@ -332,8 +326,7 @@ def test_codex_event_audit_rejects_tool_activity_and_failed_turn() -> None:
         },
     ]
     content = b"".join(
-        json.dumps(event, separators=(",", ":")).encode() + b"\n"
-        for event in events
+        json.dumps(event, separators=(",", ":")).encode() + b"\n" for event in events
     )
     audit = _event_audit(content)
     assert audit.visible_tool_activity is True
@@ -377,10 +370,7 @@ def test_capped_process_completes_stdin_and_bounds_stdout() -> None:
         [
             sys.executable,
             "-c",
-            (
-                "import sys; data=sys.stdin.buffer.read(); "
-                "sys.stdout.buffer.write(data)"
-            ),
+            ("import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(data)"),
         ],
         cwd=ROOT,
         environment=os.environ.copy(),
@@ -440,10 +430,7 @@ def test_capped_process_reaps_child_when_thread_start_fails(
 
 def _write_test_freeze(root: Path) -> tuple[Path, str, str]:
     freeze_path = (
-        root
-        / "specs"
-        / "authoring"
-        / "authoring-freeze-lock-codex-high-v2.json"
+        root / "specs" / "authoring" / "authoring-freeze-lock-codex-high-v2.json"
     )
     payload = {
         "schema_version": 1,
@@ -454,16 +441,13 @@ def _write_test_freeze(root: Path) -> tuple[Path, str, str]:
             "paths": {
                 "run_id": CODEX_AUTHOR_RUN_ID,
                 "approval_record_file": (
-                    "specs/authoring/"
-                    f"{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
+                    f"specs/authoring/{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
                 ),
             }
         },
     }
     payload_sha256 = sha256_bytes(canonical_json_bytes(payload))
-    content = canonical_json_bytes(
-        {**payload, "freeze_payload_sha256": payload_sha256}
-    )
+    content = canonical_json_bytes({**payload, "freeze_payload_sha256": payload_sha256})
     freeze_path.parent.mkdir(parents=True)
     freeze_path.write_bytes(content)
     return freeze_path, sha256_bytes(content), payload_sha256
@@ -490,10 +474,7 @@ def test_owner_approval_requires_both_freeze_digests(
     monkeypatch.setattr(sys, "argv", common)
     assert approval_script.main() == 0
     approval_path = (
-        tmp_path
-        / "specs"
-        / "authoring"
-        / f"{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
+        tmp_path / "specs" / "authoring" / f"{CODEX_AUTHOR_RUN_ID}-owner-approval.json"
     )
     approval = json.loads(approval_path.read_text(encoding="utf-8"))
     assert approval["freeze_lock_file_sha256"] == file_sha256

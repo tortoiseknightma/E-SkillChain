@@ -41,6 +41,7 @@ def _source_binding(
     source_stage: str,
     source_round_id: str,
     route_results_path: Path,
+    gate_results_path: Path | None,
     preparatory_binding_path: Path | None,
 ) -> tuple[CoreFastSpec, dict[str, object]]:
     source_spec = load_core_fast_spec(source_spec_path)
@@ -113,10 +114,20 @@ def _source_binding(
         **preparatory,
         "route_results_path": str(route_results_path.resolve()),
         "route_results_sha256": None,
+        "gate_results_path": (
+            None if gate_results_path is None else str(gate_results_path.resolve())
+        ),
+        "gate_results_sha256": None,
     }
 
 
 def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
+    if args.symmetric_qwen35 and (
+        args.runtime_spec is None or args.gate_results_path is None
+    ):
+        raise ValueError(
+            "formal symmetric Qwen3.5 requires --runtime-spec and --gate-results-path"
+        )
     source_spec_path = args.source_spec.resolve()
     source_root = args.source_root.resolve()
     source_spec, binding = _source_binding(
@@ -125,23 +136,35 @@ def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
         source_stage=args.source_stage,
         source_round_id=args.source_round_id,
         route_results_path=args.route_results_path,
+        gate_results_path=args.gate_results_path,
         preparatory_binding_path=args.preparatory_binding,
     )
     memory = tuple(json.loads(item) for item in args.memory_json)
     if any(not isinstance(item, dict) for item in memory):
         raise ValueError("every --memory-json value must encode one object")
-    payload = source_spec.model_dump(mode="json")
+    runtime_spec = (
+        source_spec
+        if args.runtime_spec is None
+        else load_core_fast_spec(args.runtime_spec.resolve())
+    )
+    if args.runtime_spec is not None and (
+        runtime_spec.opt_fold_mapping_sha256 != source_spec.opt_fold_mapping_sha256
+        or runtime_spec.val_gate_assignments_sha256
+        != source_spec.val_gate_assignments_sha256
+        or runtime_spec.static_bank_file_sha256 != source_spec.static_bank_file_sha256
+        or runtime_spec.runtime.assistant_contract
+        != source_spec.runtime.assistant_contract
+    ):
+        raise ValueError("runtime spec changes frozen S2 dataset/runtime invariants")
+    payload = runtime_spec.model_dump(mode="json")
     payload["experiment_id"] = args.experiment_id
-    if args.route_model_qualification is not None:
-        payload["models"]["route_only"]["requested_model"] = (
-            args.route_model_qualification
-        )
-        payload["models"]["route_only"]["moving_alias"] = False
-        payload["concurrency"]["assistant"] = (
-            config.QWEN35_ROUTE_QUALIFICATION_CONCURRENCY
-        )
+    if args.symmetric_qwen35:
+        for role in ("assistant", "route_only"):
+            payload["models"][role]["requested_model"] = config.ASSISTANT_MODEL
+            payload["models"][role]["moving_alias"] = False
+        payload["concurrency"]["assistant"] = config.ASSISTANT_VALIDATED_CONCURRENCY
         payload["concurrency"]["assistant_requests_per_second"] = (
-            config.QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND
+            config.ASSISTANT_REQUESTS_PER_SECOND
         )
     payload["s2_parent"] = binding
     payload["s2_settings"] = {
@@ -164,10 +187,11 @@ def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
         "The parent route800 must be frozen before Creator or candidate calls.",
         "Adaptive S2 specs may run only through s2; S3/Judge/test remain sealed.",
     ]
-    if args.route_model_qualification is not None:
+    if args.symmetric_qwen35:
         payload["disclosures"].append(
-            "Qualification-only route model differs from the full Assistant; "
-            "this spec may create parent route800 evidence but cannot run S2."
+            "Formal symmetric Qwen3.5 lineage: full Assistant and route-only "
+            "share one pinned model/profile; parent route800 and route_gate75 "
+            "must both be SHA-frozen before S2 readiness."
         )
     return CoreFastSpec.model_validate_json(
         json.dumps(payload), strict=True
@@ -194,6 +218,32 @@ def _freeze_spec(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("route800 bootstrap does not bind the S2 parent spec")
     payload = bootstrap_spec.model_dump(mode="json")
     payload["s2_parent"]["route_results_sha256"] = receipt["route_results_sha256"]
+    gate_path_value = bootstrap_spec.s2_parent.gate_results_path
+    if gate_path_value is not None:
+        if args.gate_bootstrap is None:
+            raise ValueError("formal symmetric S2 requires --gate-bootstrap")
+        gate_receipt = json.loads(
+            args.gate_bootstrap.resolve().read_text(encoding="utf-8")
+        )
+        gate_path = Path(gate_path_value).resolve()
+        if (
+            gate_receipt.get("kind") != "core-fast-s2-parent-gate75-bootstrap"
+            or gate_receipt.get("row_count") != 75
+            or gate_receipt.get("source_stage") != bootstrap_spec.s2_parent.source_stage
+            or gate_receipt.get("source_round_id")
+            != bootstrap_spec.s2_parent.source_round_id
+            or gate_receipt.get("parent_bank_sha256")
+            != bootstrap_spec.s2_parent.bank_sha256
+            or Path(str(gate_receipt.get("gate_results_path"))).resolve() != gate_path
+            or not gate_path.is_file()
+            or gate_receipt.get("gate_results_sha256") != _sha(gate_path)
+            or gate_receipt.get("assistant_model")
+            != bootstrap_spec.models["assistant"].requested_model
+        ):
+            raise ValueError("gate75 bootstrap does not bind the S2 parent spec")
+        payload["s2_parent"]["gate_results_sha256"] = gate_receipt[
+            "gate_results_sha256"
+        ]
     return CoreFastSpec.model_validate_json(
         json.dumps(payload), strict=True
     ).model_dump(mode="json")
@@ -213,18 +263,21 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--source-round-id", required=True)
     bootstrap.add_argument("--preparatory-binding", type=Path)
     bootstrap.add_argument("--route-results-path", type=Path, required=True)
+    bootstrap.add_argument("--gate-results-path", type=Path)
+    bootstrap.add_argument(
+        "--runtime-spec",
+        type=Path,
+        help="use active runtime/static inputs while authenticating the source round",
+    )
     bootstrap.add_argument("--output-spec", type=Path, required=True)
     bootstrap.add_argument("--experiment-id", required=True)
     bootstrap.add_argument("--cycle-id", required=True)
     bootstrap.add_argument("--round-id", required=True)
     bootstrap.add_argument("--target-capability", choices=CAPABILITIES, required=True)
     bootstrap.add_argument(
-        "--route-model-qualification",
-        choices=(config.QWEN35_ROUTE_QUALIFICATION_MODEL,),
-        help=(
-            "freeze an isolated route-only model profile; S2 remains blocked "
-            "until the full Assistant uses the same model"
-        ),
+        "--symmetric-qwen35",
+        action="store_true",
+        help="freeze both full Assistant and route-only to the active Qwen3.5 profile",
     )
     bootstrap.add_argument("--target-predicted-capability", choices=CAPABILITIES)
     bootstrap.add_argument(
@@ -244,6 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     freeze.add_argument("--bootstrap-spec", type=Path, required=True)
     freeze.add_argument("--route-bootstrap", type=Path, required=True)
+    freeze.add_argument("--gate-bootstrap", type=Path)
     freeze.add_argument("--output-spec", type=Path, required=True)
     return parser
 
@@ -268,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
                     "route_results_sha256": payload["s2_parent"][
                         "route_results_sha256"
                     ],
+                    "gate_results_sha256": payload["s2_parent"]["gate_results_sha256"],
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -20,27 +20,28 @@ USAGE_LOG = RUNS_DIR / "usage.jsonl"
 # ---- 模型角色按用途显式分离：Assistant Qwen / Author Codex /
 #      AIFast Gemini visual Feedback / DashScope Kimi final Judge。----
 ASSISTANT_PROVIDER = "qwen"
-ASSISTANT_MODEL = "qwen3.7-flash-2026-07-15"
-ASSISTANT_MODEL_REVISION = "2026-07-15"
-# Capacity measured on 2026-08-12 with the production non-thinking,
-# multimodal/function-calling wire. A 60-call burst reached 60 inflight with
-# 60/60 valid responses and no service errors. Production keeps the 60-worker
-# ceiling but smooths starts to 20 requests/s; even the older conservative
-# 3.18k-token/call estimate stays below 80% of the Beijing 5M TPM quota.
-ASSISTANT_VALIDATED_CONCURRENCY = 60
-ASSISTANT_REQUESTS_PER_SECOND = 20.0
+ASSISTANT_MODEL = "qwen3.5-flash-2026-02-23"
+ASSISTANT_MODEL_REVISION = "2026-02-23"
+# Active Qwen3.5 is limited to 600 RPM / 1M TPM.  The symmetric Core Fast
+# lineage therefore uses 16 workers and 8 starts/s (480 RPM) for every full
+# Assistant and route-only call.  This is a conservative official-limit
+# profile, not a claim that the older Qwen3.7 60-worker burst transfers.
+ASSISTANT_VALIDATED_CONCURRENCY = 16
+ASSISTANT_REQUESTS_PER_SECOND = 8.0
 ASSISTANT_ACCEPTABLE_ERROR_RATE = 0.02
 ASSISTANT_SERVICE_ERROR_RATE = 0.0
 
-# Isolated S2 route-model qualification profile.  The pinned Qwen3.5 revision
-# is listed by DashScope with 600 RPM / 1M TPM.  Qualification keeps starts at
-# 8 requests/s (480 RPM) and 16 workers; it does not replace the active
-# Assistant until a symmetric full-runtime lineage is explicitly frozen.
-QWEN35_ROUTE_QUALIFICATION_MODEL = "qwen3.5-flash-2026-02-23"
-QWEN35_ROUTE_QUALIFICATION_CONCURRENCY = 16
-QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND = 8.0
+# Backward-compatible qualification names now identify the promoted active
+# model.  Historical Qwen3.7 artifacts and their measured capacity remain
+# explicit and immutable below.
+QWEN35_ROUTE_QUALIFICATION_MODEL = ASSISTANT_MODEL
+QWEN35_ROUTE_QUALIFICATION_CONCURRENCY = ASSISTANT_VALIDATED_CONCURRENCY
+QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND = ASSISTANT_REQUESTS_PER_SECOND
 QWEN35_INPUT_CNY_PER_MILLION = 0.2
 QWEN35_OUTPUT_CNY_PER_MILLION = 2.0
+QWEN37_CORE_FAST_ASSISTANT_MODEL = "qwen3.7-flash-2026-07-15"
+QWEN37_CORE_FAST_ASSISTANT_CONCURRENCY = 60
+QWEN37_CORE_FAST_ASSISTANT_REQUESTS_PER_SECOND = 20.0
 
 # Immutable Portfolio/Gate0/authoring artifacts predate the active Core Fast
 # Assistant switch.  Historical verifiers must bind this identity explicitly

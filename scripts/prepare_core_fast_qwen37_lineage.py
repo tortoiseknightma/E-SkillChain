@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare one immutable Qwen3.7 Core Fast S1 lineage.
+"""Prepare one immutable active-model Core Fast S1 lineage.
 
 This helper performs filesystem preparation only.  It never loads a runtime
-adapter and therefore cannot make provider calls.
+adapter and therefore cannot make provider calls.  The historical filename is
+retained so existing launch instructions remain valid.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ from skillchain.evaluation.core_fast.models import (  # noqa: E402
     CoreFastSpec,
     load_core_fast_spec,
 )
+from skillchain import config  # noqa: E402
 from skillchain.evaluation.core_fast.store import atomic_write_json  # noqa: E402
 from skillchain.tools.serialization import (  # noqa: E402
     ArtifactFormatError,
@@ -43,7 +45,7 @@ from skillchain.tools.serialization import (  # noqa: E402
 
 
 DEFAULT_SPEC = REPOSITORY_ROOT / "specs" / "core-experiment-fast-v1.json"
-QWEN37_ASSISTANT_MODEL = "qwen3.7-flash-2026-07-15"
+ACTIVE_ASSISTANT_MODEL = config.ASSISTANT_MODEL
 FEEDBACK_MANIFEST_NAME = "feedback-source-manifest.json"
 FEEDBACK_MANIFEST_KIND = "core-fast-feedback-reuse-source-v1"
 STALE_DISCLOSURE_FRAGMENTS = (
@@ -100,12 +102,12 @@ def _portable_paths(spec: CoreFastSpec, *, base_dir: Path) -> dict[str, object]:
     return payload
 
 
-def _assert_qwen37(spec: CoreFastSpec) -> None:
+def _assert_active_model(spec: CoreFastSpec) -> None:
     assistant = spec.models["assistant"].requested_model
     route_only = spec.models["route_only"].requested_model
-    if assistant != QWEN37_ASSISTANT_MODEL or route_only != assistant:
+    if assistant != ACTIVE_ASSISTANT_MODEL or route_only != assistant:
         raise LineagePreparationError(
-            "lineage preparation requires the pinned Qwen3.7 Assistant and "
+            "lineage preparation requires the pinned active Assistant and "
             "matching route-only model"
         )
 
@@ -143,7 +145,7 @@ def prepare_static_bootstrap_spec(
         raise LineagePreparationError("base Core Fast spec lacks gate settings")
     gates["s1_max_capability_drop_pp"] = 5.0
     base = _validated_spec(base_payload)
-    _assert_qwen37(base)
+    _assert_active_model(base)
     destination = opt_destination.resolve()
     if destination.exists():
         raise FileExistsError(destination)
@@ -184,6 +186,55 @@ def prepare_static_bootstrap_spec(
     return frozen
 
 
+def freeze_active_default_spec(
+    *,
+    base_spec_path: Path,
+    bootstrap_result_path: Path,
+    output_spec_path: Path,
+    experiment_id: str,
+) -> CoreFastSpec:
+    """Bind completed active-model Static evidence without changing S1 policy."""
+
+    base = load_core_fast_spec(base_spec_path.resolve())
+    _assert_active_model(base)
+    bootstrap = _load_canonical_object(
+        bootstrap_result_path.resolve(), label="Static opt800 bootstrap"
+    )
+    if (
+        bootstrap.get("kind") != "core-fast-static-opt800-bootstrap"
+        or bootstrap.get("assistant_model") != ACTIVE_ASSISTANT_MODEL
+        or bootstrap.get("assistant_contract") != base.runtime.assistant_contract
+        or bootstrap.get("row_count") != 800
+    ):
+        raise LineagePreparationError("Static bootstrap identity differs")
+    opt_path = Path(str(bootstrap.get("opt_static_results", ""))).resolve()
+    if not opt_path.is_file():
+        raise LineagePreparationError("fresh Static opt800 is missing")
+    opt_sha = sha256_bytes(
+        read_stable_regular_file(opt_path, label="fresh Static opt800")
+    )
+    if bootstrap.get("opt_static_results_sha256") != opt_sha:
+        raise LineagePreparationError("fresh Static opt800 SHA differs")
+    fixed_samples = bootstrap.get("fixed_samples")
+    if not isinstance(fixed_samples, dict):
+        raise LineagePreparationError("Static bootstrap lacks fixed samples")
+
+    payload = base.model_dump(mode="json")
+    payload["experiment_id"] = experiment_id
+    payload["paths"]["opt_static_results"] = str(opt_path)
+    payload["opt_static_results_sha256"] = opt_sha
+    payload["fixed_samples"] = fixed_samples
+    disclosures = _clean_disclosures(base.disclosures)
+    disclosures.append(
+        f"Active Static opt800 was freshly generated with {ACTIVE_ASSISTANT_MODEL}; "
+        "the tracked spec binds its SHA and deterministic fixed samples."
+    )
+    payload["disclosures"] = list(dict.fromkeys(disclosures))
+    frozen = _validated_spec(payload)
+    atomic_write_json(output_spec_path.resolve(), frozen.model_dump(mode="json"))
+    return frozen
+
+
 def freeze_r1_spec(
     *,
     bootstrap_spec_path: Path,
@@ -204,7 +255,7 @@ def freeze_r1_spec(
 
     bootstrap_spec_path = bootstrap_spec_path.resolve()
     source = load_core_fast_spec(bootstrap_spec_path)
-    _assert_qwen37(source)
+    _assert_active_model(source)
     if fanout and (target_capability is not None or required_patch_phrases):
         raise LineagePreparationError(
             "fan-out R1 uses all Body capabilities and no shared required phrases"
@@ -221,7 +272,7 @@ def freeze_r1_spec(
     )
     if bootstrap.get("kind") != "core-fast-static-opt800-bootstrap":
         raise LineagePreparationError("unexpected Static opt800 bootstrap kind")
-    if bootstrap.get("assistant_model") != QWEN37_ASSISTANT_MODEL:
+    if bootstrap.get("assistant_model") != ACTIVE_ASSISTANT_MODEL:
         raise LineagePreparationError("Static bootstrap Assistant model differs")
     if bootstrap.get("assistant_contract") != source.runtime.assistant_contract:
         raise LineagePreparationError("Static bootstrap Assistant contract differs")
@@ -359,7 +410,7 @@ def freeze_r1_spec(
     disclosures = _clean_disclosures(source.disclosures)
     disclosures.extend(
         (
-            f"Static opt800 was freshly generated with {QWEN37_ASSISTANT_MODEL}; "
+            f"Static opt800 was freshly generated with {ACTIVE_ASSISTANT_MODEL}; "
             "this spec binds its SHA and reproducible fixed sample roles.",
             "Historical S1 R1-R10 remain rejected and read-only; this is a "
             "separately authorized model-generated Body lineage.",
@@ -633,7 +684,7 @@ def _legacy_freeze_reuse_round_spec_removed(
         raise LineagePreparationError("Feedback reuse round must be r2-r10")
     r1_spec_path = r1_spec_path.resolve()
     source = load_core_fast_spec(r1_spec_path)
-    _assert_qwen37(source)
+    _assert_active_model(source)
     if (
         source.s1_settings.round_id != "r1"
         or source.s1_settings.feedback_mode != "fresh"
@@ -751,7 +802,7 @@ def verify_feedback_import(*, bundle_dir: Path, target_root: Path) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prepare a create-only Qwen3.7 Core Fast S1 lineage."
+        description="Prepare a create-only active-model Core Fast S1 lineage."
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -760,6 +811,12 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--output-spec", type=Path, required=True)
     bootstrap.add_argument("--experiment-id", required=True)
     bootstrap.add_argument("--opt-destination", type=Path, required=True)
+
+    freeze_default = commands.add_parser("freeze-default")
+    freeze_default.add_argument("--base-spec", type=Path, default=DEFAULT_SPEC)
+    freeze_default.add_argument("--bootstrap-result", type=Path, required=True)
+    freeze_default.add_argument("--output-spec", type=Path, required=True)
+    freeze_default.add_argument("--experiment-id", required=True)
 
     r1 = commands.add_parser("freeze-r1")
     r1.add_argument("--bootstrap-spec", type=Path, required=True)
@@ -822,6 +879,18 @@ def main(argv: list[str] | None = None) -> int:
                 output_spec_path=args.output_spec,
                 experiment_id=args.experiment_id,
                 opt_destination=args.opt_destination,
+            )
+            result = {
+                "status": "created",
+                "spec": str(args.output_spec),
+                "experiment_id": spec.experiment_id,
+            }
+        elif args.command == "freeze-default":
+            spec = freeze_active_default_spec(
+                base_spec_path=args.base_spec,
+                bootstrap_result_path=args.bootstrap_result,
+                output_spec_path=args.output_spec,
+                experiment_id=args.experiment_id,
             )
             result = {
                 "status": "created",

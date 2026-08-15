@@ -31,13 +31,11 @@ from skillchain.tools.portfolio_runtime import PORTFOLIO_SYSTEM_PROMPT
 
 
 ASSISTANT_INPUT_CNY_PER_MILLION_TOKENS = Decimal("0.2")
-ASSISTANT_OUTPUT_CNY_PER_MILLION_TOKENS = Decimal("0.8")
-OFFICIAL_SNAPSHOT_RPM = 30_000
-OFFICIAL_SNAPSHOT_TPM = 5_000_000
-# Keep roughly 20% of the Beijing snapshot TPM ceiling available to the main
-# experiment. At the prior production-wire mean of about 3.18k tokens/call,
-# 20 requests/s consumes about 4M tokens/minute.
-DEFAULT_REQUESTS_PER_SECOND = 20.0
+ASSISTANT_OUTPUT_CNY_PER_MILLION_TOKENS = Decimal("2.0")
+OFFICIAL_SNAPSHOT_RPM = 600
+OFFICIAL_SNAPSHOT_TPM = 1_000_000
+# The active Qwen3.5 profile stays below the official 600 RPM ceiling.
+DEFAULT_REQUESTS_PER_SECOND = 8.0
 DEFAULT_ERROR_RATE_LIMIT = 0.02
 DEFAULT_SERVICE_ERROR_RATE_LIMIT = 0.0
 DEFAULT_COST_CAP_CNY = Decimal("1.000000")
@@ -238,7 +236,9 @@ def _response_hash(response: llm.LLMResponse) -> str:
         canonical_json_bytes(
             {
                 "text": response.text,
-                "tool_calls": [item.model_dump(mode="json") for item in response.tool_calls],
+                "tool_calls": [
+                    item.model_dump(mode="json") for item in response.tool_calls
+                ],
             }
         )
     ).hexdigest()
@@ -264,13 +264,19 @@ def _validate_response(
         try:
             arguments = json.loads(call.arguments_json)
         except json.JSONDecodeError as error:
-            raise AssistantProbeContractError("tool arguments are invalid JSON") from error
+            raise AssistantProbeContractError(
+                "tool arguments are invalid JSON"
+            ) from error
         if call.name != "image_product_search" or arguments != {
             "asset_id": "query_asset"
         }:
             raise AssistantProbeContractError("tool-selection arguments drifted")
         return
-    if response.finish_reason != "stop" or response.tool_calls or not response.text.strip():
+    if (
+        response.finish_reason != "stop"
+        or response.tool_calls
+        or not response.text.strip()
+    ):
         raise AssistantProbeContractError("final Assistant response shape drifted")
     # The probe's synthetic tool evidence is not an evaluation sample. Capacity
     # success therefore uses the production transport contract (plain nonblank
@@ -355,7 +361,9 @@ def _one_call(
         output_tokens=response.usage.output_tokens,
         finish_reason=response.finish_reason,
         response_sha256=_response_hash(response),
-        request_id_sha256=hashlib.sha256(response.request_id.encode("utf-8")).hexdigest(),
+        request_id_sha256=hashlib.sha256(
+            response.request_id.encode("utf-8")
+        ).hexdigest(),
         cost_cny=format(
             _cost(response.usage.input_tokens, response.usage.output_tokens), "f"
         ),
@@ -393,7 +401,9 @@ def _summarize(results: list[ProbeResult], peak_inflight: int) -> dict[str, obje
         "variant_counts": {
             variant: {
                 "calls": sum(item.variant == variant for item in results),
-                "successes": sum(item.variant == variant and item.ok for item in results),
+                "successes": sum(
+                    item.variant == variant and item.ok for item in results
+                ),
             }
             for variant in ("tool_selection", "final_response")
         },
@@ -414,8 +424,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--image", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--calls", type=int, default=60)
-    parser.add_argument("--max-workers", type=int, default=60)
+    parser.add_argument("--calls", type=int, default=16)
+    parser.add_argument("--max-workers", type=int, default=16)
     parser.add_argument(
         "--requests-per-second", type=float, default=DEFAULT_REQUESTS_PER_SECOND
     )
@@ -506,7 +516,9 @@ def main() -> int:
             "observed_service_error_rate_limit": args.service_error_rate_limit,
             "cost_cap_cny": format(args.cost_cap_cny, "f"),
         },
-        "image_sha256s": [hashlib.sha256(path.read_bytes()).hexdigest() for path in images],
+        "image_sha256s": [
+            hashlib.sha256(path.read_bytes()).hexdigest() for path in images
+        ],
         "summary": summary,
         "passes": passes,
         "calls": len(results),
@@ -515,7 +527,9 @@ def main() -> int:
         "total_cost_cny": summary["cost_cny"],
         "results": [item.payload() for item in results],
     }
-    receipt["receipt_sha256"] = hashlib.sha256(canonical_json_bytes(receipt)).hexdigest()
+    receipt["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(receipt)
+    ).hexdigest()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.output.exists():
         raise FileExistsError(f"refusing to overwrite Assistant receipt: {args.output}")

@@ -19,8 +19,8 @@ parent 的精确 alias，不产生新的 Assistant、工具或 Judge 调用。�
 
 冻结配置位于 [`specs/core-experiment-fast-v1.json`](../specs/core-experiment-fast-v1.json)。
 其中包含字面 canary6、smoke24、body48 ID，固定模型角色、Gate、并发度和 CNY 250
-总费用上限。默认 spec 已绑定 model-generated action-response 的 fresh Qwen3.7 Static opt800、
-bootstrap 生成的 fixed samples 与 SHA `a9949cd673fff547…2c0805a7`；`validate --inputs-only` 与完整
+总费用上限。默认 spec 已绑定 model-generated action-response 的 active Qwen3.5 Static opt800、
+bootstrap 生成的 fixed samples 与 SHA `819363d8a3dcab09…79e1cb6950d`；`validate --inputs-only` 与完整
 `validate` 均通过。旧
 `export_core_fast_opt_static.py` 只用于迁移历史 artifact，不能生成或替代当前 runtime 基线。
 重新生成 Static 必须使用独立 bootstrap spec、fresh output root 与 `static-opt800` 命令，且会产生
@@ -222,6 +222,31 @@ Multi 与 Recipe 仍为 0。discovery600 的 Exact→Multi 主簇从 14 增至 3
 route/full-Assistant 同模型的 symmetric lineage，重跑 parent baseline 并重新冻结正式 gate；本次
 719/800 不能与历史 S2 candidate 直接拼成增益。canonical evidence 位于
 `D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815`。
+
+### Qwen3.5 正式对称 lineage 与 S2 gate（2026-08-15）
+
+qualification 之后，active full Assistant 与 route-only 已同时切换到
+`qwen3.5-flash-2026-02-23`，容量绑定为 16 workers / 8 requests/s；不再允许与 Qwen3.7
+混合比较。新的 create-only lineage 位于
+`D:\athena\experiment-runs\portfolio-core-qwen35-symmetric-s2-v1-20260815`，并完成三项前置证据：
+
+- fresh Static opt800：800/800 outer success/schema-valid，2,697 个底层 model call，
+  5,282,056 / 236,373 input/output tokens，成本 ¥1.5291572；17 个 hard error 均为本地
+  response/runtime contract 结果，0 provider/capacity error。artifact SHA 为
+  `819363d8a3dcab09abbbd1d0d72539be4307f3d34ddacfc274ade79e1cb6950d`。
+- R52 route800：800/800 success/schema-valid，717/800 correct，成本 ¥0.068897；正式 route SHA 为
+  `c6e48eca94cd6c9f7b61e1da7b1a69fd8fed35f6f4cc46007591a5e5ccbf4e1e`。它是新的 parent
+  baseline，不能用 qualification 的 719/800 或历史 Qwen3.7 的 760/800 替代。
+- R52 full-Assistant route_gate75：75/75 success/schema-valid、251 个底层 model call、route
+  macro-F1 `0.9531481481`、GCS macro `0.2901515152`、hard errors 0，增量成本 ¥0.148264；gate SHA 为
+  `62350d1ddffb38b3bcf1204ec7aa01204610a1b27d30f3b531f260025781e44f`。
+
+正式 S2R1 spec 还冻结了 9-case Exact→Multi evidence packet SHA
+`157b7d1eb7ab400eff295ca736bd9848a3a54e9562fb96d1bdcee876b38586d6`。
+`validate --inputs-only`、完整 `validate` 与 `s2-readiness` 均通过；readiness 在 parent profile
+完成后的 ceiling 为 75 个 Assistant、206 个 route-only、1 个 Creator，S3/Judge/test300/五配置矩阵
+继续 sealed。此处只证明新的对称 runtime 与正式 gate 可启动；尚未调用 Creator，也没有 S2 candidate
+或增益结论。本次新增可追踪 DashScope 总成本为 ¥1.7463182，Creator 0-call。
 
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
@@ -665,12 +690,12 @@ canonical root 为
 
 | Role | 新 Fast Path 配置 | 当前阶段的实际并发 | 配速作用点 |
 |---|---:|---:|---|
-| Assistant | 60 workers；20 requests/s | ≤60 | 每次真实 route/action/body provider call |
+| Assistant | 16 workers；8 requests/s | ≤16 | 每次真实 route/action/body provider call |
 | Qwen3.8 Feedback | 60 workers；8 requests/s | `min(60, 48)=48` | 每条冻结 Feedback provider call |
 
-新 Assistant 的 60-call 极限轮为 60/60、峰值 inflight 60，未出现 429、5xx、连接或超时
-错误。极限轮以 60 requests/s 启动；主实验使用 20 requests/s，以免账号级合并限流影响
-其他调用。详见
+active Qwen3.5 Assistant 使用官方 600 RPM / 1M TPM 配额下的保守 16 workers / 8 requests/s，
+并在每次真实 route/action/body provider call 前共享配速器。历史 Qwen3.7 的 60 workers /
+20 requests/s 只绑定旧 Core Fast lineage，不迁移到 active Qwen3.5；其历史压测见
 [`qwen37-flash-assistant-concurrency-benchmark-20260812.md`](qwen37-flash-assistant-concurrency-benchmark-20260812.md)。
 
 Qwen3.8 Feedback 的 60-call 实测使用 60 workers、8 requests/s，59/60 通过、服务错误为

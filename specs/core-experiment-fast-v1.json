@@ -11,8 +11,8 @@
     "utility.recipe_guidance"
   ],
   "concurrency": {
-    "assistant": 60,
-    "assistant_requests_per_second": 20.0,
+    "assistant": 16,
+    "assistant_requests_per_second": 8.0,
     "feedback": 60,
     "feedback_requests_per_second": 8.0,
     "final_judge": 4
@@ -34,9 +34,10 @@
     "The action model reads the selected Skill Body, chooses function tools, and freely generates the final response text; runner preflight and fixed repair remain evaluation safeguards, not a response compiler.",
     "S1 uses six isolated capability branches; each Creator proposal has independently screenable action-policy and response-policy treatments before capability composition and Bank fan-in.",
     "Action-policy replay fixes the Static route and reruns the action/tool loop; response-policy replay fixes route and tools and regenerates only the evidence/cards/answer/fallback response.",
-    "The model-generated Static opt800 and fixed samples are frozen from the 2026-08-13 fresh lineage. Ten earlier exploratory rounds all rolled back; a later 30-round dual-policy campaign accepted only R12 in an independent run root, while this tracked spec remains a Static-parent experiment template."
+    "The model-generated Static opt800 and fixed samples are frozen from the 2026-08-13 fresh lineage. Ten earlier exploratory rounds all rolled back; a later 30-round dual-policy campaign accepted only R12 in an independent run root, while this tracked spec remains a Static-parent experiment template.",
+    "Active Static opt800 was freshly generated with qwen3.5-flash-2026-02-23; the tracked spec binds its SHA and deterministic fixed samples."
   ],
-  "experiment_id": "portfolio-core-qwen37-model-generated-static-v1-selected-20260813",
+  "experiment_id": "portfolio-core-qwen35-model-generated-static-v1-selected-20260815",
   "fixed_samples": {
     "body48": [
       {
@@ -71,37 +72,17 @@
       },
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0220",
+        "query_id": "r2-core-0296",
         "role": "body_anchor"
       },
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0244",
+        "query_id": "r2-core-0317",
         "role": "body_anchor"
       },
       {
         "capability": "product.exact_match",
-        "query_id": "r2-core-0203",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0228",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.exact_match",
         "query_id": "r2-core-0229",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0230",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.exact_match",
-        "query_id": "r2-core-0280",
         "role": "body_failure"
       },
       {
@@ -111,7 +92,22 @@
       },
       {
         "capability": "product.exact_match",
+        "query_id": "r2-core-0551",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0926",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.exact_match",
         "query_id": "r2-core-0201",
+        "role": "body_anchor"
+      },
+      {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0203",
         "role": "body_anchor"
       },
       {
@@ -120,8 +116,18 @@
         "role": "body_anchor"
       },
       {
+        "capability": "product.exact_match",
+        "query_id": "r2-core-0226",
+        "role": "body_anchor"
+      },
+      {
         "capability": "product.multi_search",
         "query_id": "r2-core-0207",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.multi_search",
+        "query_id": "r2-core-0208",
         "role": "body_failure"
       },
       {
@@ -146,37 +152,17 @@
       },
       {
         "capability": "product.multi_search",
-        "query_id": "r2-core-0234",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.multi_search",
-        "query_id": "r2-core-0208",
+        "query_id": "r2-core-0458",
         "role": "body_anchor"
       },
       {
         "capability": "product.multi_search",
-        "query_id": "r2-core-0235",
+        "query_id": "r2-core-0459",
         "role": "body_anchor"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0211",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0215",
-        "role": "body_failure"
       },
       {
         "capability": "product.style_recommendation",
         "query_id": "r2-core-0236",
-        "role": "body_failure"
-      },
-      {
-        "capability": "product.style_recommendation",
-        "query_id": "r2-core-0238",
         "role": "body_failure"
       },
       {
@@ -191,12 +177,27 @@
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0212",
+        "query_id": "r2-core-0289",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0312",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0314",
+        "role": "body_failure"
+      },
+      {
+        "capability": "product.style_recommendation",
+        "query_id": "r2-core-0211",
         "role": "body_anchor"
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0213",
+        "query_id": "r2-core-0212",
         "role": "body_anchor"
       },
       {
@@ -276,7 +277,7 @@
       },
       {
         "capability": "utility.recipe_guidance",
-        "query_id": "r2-core-0348",
+        "query_id": "r2-core-0250",
         "role": "body_anchor"
       }
     ],
@@ -288,7 +289,7 @@
       },
       {
         "capability": "knowledge.visual_encyclopedia",
-        "query_id": "r2-core-0220",
+        "query_id": "r2-core-0296",
         "role": "anchor"
       },
       {
@@ -308,17 +309,17 @@
       },
       {
         "capability": "product.multi_search",
-        "query_id": "r2-core-0208",
+        "query_id": "r2-core-0458",
         "role": "anchor"
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0211",
+        "query_id": "r2-core-0236",
         "role": "failure"
       },
       {
         "capability": "product.style_recommendation",
-        "query_id": "r2-core-0212",
+        "query_id": "r2-core-0211",
         "role": "anchor"
       },
       {
@@ -489,7 +490,7 @@
       "moving_alias": false,
       "provider": "dashscope",
       "reasoning_effort": null,
-      "requested_model": "qwen3.7-flash-2026-07-15"
+      "requested_model": "qwen3.5-flash-2026-02-23"
     },
     "creator": {
       "credential_env": null,
@@ -521,11 +522,11 @@
       "moving_alias": false,
       "provider": "dashscope",
       "reasoning_effort": null,
-      "requested_model": "qwen3.7-flash-2026-07-15"
+      "requested_model": "qwen3.5-flash-2026-02-23"
     }
   },
   "opt_fold_mapping_sha256": "3b737f06539f409a69dbb71e90863cbddb7b6408aa753cd8d61074f4b0077b26",
-  "opt_static_results_sha256": "a9949cd673fff54711053c0ce8b10b3999f4c71641ef6498706b03082c0805a7",
+  "opt_static_results_sha256": "819363d8a3dcab09abbbd1d0d72539be4307f3d34ddacfc274ade79e1cb6950d",
   "paths": {
     "asset_catalog_dir": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\remote-processing\\catalog",
     "asset_root": "E:\\skillchain-data\\clean\\portfolio-core-v9-multi-closure",
@@ -545,7 +546,7 @@
     "inaturalist_manifest": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\inaturalist-runtime.jsonl",
     "opt_fold_mapping": "E:\\skillchain-data\\runs\\portfolio-core-20260808-opt-offline-v1\\folds\\fold-mapping.jsonl",
     "opt_route_attribution": "E:\\skillchain-data\\runs\\portfolio-core-20260808-opt-offline-v1\\hybrid-router\\oof-rows.jsonl",
-    "opt_static_results": "D:\\athena\\experiment-runs\\portfolio-core-qwen37-model-generated-v1-20260813\\artifacts\\static-opt800.jsonl",
+    "opt_static_results": "D:\\athena\\experiment-runs\\portfolio-core-qwen35-symmetric-s2-v1-20260815\\artifacts\\static-opt800.jsonl",
     "queries": "E:\\skillchain-data\\runs\\portfolio-core-20260805-r3-materialized-v1\\queries.jsonl",
     "recipe_evidence": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\recipe-evidence-runtime.jsonl",
     "rpc_scenes": "E:\\skillchain-data\\runs\\portfolio-core-20260812-fast-runtime-v1\\static-opt-runtime-v8\\core-runtime-sources\\rpc-scenes.jsonl",
@@ -570,12 +571,20 @@
     "python_factory": "skillchain.evaluation.core_fast.live_adapter:create_adapter"
   },
   "s1_authoring_input_file_sha256": "3dca02c57665b82806e7f1d8c30b8228557cdc0068b8308d81df4f18801ab6cf",
+  "s1_parent": null,
   "s1_settings": {
+    "bounded_edit_surface": "author-fields",
+    "counterfactual_gain_seed_query_ids": [],
+    "counterfactual_parent_success_exclude_query_ids": [],
+    "counterfactual_regression_query_ids": [],
     "creator_directives": [
       "Run six isolated capability branches. In each branch return separate action-policy and response-policy treatments; either surface may inherit independently. Keep the routing Description and the other five Skills byte-exact.",
       "Action policy may change only tool-first choice, public argument construction, continuation, retry, and stopping. Response policy may change only visible-evidence claim selection, cards, answer sections, uncertainty, and fallback.",
       "Do not add typed semantic-policy metadata. Do not refer to evaluation labels, held-out data, judges, or private runtime paths."
     ],
+    "cycle_id": null,
+    "cycle_preflight_path": null,
+    "cycle_preflight_sha256": null,
     "feedback_allocation": "balanced-six-capability",
     "feedback_canary_count": 6,
     "feedback_format_retry_limit": 1,
@@ -583,6 +592,8 @@
     "feedback_selection_policy": "discovery-dual-policy-v5",
     "feedback_total_count": 48,
     "max_patched_capabilities": 6,
+    "parent_protection_query_ids": [],
+    "prior_experiment_memory": {},
     "proposal_mode": "six-capability-dual-policy-fanout-fanin-v3",
     "protected_capabilities": [],
     "required_patch_phrases": {},
@@ -594,8 +605,11 @@
       "product.style_recommendation",
       "utility.document_reading",
       "utility.recipe_guidance"
-    ]
+    ],
+    "target_surface": null
   },
+  "s2_parent": null,
+  "s2_settings": null,
   "schema_version": 1,
   "split_counts": {
     "dev_mini": 200,

@@ -2552,9 +2552,14 @@ def _prepare_adaptive_s2_spec(
     historical_regression_ids: tuple[str, ...] = (),
 ) -> CoreFastSpec:
     bootstrap_spec_path = output_spec.with_name(f"{round_id}-bootstrap.json")
+    gate_results_path = route_results_path.with_name(
+        f"{route_results_path.stem}-gate75.jsonl"
+    )
     bootstrap_args = [
         "bootstrap-spec",
         "--source-spec",
+        str(source_spec_path),
+        "--runtime-spec",
         str(source_spec_path),
         "--source-root",
         str(source_root),
@@ -2564,6 +2569,8 @@ def _prepare_adaptive_s2_spec(
         source_round_id,
         "--route-results-path",
         str(route_results_path),
+        "--gate-results-path",
+        str(gate_results_path),
         "--output-spec",
         str(bootstrap_spec_path),
         "--experiment-id",
@@ -2574,6 +2581,7 @@ def _prepare_adaptive_s2_spec(
         round_id,
         "--target-capability",
         target,
+        "--symmetric-qwen35",
     ]
     if preparatory_binding_path is not None:
         bootstrap_args.extend(["--preparatory-binding", str(preparatory_binding_path)])
@@ -2592,6 +2600,9 @@ def _prepare_adaptive_s2_spec(
     route_engine.initialize_s2_parent_route800()
     receipt = route_engine.run_s2_parent_route800()
     assert receipt["row_count"] == 800
+    route_engine.initialize_s2_parent_gate75()
+    gate_receipt = route_engine.run_s2_parent_gate75()
+    assert gate_receipt["row_count"] == 75
     assert (
         prepare_s2_cli.main(
             [
@@ -2600,6 +2611,8 @@ def _prepare_adaptive_s2_spec(
                 str(bootstrap_spec_path),
                 "--route-bootstrap",
                 str(route_root / "s2-parent-route800-bootstrap.json"),
+                "--gate-bootstrap",
+                str(route_root / "s2-parent-gate75-bootstrap.json"),
                 "--output-spec",
                 str(output_spec),
             ]
@@ -2613,10 +2626,29 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     fast_fixture, tmp_path: Path
 ) -> None:
     base_spec, _base_spec_path, queries = fast_fixture
+    opt_path = Path(base_spec.paths.opt_static_results)
+    opt_rows = [
+        json.loads(line) for line in opt_path.read_text(encoding="utf-8").splitlines()
+    ]
+    for row in opt_rows:
+        context = row["replay_context"]
+        context["response"]["backbone_model"] = config.ASSISTANT_MODEL
+        context["assistant_result"]["backbone_model"] = config.ASSISTANT_MODEL
+        for call in context["receipt"]["model_calls"]:
+            call["requested_model"] = config.ASSISTANT_MODEL
+            call["response_model"] = config.ASSISTANT_MODEL
+    opt_path.write_bytes(b"".join(canonical_json_bytes(row) for row in opt_rows))
+    source_models = dict(base_spec.models)
+    for role in ("assistant", "route_only"):
+        source_models[role] = source_models[role].model_copy(
+            update={"requested_model": config.ASSISTANT_MODEL}
+        )
     source_spec = base_spec.model_copy(
         update={
             "experiment_id": "accepted-r52-source",
             "s1_settings": base_spec.s1_settings.model_copy(update={"round_id": "r52"}),
+            "models": source_models,
+            "opt_static_results_sha256": sha256_bytes(opt_path.read_bytes()),
         }
     )
     source_spec_path = tmp_path / "r52-spec.json"
@@ -2696,66 +2728,6 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         == 2
     )
     assert not unauthorized_spec.exists()
-    qualification_spec_path = tmp_path / "qwen35-route-qualification.json"
-    qualification_routes = tmp_path / "qwen35-route800.jsonl"
-    assert (
-        prepare_s2_cli.main(
-            [
-                "bootstrap-spec",
-                "--source-spec",
-                str(source_spec_path),
-                "--source-root",
-                str(source_root),
-                "--source-stage",
-                "s1",
-                "--source-round-id",
-                "r52",
-                "--preparatory-binding",
-                str(preparatory_path),
-                "--route-results-path",
-                str(qualification_routes),
-                "--output-spec",
-                str(qualification_spec_path),
-                "--experiment-id",
-                "qwen35-route-qualification",
-                "--cycle-id",
-                "s2-route-model-qualification-v1",
-                "--round-id",
-                "s2r1",
-                "--target-capability",
-                "product.exact_match",
-                "--route-model-qualification",
-                config.QWEN35_ROUTE_QUALIFICATION_MODEL,
-            ]
-        )
-        == 0
-    )
-    qualification_spec = load_core_fast_spec(qualification_spec_path)
-    assert (
-        qualification_spec.models["route_only"].requested_model
-        == config.QWEN35_ROUTE_QUALIFICATION_MODEL
-    )
-    assert qualification_spec.models["assistant"].requested_model == (
-        source_spec.models["assistant"].requested_model
-    )
-    assert (
-        qualification_spec.concurrency.assistant,
-        qualification_spec.concurrency.assistant_requests_per_second,
-    ) == (16, 8.0)
-    qualification_engine = CoreFastEngine(
-        spec=qualification_spec,
-        spec_path=qualification_spec_path,
-        output_root=tmp_path / "qwen35-route-profile-root",
-        adapter=FakeCoreFastAdapter(),
-    )
-    qualification_engine.initialize_s2_parent_route800()
-    qualification_receipt = qualification_engine.run_s2_parent_route800()
-    assert qualification_receipt["route_model"] == (
-        config.QWEN35_ROUTE_QUALIFICATION_MODEL
-    )
-    assert qualification_receipt["row_count"] == 800
-    with pytest.raises(FastPathError, match="route-model qualification"):
-        qualification_engine.s2_readiness()
     fold_roles = {
         row["query_id"]: row["role"]
         for row in (
@@ -2828,9 +2800,12 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     assert prepared["provider_calls"] == 0
     readiness = first_engine.s2_readiness()
     assert readiness["status"] == "s2_runtime_ready"
+    assert readiness["parent_gate_results_sha256"] == (
+        first_spec.s2_parent.gate_results_sha256
+    )
     assert readiness["call_ceiling_after_parent_profile"] == {
         "creator": 1,
-        "assistant": 150,
+        "assistant": 75,
         "route_only": 206,
         "feedback": 0,
         "judge": 0,
@@ -2959,6 +2934,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     )
     assert invalid_candidate is None and invalid_rule is None
     first_engine.run(through="s2")
+    assert first_adapter.calls["assistant"] == 75
     creator_intent = CallIntent.model_validate_json(
         (
             first_root / "calls" / "creator" / "s2r1-route-optimizer-once.intent.json"

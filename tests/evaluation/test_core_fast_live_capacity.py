@@ -270,10 +270,12 @@ def test_start_pacer_uses_measured_spacing_with_a_fake_clock(
     assert clock.now == pytest.approx(100.0 + 3 * interval)
 
 
-def test_core_fast_capacity_model_is_bound_to_both_measured_profiles() -> None:
+def test_core_fast_capacity_model_binds_active_assistant_and_feedback_profiles() -> (
+    None
+):
     capacity = Concurrency()
 
-    assert (capacity.assistant, capacity.assistant_requests_per_second) == (60, 20.0)
+    assert (capacity.assistant, capacity.assistant_requests_per_second) == (16, 8.0)
     assert (capacity.feedback, capacity.feedback_requests_per_second) == (60, 8.0)
 
 

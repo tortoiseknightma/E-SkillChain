@@ -30,7 +30,7 @@ def _result(*, ordinal: int, error: str | None = None) -> ProbeResult:
         finish_reason="stop" if ordinal % 2 == 0 else "tool_calls",
         response_sha256="a" * 64,
         request_id_sha256="b" * 64,
-        cost_cny="0.000304" if error != "rate_limit" else "0",
+        cost_cny="0.00034" if error != "rate_limit" else "0",
     )
 
 
@@ -50,10 +50,10 @@ def test_probe_alternates_production_action_variants() -> None:
     ]
 
 
-def test_cost_uses_qwen37_flash_under_32k_tier() -> None:
-    assert DEFAULT_REQUESTS_PER_SECOND == 20.0
-    assert _cost(1_400, 30) == Decimal("0.000304")
-    assert _assistant_cost(1_400, 30) == 0.000304
+def test_cost_uses_active_qwen35_flash_tier() -> None:
+    assert DEFAULT_REQUESTS_PER_SECOND == 8.0
+    assert _cost(1_400, 30) == Decimal("0.000340")
+    assert _assistant_cost(1_400, 30) == 0.00034
 
 
 def test_assistant_start_pacer_smooths_provider_calls() -> None:
@@ -64,16 +64,16 @@ def test_assistant_start_pacer_smooths_provider_calls() -> None:
         sleeps.append(delay)
         now[0] += delay
 
-    pacer = StartPacer(20.0, clock=lambda: now[0], sleeper=sleep)
+    pacer = StartPacer(8.0, clock=lambda: now[0], sleeper=sleep)
     for _ in range(4):
         pacer.wait()
 
-    assert sleeps == pytest.approx([0.05, 0.05, 0.05])
+    assert sleeps == pytest.approx([0.125, 0.125, 0.125])
 
 
 def test_active_assistant_capacity_constants_bind_the_measured_profile() -> None:
-    assert config.ASSISTANT_VALIDATED_CONCURRENCY == 60
-    assert config.ASSISTANT_REQUESTS_PER_SECOND == 20.0
+    assert config.ASSISTANT_VALIDATED_CONCURRENCY == 16
+    assert config.ASSISTANT_REQUESTS_PER_SECOND == 8.0
     assert config.ASSISTANT_ACCEPTABLE_ERROR_RATE == 0.02
     assert config.ASSISTANT_SERVICE_ERROR_RATE == 0.0
 

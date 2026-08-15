@@ -64,7 +64,7 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
         {
             "schema_version": 1,
             "kind": "core-fast-static-opt800-bootstrap",
-            "assistant_model": lineage.QWEN37_ASSISTANT_MODEL,
+            "assistant_model": lineage.ACTIVE_ASSISTANT_MODEL,
             "assistant_contract": bootstrap.runtime.assistant_contract,
             "opt_static_results": str(opt_path.resolve()),
             "opt_static_results_sha256": sha256_bytes(opt_path.read_bytes()),
@@ -74,6 +74,24 @@ def test_prepare_bootstrap_and_freeze_r1_spec(tmp_path: Path) -> None:
             "fixed_samples": _fixed_samples(),
         },
     )
+    default_path = tmp_path / "specs" / "active-default.json"
+    active_default = lineage.freeze_active_default_spec(
+        base_spec_path=bootstrap_spec_path,
+        bootstrap_result_path=bootstrap_result_path,
+        output_spec_path=default_path,
+        experiment_id="active-static-default-test",
+    )
+    assert load_core_fast_spec(default_path) == active_default
+    assert active_default.opt_static_results_sha256 == sha256_bytes(
+        opt_path.read_bytes()
+    )
+    assert active_default.fixed_samples.model_dump(mode="json") == _fixed_samples()
+    assert (
+        active_default.models["assistant"].requested_model
+        == lineage.ACTIVE_ASSISTANT_MODEL
+    )
+    assert active_default.s1_settings == bootstrap.s1_settings
+
     r1_path = tmp_path / "specs" / "r1.json"
     r1 = lineage.freeze_r1_spec(
         bootstrap_spec_path=bootstrap_spec_path,

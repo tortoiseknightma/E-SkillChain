@@ -13,7 +13,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 > **S2 runtime ready（2026-08-15）：forward-only S2 已完成 30/30 次真实实验闭环。S2R17 的 Exact Description 以局部 6 gains / 1 regression、显式保护 0 regression 进入 route_gate75，并取得 route macro-F1 `0.9162→0.9773`、corrected/broken `4/0`、GCS macro `+2.3485pp`、hard errors `−1`，接受 Bank `3767a383…78a2`；后续 R18–R30 全部按门回滚到它。每轮绑定 R52 或上一轮 accepted S2 Bank，fresh/reuse parent route800，只允许一个 capability 的一条 typed conditional route rule。S3、Judge 和已消费的 test300 均保持 sealed。**
 
-> **Qwen3.5 route qualification（2026-08-15）：同一 R52 Bank、同一 opt800 和同一 route wire 下，`qwen3.5-flash-2026-02-23` 为 719/800 correct、macro-F1 `0.9142`，低于 Qwen3.7 的 760/800、`0.9581`；成对为 4 corrected / 45 broken，净增加 41 条错误，主要来自 Exact→Multi。它确实提供更大但偏 Exact 的 S2 空间。当前只保留为 qualification 候选，不修改默认模型；代码禁止 route-only Qwen3.5 与 full Assistant Qwen3.7 混用启动 S2。**
+> **Qwen3.5 正式对称 S2 lineage（2026-08-15）：`qwen3.5-flash-2026-02-23` 现已同时成为 full Assistant 与 route-only 的 active model，使用 16 workers / 8 requests/s。新 lineage 已完成 fresh Static opt800 800/800（SHA `819363d8…6950d`，¥1.5291572）、R52 route800 800/800（717/800 correct，SHA `c6e48eca…f4e1e`，¥0.068897）和 full-Assistant route_gate75 75/75（route macro-F1 `0.9531481`、hard errors 0，SHA `62350d1d…e44f`，¥0.148264）。tracked spec、parent gate 与 readiness 均已冻结并通过；尚未调用 Creator，也未启动新的 S2 candidate。先前 719/800 的 route-only qualification 保持为历史诊断，不能与本正式 lineage 拼接。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -28,10 +28,11 @@ uv run python scripts/run_core_experiment.py validate
 ```
 
 当前 tracked spec 已把 `assistant_contract` 绑定为
-`core-fast-model-generated-action-response-v1`，并绑定 fresh Static opt800 SHA
-`a9949cd673fff547…2c0805a7` 与重新选择的 fixed samples。`validate --inputs-only` 和完整
-`validate` 均通过；历史 deterministic R10 仍在独立 root 中保持只读，不能作为新 runtime 的
-parent 或 resume 输入。
+`core-fast-model-generated-action-response-v1`，并把 full Assistant 与 route-only 同时绑定为
+`qwen3.5-flash-2026-02-23`；fresh Static opt800 SHA 为
+`819363d8a3dcab09…79e1cb6950d`，fixed samples 由该新基线重新冻结。`validate --inputs-only`
+和完整 `validate` 均通过；历史 Qwen3.7 与 deterministic roots 保持只读，不能作为 active
+runtime 的 parent、baseline 或 resume 输入。
 
 当前 runner 在冻结 Description 完成路由后，把所选 Skill 的 Body 与允许的函数工具交给 action model。
 模型负责工具选择、参数和最终回答文本；runner 只负责真实工具执行、格式预检与最多一次固定修复，
@@ -174,8 +175,8 @@ replacement 局部 1/0，但 replay hard-error `+1.5pp`；R60 Exact 为 0/0。�
 均未访问。R55–R60 新增可追踪 DashScope ¥1.85708305、5 个 Creator 会话；进度为 27/30，R12 与 R52
 身份、局部门、正式 replay/body 门和 test300 规则均未改变。
 
-新 Fast Path 的实测容量配置为：Assistant `qwen3.7-flash-2026-07-15` 并发上限 `60`，
-每次真实 HTTP 调用按 `20 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
+新 Fast Path 的 active 容量配置为：Assistant `qwen3.5-flash-2026-02-23` 并发上限 `16`，
+每次真实 HTTP 调用按 `8 requests/s` 平滑启动；Qwen3.8 Feedback worker 上限 `60`、`8 requests/s`，当前
 采用 `canary6 + remaining42/54` 的 48 或 60 条 Feedback。完整集合必须在
 Creator 前通过 completeness、service-error 与 parse/schema-error 门。限速作用于每次 provider call，而不是外层
 query。该配置只用于新 Fast execution overlay；历史 Formal profile、配置和 receipt
@@ -475,7 +476,7 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 3. R34–R63 已完成 30/30，冻结停止；不追加第 31 个自适应 round，不重测 R52，不因 test 的 +1.6393pp 方向性增益放宽门，也不测试第二个 finalist。
 4. 当前 test300 已永久消费，不再是 untouched 五配置 test。若未来需要无偏五配置最终比较，必须建立新的 holdout；不得把本次 600 个 paired outer calls 混入新的开发证据。
 5. 若进入后续机制周期，必须使用新的预注册开发证据，并在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；所有独立候选仍只从 R12 派生。
-6. S2 runtime 已离线 ready、真实 S2 尚未启动。启动时必须先生成 R52 route-only opt800、冻结 9-case packet 并通过 `s2-readiness`；每轮使用独立 root，保持 Body byte-exact，只运行 replay route screen 与 route_gate75。rejected working branch 回滚到其 accepted parent，Portfolio selected 仍保持 R12；S3/Judge/test300 继续关闭。
+6. Qwen3.5 对称 S2 runtime 已完成 fresh Static、R52 route800、full-Assistant route_gate75、9-case packet 与 `s2-readiness`；新的 S2 candidate 尚未启动。后续每轮使用独立 root，保持 Body byte-exact，只运行 replay route screen 与冻结的 route_gate75。rejected working branch 回滚到 R52，Portfolio selected 仍保持 R12；S3/Judge/test300 继续关闭。
 
 ---
 
