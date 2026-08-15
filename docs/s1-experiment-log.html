@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>19 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>20 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥0.8954654；19 个尝试中 19 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥0.9142208；20 个尝试中 20 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2539,6 +2539,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R19 回滚到 S2R17。R20 保持同一 Multi 单 Description surface，把 <code>0448/0780</code> 与一个既有 Multi 边界成功例设为历史保护；不携带 R19 candidate bytes，正式门不变。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r19-multi-from-s2r17\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r19-multi-from-s2r17\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r20" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R20 · MULTI REGRESSION-PROTECTED</div><h3>加入 R19 回退反例后为 0 gains / 2 regressions，显式保护仍失败</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">Multi direction stopped</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>417ca218…9cf5</code></dd></div>
+            <div><dt>Packet / rule</dt><dd><code>c5269f67…014e8</code> / <code>8dd3fab6…5816</code></dd></div>
+            <div><dt>Local screen</dt><dd>0 gains；regressions <code>0354/0780</code>；<code>0780</code> 为显式保护回退</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0187554；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R20 的短 Multi rule 明确至少两个不同可见商品并排除 recipe/单商品变体，但没有修复任何 parent error；反而使两个 parent-success 失败，其中一条正是加入 packet 的 R19 regression <code>0780</code>。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>两轮 Multi 描述改写从 1/2 降至 0/2，且目标 cluster 仅三例；继续在同一 surface 堆边界语句缺少稳定正信号。更合理的是回到 accepted Exact 描述的残余 Exact→Multi 簇，同时显式保护 R17 已修复样本。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>停止当前 Multi 方向，R20 回滚到 S2R17。R21 以 S2R17 为 parent 做 Exact residual 单 Description edit，历史保护固定为 R17 的三个 accepted gains；不使用 R19/R20 Bank。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r20-multi-regression-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r20-multi-regression-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
