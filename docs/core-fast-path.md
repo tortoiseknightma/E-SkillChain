@@ -132,6 +132,58 @@ Encyclopedia `+9.8361pp`，capability macro `+1.6393pp`，CI95 lower `0pp`，har
 不把 R52 自动提升为最终 Bank。机器可读边界见
 [`specs/s2-r52-preparatory-branch-v1.json`](../specs/s2-r52-preparatory-branch-v1.json)。
 
+### Adaptive S2 runtime（离线 ready，真实调用尚未开始）
+
+S2 不再复用旧的一次性 `s2-route-optimizer-once`/hybrid attribution 路径。新的 forward-only
+round 绑定 R52 或上一轮 accepted S2 Bank、source decision、source manifest、机器可读的 R52
+preparatory authorization，以及该 working parent 的 fresh route-only opt800。每轮只允许一个
+target capability；Creator 不能自由重写 Description，只能输出一条
+`when / route_to / must_preserve_query_ids` typed rule。runtime 将它规范化追加到目标
+Description，并强制其余五个 Description 以及六个 Skill 的 Body/operators/static refs byte-exact。
+
+无 provider 的 `prepare-s2-round` 从 discovery600 选择一个 dominant confusion cluster：3 个失败、
+3 个 parent-success、3 个历史 regression/额外 parent-success；不足 9 条时在 Creator 前停止。
+候选先在 route-only replay200 上接受有界风险筛查：`gains >= 1`、`net >= 1`、
+`regressions <= 2`、`gains >= 4 × regressions`，且 6 个显式保护例必须 0 regression。通过后才执行
+smoke24 与冻结 `route_gate75` 的 parent/candidate 各 75 条完整 Assistant；不再误用 val200。
+accepted S2 Bank 可以成为下一轮 parent；rejected round 只回滚到 working parent，不能作为新
+source。无论 working branch 如何，Portfolio selected 在新的最终选择前仍为 R12。
+
+初始 R52 parent 的准备顺序如下；`<profile-root>` 与 `<round-root>` 必须是不同的新目录：
+
+```powershell
+uv run python scripts/prepare_s2_adaptive_round.py bootstrap-spec `
+  --source-spec D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b07-20260815\specs\r52.json `
+  --source-root D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b07-20260815\runs\r52 `
+  --source-stage s1 --source-round-id r52 `
+  --preparatory-binding specs\s2-r52-preparatory-branch-v1.json `
+  --route-results-path <route800.jsonl> --output-spec <bootstrap-spec.json> `
+  --experiment-id <experiment-id> --cycle-id <cycle-id> --round-id s2r1 `
+  --target-capability <capability>
+
+uv run python scripts/run_core_experiment.py --spec <bootstrap-spec.json> `
+  --output-root <profile-root> s2-parent-route800
+
+uv run python scripts/prepare_s2_adaptive_round.py freeze-spec `
+  --bootstrap-spec <bootstrap-spec.json> `
+  --route-bootstrap <profile-root>\s2-parent-route800-bootstrap.json `
+  --output-spec <round-spec.json>
+
+uv run python scripts/run_core_experiment.py --spec <round-spec.json> validate
+uv run python scripts/run_core_experiment.py --spec <round-spec.json> `
+  --output-root <round-root> prepare-s2-round
+uv run python scripts/run_core_experiment.py --spec <round-spec.json> `
+  --output-root <round-root> s2-readiness
+uv run python scripts/run_core_experiment.py --spec <round-spec.json> `
+  --output-root <round-root> run --through s2
+```
+
+parent route800 对同一 accepted parent 可跨 rejected rounds 复用；只有 accepted S2 改变了 Bank 时才
+需要新的 route800 profile。按当前保守单价，profile 最坏约 CNY 4；完成 profile 后单轮 ceiling 为
+206 route-only + 174 Assistant + 1 Creator，DashScope 预计 CNY 6.25。两段必须分阶段汇报，避免把
+合计 CNY 10.25 放入同一个自主预算窗口。`s2-readiness` 本身 0-call，并保持 S3、Judge、已消费的
+test300 与五配置矩阵 sealed。
+
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 

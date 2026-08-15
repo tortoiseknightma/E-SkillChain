@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import prepare_s2_adaptive_round as prepare_s2_cli
 from skillchain.evaluation.core_fast.engine import CoreFastEngine, FastPathError
 from skillchain.evaluation.core_fast.fake_provider import FakeCoreFastAdapter
 from skillchain.evaluation.core_fast.models import (
@@ -13,10 +14,13 @@ from skillchain.evaluation.core_fast.models import (
     CONFIGS,
     AssistantObservation,
     CallIntent,
+    CallResult,
     CoreFastSpec,
     S1_BODY_PATCH_TARGETS,
     S1ParentBinding,
     S1Settings,
+    StageDecision,
+    load_core_fast_spec,
 )
 from skillchain.evaluation.evaluator_outputs import VisualFeedbackOutput
 from skillchain.evaluation.portfolio_gcs import (
@@ -2491,3 +2495,382 @@ def test_budget_cutoff_occurs_before_new_intent(fast_fixture, tmp_path: Path) ->
     with pytest.raises(FastPathError, match="hard cap"):
         engine._call(role="feedback", call_id="over", purpose="budget", payload={})
     assert not (engine.output_root / "calls" / "feedback" / "over.intent.json").exists()
+
+
+def _write_accepted_stage_source(
+    *,
+    spec: CoreFastSpec,
+    spec_path: Path,
+    root: Path,
+    stage: str,
+    round_id: str,
+    bank: StaticBankArtifact,
+) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "banks").mkdir()
+    (root / "decisions").mkdir()
+    spec_path.write_bytes(canonical_json_bytes(spec.model_dump(mode="json")))
+    (root / "banks" / f"{stage}-selected.json").write_bytes(bank.canonical_bytes())
+    decision = StageDecision(
+        stage=stage,  # type: ignore[arg-type]
+        accepted=True,
+        alias_of=None,
+        parent_bank=_bank().bank_sha256,
+        candidate_bank=bank.bank_sha256,
+        selected_bank=bank.bank_sha256,
+        reasons=(),
+        metrics={"round_id": round_id},
+    )
+    (root / "decisions" / f"{stage}.json").write_bytes(
+        canonical_json_bytes(decision.model_dump(mode="json"))
+    )
+    (root / "manifest.json").write_bytes(
+        canonical_json_bytes(
+            {
+                "input_sha256": {"spec": sha256_bytes(spec_path.read_bytes())},
+                f"{stage}_settings": {"round_id": round_id},
+            }
+        )
+    )
+
+
+def _prepare_adaptive_s2_spec(
+    *,
+    source_spec_path: Path,
+    source_root: Path,
+    source_stage: str,
+    source_round_id: str,
+    round_id: str,
+    target: str,
+    route_results_path: Path,
+    route_root: Path,
+    output_spec: Path,
+    wrong_ids: frozenset[str],
+    preparatory_binding_path: Path | None = None,
+) -> CoreFastSpec:
+    bootstrap_spec_path = output_spec.with_name(f"{round_id}-bootstrap.json")
+    bootstrap_args = [
+        "bootstrap-spec",
+        "--source-spec",
+        str(source_spec_path),
+        "--source-root",
+        str(source_root),
+        "--source-stage",
+        source_stage,
+        "--source-round-id",
+        source_round_id,
+        "--route-results-path",
+        str(route_results_path),
+        "--output-spec",
+        str(bootstrap_spec_path),
+        "--experiment-id",
+        f"adaptive-{round_id}",
+        "--cycle-id",
+        "s2-adaptive-test-v1",
+        "--round-id",
+        round_id,
+        "--target-capability",
+        target,
+    ]
+    if preparatory_binding_path is not None:
+        bootstrap_args.extend(["--preparatory-binding", str(preparatory_binding_path)])
+    assert prepare_s2_cli.main(bootstrap_args) == 0
+    bootstrap_spec = load_core_fast_spec(bootstrap_spec_path)
+    route_engine = CoreFastEngine(
+        spec=bootstrap_spec,
+        spec_path=bootstrap_spec_path,
+        output_root=route_root,
+        adapter=FakeCoreFastAdapter(route_only_wrong_ids=wrong_ids),
+    )
+    route_engine.initialize_s2_parent_route800()
+    receipt = route_engine.run_s2_parent_route800()
+    assert receipt["row_count"] == 800
+    assert (
+        prepare_s2_cli.main(
+            [
+                "freeze-spec",
+                "--bootstrap-spec",
+                str(bootstrap_spec_path),
+                "--route-bootstrap",
+                str(route_root / "s2-parent-route800-bootstrap.json"),
+                "--output-spec",
+                str(output_spec),
+            ]
+        )
+        == 0
+    )
+    return load_core_fast_spec(output_spec)
+
+
+def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
+    fast_fixture, tmp_path: Path
+) -> None:
+    base_spec, _base_spec_path, queries = fast_fixture
+    source_spec = base_spec.model_copy(
+        update={
+            "experiment_id": "accepted-r52-source",
+            "s1_settings": base_spec.s1_settings.model_copy(update={"round_id": "r52"}),
+        }
+    )
+    source_spec_path = tmp_path / "r52-spec.json"
+    source_root = tmp_path / "r52-root"
+    _write_accepted_stage_source(
+        spec=source_spec,
+        spec_path=source_spec_path,
+        root=source_root,
+        stage="s1",
+        round_id="r52",
+        bank=_bank(),
+    )
+    preparatory_path = tmp_path / "r52-preparatory.json"
+    source_bank_path = source_root / "banks" / "s1-selected.json"
+    source_decision_path = source_root / "decisions" / "s1.json"
+    source_manifest_path = source_root / "manifest.json"
+    preparatory_path.write_bytes(
+        canonical_json_bytes(
+            {
+                "schema_version": 1,
+                "kind": "core-fast-s2-preparatory-branch",
+                "status": "authorized-pre-s2-runtime-ready",
+                "source_s1": {
+                    "round_id": "r52",
+                    "bank_sha256": _bank().bank_sha256,
+                    "bank_file_sha256": sha256_bytes(source_bank_path.read_bytes()),
+                    "decision_file_sha256": sha256_bytes(
+                        source_decision_path.read_bytes()
+                    ),
+                    "manifest_file_sha256": sha256_bytes(
+                        source_manifest_path.read_bytes()
+                    ),
+                },
+                "s2_contract": {
+                    "working_parent_bank_sha256": _bank().bank_sha256,
+                    "on_s2_reject_portfolio_selected_bank_sha256": _bank().bank_sha256,
+                },
+                "portfolio_selection": {
+                    "current_selected_bank_sha256": _bank().bank_sha256,
+                },
+            }
+        )
+    )
+    unauthorized_path = tmp_path / "unauthorized-r17.json"
+    unauthorized = json.loads(preparatory_path.read_text(encoding="utf-8"))
+    unauthorized["source_s1"]["round_id"] = "r17"
+    unauthorized_path.write_bytes(canonical_json_bytes(unauthorized))
+    unauthorized_spec = tmp_path / "unauthorized-s2.json"
+    assert (
+        prepare_s2_cli.main(
+            [
+                "bootstrap-spec",
+                "--source-spec",
+                str(source_spec_path),
+                "--source-root",
+                str(source_root),
+                "--source-stage",
+                "s1",
+                "--source-round-id",
+                "r52",
+                "--preparatory-binding",
+                str(unauthorized_path),
+                "--route-results-path",
+                str(tmp_path / "unauthorized-route.jsonl"),
+                "--output-spec",
+                str(unauthorized_spec),
+                "--experiment-id",
+                "unauthorized-r17",
+                "--cycle-id",
+                "s2-adaptive-test-v1",
+                "--round-id",
+                "s2r1",
+                "--target-capability",
+                "product.exact_match",
+            ]
+        )
+        == 2
+    )
+    assert not unauthorized_spec.exists()
+    fold_roles = {
+        row["query_id"]: row["role"]
+        for row in (
+            json.loads(line)
+            for line in Path(base_spec.paths.opt_fold_mapping)
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    }
+
+    def target_wrong_ids(capability: str) -> frozenset[str]:
+        target_queries = [
+            query
+            for query in queries
+            if query.split == "opt_pool" and query.canonical_capability == capability
+        ]
+        discovery = [
+            query.query_id
+            for query in target_queries
+            if fold_roles[query.query_id] == "discovery"
+        ][:3]
+        replay = [
+            query.query_id
+            for query in target_queries
+            if fold_roles[query.query_id] == "replay"
+        ][:4]
+        return frozenset([*discovery, *replay])
+
+    first_target = "knowledge.visual_encyclopedia"
+    first_wrong = target_wrong_ids(first_target)
+    first_spec_path = tmp_path / "s2r1.json"
+    first_spec = _prepare_adaptive_s2_spec(
+        source_spec_path=source_spec_path,
+        source_root=source_root,
+        source_stage="s1",
+        source_round_id="r52",
+        round_id="s2r1",
+        target=first_target,
+        route_results_path=tmp_path / "s2r1-parent-routes.jsonl",
+        route_root=tmp_path / "s2r1-route-root",
+        output_spec=first_spec_path,
+        wrong_ids=first_wrong,
+        preparatory_binding_path=preparatory_path,
+    )
+    first_root = tmp_path / "s2r1-root"
+    first_adapter = FakeCoreFastAdapter(route_only_wrong_ids=first_wrong)
+    first_engine = CoreFastEngine(
+        spec=first_spec,
+        spec_path=first_spec_path,
+        output_root=first_root,
+        adapter=first_adapter,
+    )
+    first_engine.initialize()
+    with pytest.raises(FastPathError, match="must be prepared byte-exact"):
+        first_engine.run(through="s2")
+    assert first_adapter.calls["creator"] == 0
+    prepared = first_engine.prepare_s2_round()
+    assert prepared["example_count"] == 9
+    assert prepared["provider_calls"] == 0
+    readiness = first_engine.s2_readiness()
+    assert readiness["status"] == "s2_runtime_ready"
+    assert readiness["call_ceiling_after_parent_profile"] == {
+        "creator": 1,
+        "assistant": 174,
+        "route_only": 206,
+        "feedback": 0,
+        "judge": 0,
+    }
+    packet = json.loads(
+        (first_root / "inputs" / "s2-evidence-packet.json").read_text(encoding="utf-8")
+    )
+    invalid_candidate, invalid_rule = first_engine._compile_adaptive_s2_rule(
+        result=CallResult(
+            call_id="invalid-freeform-s2",
+            role="creator",
+            status="success",
+            schema_valid=True,
+            requested_model="gpt-5.6-sol",
+            output={
+                "edits": [
+                    {
+                        "capability_id": first_target,
+                        "description": "A free-form replacement is not allowed.",
+                    }
+                ]
+            },
+        ),
+        parent=first_engine.s2_parent_bank(),
+        packet=packet,
+        target=first_target,
+    )
+    assert invalid_candidate is None and invalid_rule is None
+    first_engine.run(through="s2")
+    first = first_engine._existing_decision("s2")
+    assert first is not None and first.accepted
+    assert first.parent_bank == _bank().bank_sha256
+    assert first.selected_bank != first.parent_bank
+    assert first.metrics["local_route_screen"]["gain_count"] == 4
+    assert first.metrics["local_route_screen"]["regression_count"] == 0
+    assert first.metrics["route_gate75_accessed"] is True
+    rule = json.loads(
+        (first_root / "artifacts" / "s2-conditional-route-rule.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert rule["route_to"] == first_target
+    assert len(rule["must_preserve_query_ids"]) == 6
+    first_selected = StaticBankArtifact.model_validate_json(
+        (first_root / "banks" / "s2-selected.json").read_bytes(), strict=True
+    )
+    for before, after in zip(_bank().skills, first_selected.skills, strict=True):
+        if before.capability_id == first_target:
+            assert before.description != after.description
+        else:
+            assert before == after
+
+    resume_engine = CoreFastEngine(
+        spec=first_spec,
+        spec_path=first_spec_path,
+        output_root=first_root,
+        adapter=FakeCoreFastAdapter(route_only_wrong_ids=first_wrong),
+    )
+    resume_engine.run(through="s2")
+    resumed = resume_engine._existing_decision("s2")
+    assert resumed == first
+
+    second_target = "product.exact_match"
+    second_wrong = target_wrong_ids(second_target)
+    second_spec_path = tmp_path / "s2r2.json"
+    second_spec = _prepare_adaptive_s2_spec(
+        source_spec_path=first_spec_path,
+        source_root=first_root,
+        source_stage="s2",
+        source_round_id="s2r1",
+        round_id="s2r2",
+        target=second_target,
+        route_results_path=tmp_path / "s2r2-parent-routes.jsonl",
+        route_root=tmp_path / "s2r2-route-root",
+        output_spec=second_spec_path,
+        wrong_ids=second_wrong,
+    )
+    second_root = tmp_path / "s2r2-root"
+    second_engine = CoreFastEngine(
+        spec=second_spec,
+        spec_path=second_spec_path,
+        output_root=second_root,
+        adapter=FakeCoreFastAdapter(route_only_wrong_ids=second_wrong),
+    )
+    second_engine.initialize()
+    second_engine.prepare_s2_round()
+    second_engine.run(through="s2")
+    second = second_engine._existing_decision("s2")
+    assert second is not None and not second.accepted
+    assert second.alias_of == "s1s2"
+    assert second.parent_bank == first_selected.bank_sha256
+    assert second.selected_bank == first_selected.bank_sha256
+    assert second.metrics["local_route_screen"]["gain_count"] == 4
+    assert second.metrics["route_gate75_accessed"] is True
+    assert (first_root / "banks" / "s2-selected.json").read_bytes() == (
+        first_selected.canonical_bytes()
+    )
+    second_receipt_path = second_root / "artifacts" / "s2-round-receipt.json"
+    second_receipt = json.loads(second_receipt_path.read_text(encoding="utf-8"))
+    second_receipt["accepted"] = True
+    second_receipt_path.write_bytes(canonical_json_bytes(second_receipt))
+    with pytest.raises(FastPathError, match="resume artifacts drifted"):
+        CoreFastEngine(
+            spec=second_spec,
+            spec_path=second_spec_path,
+            output_root=second_root,
+            adapter=FakeCoreFastAdapter(route_only_wrong_ids=second_wrong),
+        ).run(through="s2")
+
+    preparatory_path.write_bytes(
+        preparatory_path.read_bytes().replace(
+            b"authorized-pre-s2-runtime-ready", b"authorized-pre-s2-runtime-stale"
+        )
+    )
+    with pytest.raises(FastPathError, match="authorization SHA-256 drifted"):
+        CoreFastEngine(
+            spec=first_spec,
+            spec_path=first_spec_path,
+            output_root=tmp_path / "authorization-drift",
+            adapter=FakeCoreFastAdapter(route_only_wrong_ids=first_wrong),
+        ).validate(require_runtime=False)

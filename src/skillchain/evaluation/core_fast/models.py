@@ -176,6 +176,92 @@ class S1ParentBinding(FrozenStrictModel):
         return self
 
 
+class S2RouteObservation(FrozenStrictModel):
+    """One model-generated route-only observation under a bound S2 parent."""
+
+    query_id: str
+    expected_capability: str
+    acceptable_capabilities: tuple[str, ...]
+    selected_capability: str
+    bank_sha256: Sha256
+    requested_model: str
+    source_call_id: str
+
+    @field_validator("acceptable_capabilities", mode="before")
+    @classmethod
+    def coerce_acceptable_capabilities(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def validate_capabilities(self) -> Self:
+        if self.expected_capability not in CAPABILITIES:
+            raise ValueError("S2 route observation expected capability is invalid")
+        if self.selected_capability not in CAPABILITIES:
+            raise ValueError("S2 route observation selected capability is invalid")
+        if not self.acceptable_capabilities or not set(
+            self.acceptable_capabilities
+        ) <= set(CAPABILITIES):
+            raise ValueError("S2 route observation acceptable capabilities are invalid")
+        return self
+
+
+class S2ParentBinding(FrozenStrictModel):
+    """Forward-only accepted S1/S2 Bank and its model-generated route800."""
+
+    source_stage: Literal["s1", "s2"]
+    source_round_id: str = Field(pattern=r"^(?:r|s2r)[1-9][0-9]*$")
+    bank_path: str
+    bank_file_sha256: Sha256
+    bank_sha256: Sha256
+    decision_path: str
+    decision_file_sha256: Sha256
+    manifest_path: str
+    manifest_file_sha256: Sha256
+    preparatory_binding_path: str
+    preparatory_binding_file_sha256: Sha256
+    preparatory_round_id: str = Field(pattern=r"^r[1-9][0-9]*$")
+    preparatory_bank_sha256: Sha256
+    route_results_path: str
+    # ``None`` is valid only for the create-only s2-parent-route800 bootstrap.
+    route_results_sha256: Sha256 | None = None
+
+
+class S2Settings(FrozenStrictModel):
+    """One independently resumable Description-only adaptive S2 round."""
+
+    round_id: str = Field(pattern=r"^s2r[1-9][0-9]*$")
+    cycle_id: str
+    target_capability: str
+    proposal_mode: Literal["single-description-counterfactual-v1"] = (
+        "single-description-counterfactual-v1"
+    )
+    failure_example_count: Literal[3] = 3
+    parent_success_example_count: Literal[3] = 3
+    historical_regression_example_count: Literal[3] = 3
+    historical_regression_query_ids: tuple[str, ...] = ()
+    prior_experiment_memory: tuple[dict[str, object], ...] = ()
+
+    @field_validator("historical_regression_query_ids", mode="before")
+    @classmethod
+    def coerce_regression_ids(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @field_validator("prior_experiment_memory", mode="before")
+    @classmethod
+    def coerce_memory(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
+
+    @model_validator(mode="after")
+    def validate_settings(self) -> Self:
+        if self.target_capability not in CAPABILITIES:
+            raise ValueError("S2 target capability is invalid")
+        if self.historical_regression_query_ids != tuple(
+            sorted(set(self.historical_regression_query_ids))
+        ):
+            raise ValueError("S2 historical regression IDs must be sorted and unique")
+        return self
+
+
 class GateRules(FrozenStrictModel):
     s1_replay_macro_delta_pp_min: Literal[0.0] = 0.0
     s1_system_macro_delta_pp_min: Literal[2.0] = 2.0
@@ -494,6 +580,7 @@ class CoreFastSpec(FrozenStrictModel):
     val_gate_assignments_sha256: Sha256
     s1_authoring_input_file_sha256: Sha256
     s1_parent: S1ParentBinding | None = None
+    s2_parent: S2ParentBinding | None = None
     split_counts: dict[str, int]
     capabilities: tuple[str, ...]
     configs: tuple[str, ...]
@@ -501,6 +588,7 @@ class CoreFastSpec(FrozenStrictModel):
     models: dict[CallRole, ModelRole]
     gates: GateRules = GateRules()
     s1_settings: S1Settings = S1Settings()
+    s2_settings: S2Settings | None = None
     concurrency: Concurrency = Concurrency()
     limits: Limits = Limits()
     runtime: RuntimeSettings = RuntimeSettings()
@@ -565,6 +653,10 @@ class CoreFastSpec(FrozenStrictModel):
         elif self.s1_parent is not None:
             raise ValueError(
                 "an accepted S1 parent is only valid for counterfactual S1"
+            )
+        if (self.s2_parent is None) != (self.s2_settings is None):
+            raise ValueError(
+                "S2 parent binding and S2 settings must be configured together"
             )
         return self
 
@@ -717,6 +809,9 @@ __all__ = [
     "JudgeObservation",
     "SPLIT_COUNTS",
     "S1ParentBinding",
+    "S2ParentBinding",
+    "S2RouteObservation",
+    "S2Settings",
     "StageDecision",
     "load_core_fast_spec",
 ]

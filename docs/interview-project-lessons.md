@@ -71,6 +71,7 @@
 | 55 | 同一 Body 同时控制工具与答案时，S1 必须拆成两条因果 screen | 机制代码与离线回归已验证；真实增益待验证 | 因果归因、反事实 replay、分层指标、组合风险 |
 | 53 | 六能力 fan-out 不是六次自由搜索 | 历史方案已验证，机制保留 | 分支隔离、counterfactual replay、fan-in |
 | 54 | 确定性 response compiler 会吞掉 S1 Body 的 treatment surface | 代码与回归已修复；fresh Static/S1 效果待验证 | 因果实验、运行时设计、模型工具调用、迁移边界 |
+| 56 | 一次性 Route Optimizer 不能直接扩成多轮 S2 | runtime 与离线因果回归已验证；真实 S2 尚未启动 | 前向 lineage、反事实证据、接受回滚、预算治理 |
 
 ---
 
@@ -5726,6 +5727,45 @@ no-hard/evidence/output 三项合取为成功；两组 protected-success 和有�
 - `tests/runners/test_assistant_action_contract.py`
 - `tests/evolution/test_s1_sparse_patch.py`
 - `tests/evaluation/test_core_fast.py`
+
+---
+
+## 56. 一次性 Route Optimizer 不能直接扩成多轮 S2
+
+**状态：runtime 与离线因果回归已验证；真实 S2 尚未启动**
+
+### 一句话问题
+
+旧 S2 只有固定 call ID、单个 decision，并读取与当前 parent 无关的旧 route attribution；重复运行既不会形成新 treatment，也会把 val200 当 route gate，无法构成可归因的多轮优化。
+
+### 最终方案
+
+每轮在独立 root 中绑定 R52 或上一轮 accepted S2 Bank、来源 decision/manifest、R52 preparatory authorization 和该 parent 的 route-only opt800。先冻结 3 failure + 3 parent-success + 3 historical-regression 的 confusion packet；Creator 只能输出一个 capability 的 `when / route_to / must_preserve_query_ids` typed rule，由 runtime 规范化追加到 Description。候选先过 replay200 有界风险 screen和 6 个显式保护例，再进入 smoke24 与 route_gate75；accepted Bank 可成为下一轮 parent，rejected round byte-exact 回滚到 working parent且不能成为新 source。
+
+### 如何验证
+
+- fake-provider 端到端回归证明第一轮 4 gain / 0 regression 后接受，并且只改变目标 Description；
+- 第二轮从已接受 S2 Bank 派生，正式门失败后回滚到上一轮 Bank而非旧 Static/R52；
+- 未准备 9-case packet、R52 authorization/SHA 漂移、自由 Description 输出或 resume receipt 漂移都在新调用前失败；
+- 正式 S2 只访问 route_gate75，不访问 S3、Judge、test300 或五配置矩阵；
+- R52 真实 Bank/decision/manifest 已通过零调用 bootstrap 验证，完整相关回归 87 passed。
+
+### 剩余限制
+
+这只证明 runtime 可运行和 treatment 可归因，不证明某条 Description 规则会取得真实模型增益。R52 route800 仍需一次 fresh 付费执行；按保守估算约 CNY 4，之后每个完整 S2 round 约 CNY 6.25，因此应分成两个阶段汇报，不能在同一自主预算窗口中连续完成两段。
+
+### 30 秒回答
+
+“我没有把旧的一次性 S2 简单套循环，而是让每轮显式绑定 accepted parent 和它自己的路由观测。Creator 只能产一条条件化 route rule，先在 replay 上看 gain/regression 和保护例，再过冻结 route gate。接受后才能成为下一轮 parent，失败就精确回滚。这样多轮优化真正有 lineage、有 treatment、有独立证据，也不会误用 test 或整个 val。”
+
+### 证据入口
+
+- `scripts/prepare_s2_adaptive_round.py`
+- `scripts/run_core_experiment.py`
+- `src/skillchain/evaluation/core_fast/models.py`
+- `src/skillchain/evaluation/core_fast/engine.py`
+- `tests/evaluation/test_core_fast.py`
+- `specs/s2-r52-preparatory-branch-v1.json`
 
 ---
 

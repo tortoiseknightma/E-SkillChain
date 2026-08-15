@@ -28,6 +28,8 @@ class FakeCoreFastAdapter:
         judge_first_status: str | None = None,
         assistant_fail_ids: frozenset[str] = frozenset(),
         break_s3_common_trace: bool = False,
+        route_only_wrong_ids: frozenset[str] = frozenset(),
+        route_only_regress_ids: frozenset[str] = frozenset(),
     ) -> None:
         self.reject_stages = reject_stages
         self.feedback_fail_ids = feedback_fail_ids
@@ -35,6 +37,8 @@ class FakeCoreFastAdapter:
         self.judge_first_status = judge_first_status
         self.assistant_fail_ids = assistant_fail_ids
         self.break_s3_common_trace = break_s3_common_trace
+        self.route_only_wrong_ids = route_only_wrong_ids
+        self.route_only_regress_ids = route_only_regress_ids
         self.calls: Counter[str] = Counter()
 
     def _result(
@@ -365,10 +369,45 @@ class FakeCoreFastAdapter:
                     intent,
                     {"schema_version": 1, "skills": generated},
                 )
-            if operation == "s2_route_optimizer":
+            if operation in {
+                "s2_route_optimizer",
+                "s2_counterfactual_route_optimizer",
+            }:
                 if "s2" in self.reject_stages:
                     return self._result(intent, {"invalid": True})
-                skill = skills[0]
+                target = intent.payload.get("target_capability")
+                skill = next(
+                    (
+                        item
+                        for item in skills
+                        if isinstance(item, dict)
+                        and item.get("capability_id") == target
+                    ),
+                    skills[0],
+                )
+                if operation == "s2_counterfactual_route_optimizer":
+                    packet = intent.payload["evidence_packet"]
+                    protected = sorted(
+                        str(item["query"]["query_id"])
+                        for item in packet["examples"]
+                        if item["role"] in {"parent_success", "historical_regression"}
+                    )
+                    return self._result(
+                        intent,
+                        {
+                            "edits": [
+                                {
+                                    "capability_id": skill["capability_id"],
+                                    "when": (
+                                        "the visible request matches the clarified "
+                                        "boundary cues"
+                                    ),
+                                    "route_to": skill["capability_id"],
+                                    "must_preserve_query_ids": protected,
+                                }
+                            ]
+                        },
+                    )
                 return self._result(
                     intent,
                     {
@@ -554,9 +593,27 @@ class FakeCoreFastAdapter:
             )
         query = intent.payload["query"]
         assert isinstance(query, dict)
-        return self._result(
-            intent, {"selected_capability": query["canonical_capability"]}
+        expected = str(query["canonical_capability"])
+        query_id = str(query["query_id"])
+        bank = intent.payload.get("bank")
+        edited = False
+        if isinstance(bank, dict) and isinstance(bank.get("skills"), list):
+            edited = any(
+                isinstance(skill, dict)
+                and skill.get("capability_id") == expected
+                and "clarified boundary cues"
+                in str(skill.get("description", "")).casefold()
+                for skill in bank["skills"]
+            )
+        wrong = (query_id in self.route_only_wrong_ids and not edited) or (
+            query_id in self.route_only_regress_ids and edited
         )
+        selected = (
+            CAPABILITIES[(CAPABILITIES.index(expected) + 1) % len(CAPABILITIES)]
+            if wrong
+            else expected
+        )
+        return self._result(intent, {"selected_capability": selected})
 
 
 def create_adapter(*, spec, cwd, base_dir):

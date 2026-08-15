@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "core-fast-s2-preparatory-branch",
-  "status": "authorized-pre-s2-not-started",
+  "status": "authorized-pre-s2-runtime-ready",
   "effective_date": "2026-08-15",
   "source_s1": {
     "round_id": "r52",
@@ -44,6 +44,14 @@
     "body_must_remain_byte_exact": true,
     "requires_new_forward_only_root": true,
     "requires_explicit_s2_route_gate": true,
+    "adaptive_runtime": "single-description-counterfactual-v1",
+    "root_authorization_required": true,
+    "parent_route_profile": "fresh-route-only-opt800",
+    "evidence_packet": "dominant-confusion-3f-3p-3r-v1",
+    "creator_output": "typed-conditional-route-rule-v1",
+    "local_route_screen": "s2-bounded-route-screen-v1",
+    "formal_gate": "route_gate75",
+    "runtime_ready_without_provider_calls": true,
     "on_s2_reject_portfolio_selected_bank_sha256": "e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd",
     "prohibited_actions": [
       "rewrite historical R52 or test300 artifacts",
@@ -52,5 +60,5 @@
       "reuse test300 or test a second S1 finalist"
     ]
   },
-  "disclosure": "R52 is the formally authorized working branch for preparing the next S2 stage because it passed the S1 local, replay200, and body75 gates. This forward stage authorization does not override its failed one-time test300 result, does not make it deployable, and does not change the current Portfolio-selected Bank from R12 before S2 is accepted."
+  "disclosure": "R52 is the formally authorized working branch for adaptive S2 because it passed the S1 local, replay200, and body75 gates. The S2 runtime is offline-qualified but no S2 provider call has started. This forward stage authorization does not override R52's failed one-time test300 result, does not make it deployable, and does not change the current Portfolio-selected Bank from R12 before a later selection decision."
 }

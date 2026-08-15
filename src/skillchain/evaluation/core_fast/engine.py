@@ -91,6 +91,7 @@ from .models import (
     FixedSample,
     FixedSamples,
     JudgeObservation,
+    S2RouteObservation,
     SPLIT_COUNTS,
     StageDecision,
 )
@@ -299,6 +300,8 @@ class CoreFastEngine:
         self._opt_static: dict[str, AssistantObservation] | None = None
         self._s1_parent_bank: StaticBankArtifact | None = None
         self._s1_parent_opt: dict[str, AssistantObservation] | None = None
+        self._s2_parent_bank: StaticBankArtifact | None = None
+        self._s2_parent_routes: dict[str, S2RouteObservation] | None = None
         self._opt_attribution: dict[str, dict[str, object]] | None = None
         self._opt_fold_roles: dict[str, str] | None = None
         self._val_gate_roles: dict[str, str] | None = None
@@ -467,6 +470,144 @@ class CoreFastEngine:
 
     def _s1_parent_alias(self) -> Literal["llm_static", "s1"]:
         return "s1" if self.spec.s1_parent is not None else "llm_static"
+
+    def s2_parent_bank(self) -> StaticBankArtifact:
+        """Load an accepted S1/S2 Bank without replaying its source stage."""
+
+        binding = self.spec.s2_parent
+        if binding is None:
+            self.run_s1()
+            return self._load_selected_bank("s1")
+        if self._s2_parent_bank is not None:
+            return self._s2_parent_bank
+        preparatory_path = self._bound_path(binding.preparatory_binding_path)
+        if _file_sha(preparatory_path) != binding.preparatory_binding_file_sha256:
+            raise FastPathError("S2 preparatory authorization SHA-256 drifted")
+        preparatory = load_json(preparatory_path)
+        source_s1 = (
+            preparatory.get("source_s1") if isinstance(preparatory, dict) else None
+        )
+        s2_contract = (
+            preparatory.get("s2_contract") if isinstance(preparatory, dict) else None
+        )
+        portfolio = (
+            preparatory.get("portfolio_selection")
+            if isinstance(preparatory, dict)
+            else None
+        )
+        if (
+            not isinstance(source_s1, dict)
+            or not isinstance(s2_contract, dict)
+            or not isinstance(portfolio, dict)
+            or preparatory.get("kind") != "core-fast-s2-preparatory-branch"
+            or preparatory.get("status") != "authorized-pre-s2-runtime-ready"
+            or source_s1.get("round_id") != binding.preparatory_round_id
+            or source_s1.get("bank_sha256") != binding.preparatory_bank_sha256
+            or s2_contract.get("working_parent_bank_sha256")
+            != binding.preparatory_bank_sha256
+            or s2_contract.get("on_s2_reject_portfolio_selected_bank_sha256")
+            != portfolio.get("current_selected_bank_sha256")
+        ):
+            raise FastPathError("S2 preparatory authorization is invalid")
+        if binding.source_stage == "s1" and (
+            binding.source_round_id != binding.preparatory_round_id
+            or binding.bank_sha256 != binding.preparatory_bank_sha256
+            or source_s1.get("bank_file_sha256") != binding.bank_file_sha256
+            or source_s1.get("decision_file_sha256") != binding.decision_file_sha256
+            or source_s1.get("manifest_file_sha256") != binding.manifest_file_sha256
+        ):
+            raise FastPathError("initial S2 parent is not the authorized S1 branch")
+        bank_path = self._bound_path(binding.bank_path)
+        if _file_sha(bank_path) != binding.bank_file_sha256:
+            raise FastPathError("S2 parent Bank file SHA-256 drifted")
+        try:
+            bank = StaticBankArtifact.model_validate_json(
+                bank_path.read_bytes(), strict=True
+            )
+        except (OSError, ValidationError) as error:
+            raise FastPathError("S2 parent Bank is invalid") from error
+        self._require_six_capabilities(bank)
+        if bank.bank_sha256 != binding.bank_sha256:
+            raise FastPathError("S2 parent internal Bank SHA-256 drifted")
+
+        decision_path = self._bound_path(binding.decision_path)
+        if _file_sha(decision_path) != binding.decision_file_sha256:
+            raise FastPathError("S2 parent decision file SHA-256 drifted")
+        try:
+            decision = StageDecision.model_validate_json(
+                decision_path.read_bytes(), strict=True
+            )
+        except (OSError, ValidationError) as error:
+            raise FastPathError("S2 parent decision is invalid") from error
+        if (
+            decision.stage != binding.source_stage
+            or not decision.accepted
+            or decision.alias_of is not None
+            or decision.selected_bank != binding.bank_sha256
+            or decision.metrics.get("round_id") != binding.source_round_id
+        ):
+            raise FastPathError(
+                "S2 parent must be the accepted selected Bank of its bound round"
+            )
+
+        manifest_path = self._bound_path(binding.manifest_path)
+        if _file_sha(manifest_path) != binding.manifest_file_sha256:
+            raise FastPathError("S2 parent manifest file SHA-256 drifted")
+        manifest = load_json(manifest_path)
+        settings_key = f"{binding.source_stage}_settings"
+        settings = manifest.get(settings_key) if isinstance(manifest, dict) else None
+        if (
+            not isinstance(settings, dict)
+            or settings.get("round_id") != binding.source_round_id
+        ):
+            raise FastPathError("S2 parent manifest round identity drifted")
+        self._s2_parent_bank = bank
+        return bank
+
+    def s2_parent_routes(self) -> dict[str, S2RouteObservation]:
+        """Load the complete route-only opt800 profile for the S2 parent."""
+
+        binding = self.spec.s2_parent
+        if binding is None:
+            raise FastPathError("S2 adaptive round requires an S2 parent binding")
+        if self._s2_parent_routes is not None:
+            return self._s2_parent_routes
+        if binding.route_results_sha256 is None:
+            raise FastPathError("S2 parent route800 SHA-256 is not frozen")
+        path = self._bound_path(binding.route_results_path)
+        if _file_sha(path) != binding.route_results_sha256:
+            raise FastPathError("S2 parent route800 SHA-256 drifted")
+        rows: dict[str, S2RouteObservation] = {}
+        for index, raw in enumerate(_read_jsonl(path), start=1):
+            try:
+                row = S2RouteObservation.model_validate(raw, strict=True)
+            except ValidationError as error:
+                raise FastPathError(
+                    f"invalid S2 parent route800 row {index}"
+                ) from error
+            if row.query_id in rows:
+                raise FastPathError(
+                    f"duplicate S2 parent route800 query: {row.query_id}"
+                )
+            rows[row.query_id] = row
+        expected = {
+            query.query_id for query in self.queries() if query.split == "opt_pool"
+        }
+        if set(rows) != expected:
+            raise FastPathError("S2 parent route800 must cover opt800 exactly")
+        parent_sha = self.s2_parent_bank().bank_sha256
+        route_model = self.spec.models["route_only"].requested_model
+        for query_id, row in rows.items():
+            query = self.query_by_id()[query_id]
+            if (
+                row.bank_sha256 != parent_sha
+                or row.requested_model != route_model
+                or row.expected_capability != query.canonical_capability
+                or row.acceptable_capabilities != tuple(query.acceptable_capabilities)
+            ):
+                raise FastPathError(f"S2 parent route800 identity differs: {query_id}")
+        self._s2_parent_routes = rows
+        return rows
 
     def s1_authoring_input(self) -> AuthoringInput:
         if self._s1_authoring_input is not None:
@@ -766,6 +907,9 @@ class CoreFastEngine:
         opt_static = self.opt_static()
         s1_parent = self.s1_parent_bank()
         s1_parent_opt = self.s1_parent_opt()
+        if self.spec.s2_parent is not None:
+            self.s2_parent_bank()
+            self.s2_parent_routes()
         self._require_counterfactual_cycle_preflight()
         self.opt_attribution()
         fold_roles = self.opt_fold_roles()
@@ -961,6 +1105,26 @@ class CoreFastEngine:
                     if self.spec.s1_parent is None
                     else self.spec.s1_parent.opt_results_sha256
                 ),
+                "s2_parent_bank_file": (
+                    None
+                    if self.spec.s2_parent is None
+                    else self.spec.s2_parent.bank_file_sha256
+                ),
+                "s2_parent_decision_file": (
+                    None
+                    if self.spec.s2_parent is None
+                    else self.spec.s2_parent.decision_file_sha256
+                ),
+                "s2_parent_manifest_file": (
+                    None
+                    if self.spec.s2_parent is None
+                    else self.spec.s2_parent.manifest_file_sha256
+                ),
+                "s2_parent_route_results": (
+                    None
+                    if self.spec.s2_parent is None
+                    else self.spec.s2_parent.route_results_sha256
+                ),
                 "feedback_schema": sha256_bytes(
                     canonical_json_bytes(VisualFeedbackOutput.model_json_schema())
                 ),
@@ -989,6 +1153,16 @@ class CoreFastEngine:
                 if self.spec.s1_parent is None
                 else self.spec.s1_parent.model_dump(mode="json")
             ),
+            "s2_settings": (
+                None
+                if self.spec.s2_settings is None
+                else self.spec.s2_settings.model_dump(mode="json")
+            ),
+            "s2_parent": (
+                None
+                if self.spec.s2_parent is None
+                else self.spec.s2_parent.model_dump(mode="json")
+            ),
             "concurrency": self.spec.concurrency.model_dump(mode="json"),
             "limits": self.spec.limits.model_dump(mode="json"),
             "runtime": self.spec.runtime.model_dump(mode="json"),
@@ -1009,6 +1183,8 @@ class CoreFastEngine:
                 "gates",
                 "s1_settings",
                 "s1_parent",
+                "s2_settings",
+                "s2_parent",
                 "concurrency",
                 "limits",
                 "runtime",
@@ -1029,6 +1205,14 @@ class CoreFastEngine:
             if parent_path.exists():
                 if load_json(parent_path) != parent_payload:
                     raise FastPathError("S1 parent Bank differs on resume")
+            else:
+                atomic_write_json(parent_path, parent_payload)
+        if self.spec.s2_parent is not None:
+            parent_path = self.output_root / "banks" / "s2-parent.json"
+            parent_payload = self.s2_parent_bank().model_dump(mode="json")
+            if parent_path.exists():
+                if load_json(parent_path) != parent_payload:
+                    raise FastPathError("S2 parent Bank differs on resume")
             else:
                 atomic_write_json(parent_path, parent_payload)
 
@@ -1144,6 +1328,63 @@ class CoreFastEngine:
         else:
             atomic_write_json(manifest_path, payload)
 
+    def initialize_s2_parent_route800(self) -> None:
+        """Initialize a create-only route800 run for a bound S2 parent."""
+
+        binding = self.spec.s2_parent
+        if binding is None:
+            raise FastPathError("s2-parent-route800 requires an S2 parent binding")
+        destination = self._bound_path(binding.route_results_path)
+        manifest_path = self.output_root / "s2-parent-route800-manifest.json"
+        if destination.exists() and not manifest_path.exists():
+            raise FastPathError(
+                "S2 parent route800 destination predates this run manifest; "
+                "use a new lineage"
+            )
+        queries = self.queries()
+        if Counter(item.split for item in queries) != Counter(SPLIT_COUNTS):
+            raise FastPathError("Core split geometry differs before S2 parent route800")
+        parent = self.s2_parent_bank()
+        self.opt_fold_roles()
+        if self.spec.runtime.adapter != "python":
+            raise FastPathError(
+                "fresh S2 parent route800 requires the reviewed Python adapter"
+            )
+        model = self.spec.models["route_only"]
+        if model.credential_env and not os.environ.get(model.credential_env):
+            raise FastPathError(
+                f"missing credential {model.credential_env} for route_only"
+            )
+        runtime_validator = getattr(self.adapter, "validate_runtime", None)
+        if runtime_validator is not None:
+            try:
+                runtime_validator()
+            except (OSError, RuntimeError, ValueError) as error:
+                raise FastPathError(f"runtime adapter is not ready: {error}") from error
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-parent-route800-run",
+            "experiment_id": self.spec.experiment_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "route_model": model.model_dump(mode="json"),
+            "concurrency": self.spec.concurrency.model_dump(mode="json"),
+            "queries_sha256": _file_sha(self._path("queries")),
+            "parent_bank_file_sha256": binding.bank_file_sha256,
+            "parent_bank_sha256": parent.bank_sha256,
+            "source_decision_file_sha256": binding.decision_file_sha256,
+            "source_manifest_file_sha256": binding.manifest_file_sha256,
+            "destination": str(destination),
+        }
+        if manifest_path.exists():
+            if load_json(manifest_path) != payload:
+                raise FastPathError(
+                    "S2 parent route800 output root belongs to another run"
+                )
+        else:
+            atomic_write_json(manifest_path, payload)
+
     # ------------------------------- calls ---------------------------------
 
     def _call(
@@ -1173,6 +1414,86 @@ class CoreFastEngine:
             return self.calls.invoke(intent, self.adapter.invoke)
         except FastStoreError as error:
             raise FastPathError(str(error)) from error
+
+    def _route_only_one(
+        self,
+        *,
+        call_prefix: str,
+        query: Query,
+        bank: StaticBankArtifact,
+    ) -> S2RouteObservation:
+        call_id = _safe_id(f"{call_prefix}-{query.query_id}")
+        result = self._call(
+            role="route_only",
+            call_id=call_id,
+            purpose="S2 parent/candidate route-only evaluation",
+            payload={
+                "operation": "route_only",
+                "query": query.model_dump(mode="json"),
+                "bank": bank.model_dump(mode="json"),
+                "runtime_paths": self.spec.paths.model_dump(mode="json"),
+                "bank_frozen": True,
+            },
+        )
+        selected = (
+            result.output.get("selected_capability")
+            if result.status == "success" and result.output is not None
+            else None
+        )
+        if not isinstance(selected, str) or selected not in CAPABILITIES:
+            raise FastPathError(
+                f"S2 route-only execution failed or returned no route: {query.query_id}"
+            )
+        return S2RouteObservation(
+            query_id=query.query_id,
+            expected_capability=query.canonical_capability,
+            acceptable_capabilities=query.acceptable_capabilities,
+            selected_capability=selected,
+            bank_sha256=bank.bank_sha256,
+            requested_model=self.spec.models["route_only"].requested_model,
+            source_call_id=call_id,
+        )
+
+    def _route_only_many(
+        self,
+        *,
+        call_prefix: str,
+        queries: Sequence[Query],
+        bank: StaticBankArtifact,
+    ) -> dict[str, S2RouteObservation]:
+        pending = [
+            query
+            for query in queries
+            if self.calls.get("route_only", _safe_id(f"{call_prefix}-{query.query_id}"))
+            is None
+        ]
+        if pending:
+            try:
+                self.calls.ensure_budget("route_only", len(pending))
+            except FastStoreError as error:
+                raise FastPathError(str(error)) from error
+        rows: dict[str, S2RouteObservation] = {}
+        with ThreadPoolExecutor(max_workers=self.spec.concurrency.assistant) as pool:
+            futures = {
+                pool.submit(
+                    self._route_only_one,
+                    call_prefix=call_prefix,
+                    query=query,
+                    bank=bank,
+                ): query.query_id
+                for query in queries
+            }
+            for future in as_completed(futures):
+                query_id = futures[future]
+                try:
+                    rows[query_id] = future.result()
+                except FastPathError:
+                    raise
+                except Exception as error:
+                    raise FastPathError(
+                        f"S2 route-only execution failed: {query_id}"
+                    ) from error
+        return {query.query_id: rows[query.query_id] for query in queries}
 
     def _assistant_call_id(self, split: str, config: str, query_id: str) -> str:
         return _safe_id(f"{split}-{config}-{query_id}")
@@ -1501,8 +1822,11 @@ class CoreFastEngine:
         if bank is None:
             return None
         path = self.output_root / "banks" / f"{stage}-candidate.json"
-        if not path.exists():
-            atomic_write_json(path, bank.model_dump(mode="json"))
+        self._write_canonical_resume_artifact(
+            path,
+            bank.model_dump(mode="json"),
+            label=f"{stage} candidate Bank",
+        )
         return bank
 
     def _compile_sparse_s1_payload(
@@ -2490,7 +2814,45 @@ class CoreFastEngine:
                     else s1_patch_capabilities
                 ),
             )
+        if stage == "s2" and self.spec.s2_settings is not None:
+            target = self.spec.s2_settings.target_capability
+            return {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["edits"],
+                "properties": {
+                    "edits": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "capability_id",
+                                "when",
+                                "route_to",
+                                "must_preserve_query_ids",
+                            ],
+                            "properties": {
+                                "capability_id": {"const": target},
+                                "when": {"type": "string", "minLength": 1},
+                                "route_to": {"const": target},
+                                "must_preserve_query_ids": {
+                                    "type": "array",
+                                    "minItems": 6,
+                                    "maxItems": 6,
+                                    "uniqueItems": True,
+                                    "items": {"type": "string"},
+                                },
+                            },
+                        },
+                    }
+                },
+            }
         field = "description" if stage == "s2" else "body"
+        max_items = 6 if stage == "s2" else 3
+        capability_enum = list(CAPABILITIES)
         return {
             "type": "object",
             "additionalProperties": False,
@@ -2499,7 +2861,7 @@ class CoreFastEngine:
                 "edits": {
                     "type": "array",
                     "minItems": 1,
-                    "maxItems": 6 if stage == "s2" else 3,
+                    "maxItems": max_items,
                     "items": {
                         "type": "object",
                         "additionalProperties": False,
@@ -2654,6 +3016,59 @@ class CoreFastEngine:
         if bootstrap_path.exists():
             if load_json(bootstrap_path) != bootstrap:
                 raise FastPathError("S1 parent opt800 bootstrap differs on resume")
+        else:
+            atomic_write_json(bootstrap_path, bootstrap)
+        return bootstrap
+
+    def run_s2_parent_route800(self) -> dict[str, object]:
+        """Execute and freeze opt800 route-only observations for an S2 parent."""
+
+        binding = self.spec.s2_parent
+        if binding is None:
+            raise FastPathError("s2-parent-route800 requires an S2 parent binding")
+        destination = self._bound_path(binding.route_results_path)
+        queries = [query for query in self.queries() if query.split == "opt_pool"]
+        parent = self.s2_parent_bank()
+        rows = self._route_only_many(
+            call_prefix=f"s2-parent-route800-{binding.source_round_id}",
+            queries=queries,
+            bank=parent,
+        )
+        payloads = [rows[query.query_id].model_dump(mode="json") for query in queries]
+        expected_bytes = b"".join(canonical_json_bytes(row) for row in payloads)
+        if destination.exists():
+            if destination.read_bytes() != expected_bytes:
+                raise FastPathError(
+                    "S2 parent route800 destination differs from the completed journal"
+                )
+        else:
+            atomic_write_jsonl(destination, payloads)
+        observed_sha256 = _file_sha(destination)
+        correct = sum(
+            row.selected_capability in set(row.acceptable_capabilities)
+            for row in rows.values()
+        )
+        bootstrap = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-parent-route800-bootstrap",
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "parent_bank_sha256": parent.bank_sha256,
+            "parent_bank_file_sha256": binding.bank_file_sha256,
+            "source_decision_file_sha256": binding.decision_file_sha256,
+            "source_manifest_file_sha256": binding.manifest_file_sha256,
+            "route_model": self.spec.models["route_only"].requested_model,
+            "route_results_path": str(destination),
+            "route_results_sha256": observed_sha256,
+            "row_count": len(rows),
+            "route_correct_count": correct,
+            "route_error_count": len(rows) - correct,
+            "observed_dashscope_cost_cny": self.calls.observed_cost(),
+        }
+        bootstrap_path = self.output_root / "s2-parent-route800-bootstrap.json"
+        if bootstrap_path.exists():
+            if load_json(bootstrap_path) != bootstrap:
+                raise FastPathError("S2 parent route800 bootstrap differs on resume")
         else:
             atomic_write_json(bootstrap_path, bootstrap)
         return bootstrap
@@ -5689,10 +6104,609 @@ class CoreFastEngine:
 
     # ------------------------------- S2 ------------------------------------
 
+    def _build_s2_evidence_packet(self) -> dict[str, object]:
+        settings = self.spec.s2_settings
+        binding = self.spec.s2_parent
+        if settings is None or binding is None:
+            raise FastPathError("adaptive S2 requires settings and a parent binding")
+        routes = self.s2_parent_routes()
+        fold_roles = self.opt_fold_roles()
+        target = settings.target_capability
+        discovery = [
+            row
+            for query_id, row in routes.items()
+            if fold_roles[query_id] == "discovery" and row.expected_capability == target
+        ]
+        failures_by_prediction: dict[str, list[S2RouteObservation]] = defaultdict(list)
+        successes: list[S2RouteObservation] = []
+        for row in discovery:
+            if row.selected_capability in set(row.acceptable_capabilities):
+                successes.append(row)
+            else:
+                failures_by_prediction[row.selected_capability].append(row)
+        eligible_clusters = [
+            (predicted, sorted(rows, key=lambda item: item.query_id))
+            for predicted, rows in failures_by_prediction.items()
+            if len(rows) >= settings.failure_example_count
+        ]
+        if not eligible_clusters:
+            raise FastPathError("insufficient S2 route-failure cluster evidence")
+        predicted, failures = sorted(
+            eligible_clusters,
+            key=lambda item: (-len(item[1]), item[0]),
+        )[0]
+        failure_rows = failures[: settings.failure_example_count]
+        success_by_id = {row.query_id: row for row in successes}
+        configured_regressions = settings.historical_regression_query_ids
+        if configured_regressions:
+            if (
+                len(configured_regressions)
+                != settings.historical_regression_example_count
+            ):
+                raise FastPathError(
+                    "S2 historical regression evidence must contain exactly three IDs"
+                )
+            try:
+                regression_rows = [
+                    success_by_id[item] for item in configured_regressions
+                ]
+            except KeyError as error:
+                raise FastPathError(
+                    "S2 historical regression evidence is not parent-success"
+                ) from error
+        else:
+            regression_rows = sorted(successes, key=lambda item: item.query_id)[
+                : settings.historical_regression_example_count
+            ]
+        regression_ids = {row.query_id for row in regression_rows}
+        success_rows = [
+            row
+            for row in sorted(successes, key=lambda item: item.query_id)
+            if row.query_id not in regression_ids
+        ][: settings.parent_success_example_count]
+        if (
+            len(regression_rows) != settings.historical_regression_example_count
+            or len(success_rows) != settings.parent_success_example_count
+        ):
+            raise FastPathError("insufficient S2 parent-success protection evidence")
+        selected = [
+            *(("cluster_failure", row) for row in failure_rows),
+            *(("parent_success", row) for row in success_rows),
+            *(("historical_regression", row) for row in regression_rows),
+        ]
+        if len({row.query_id for _role, row in selected}) != 9:
+            raise FastPathError("S2 evidence packet query IDs are not unique")
+        queries = self.query_by_id()
+        packet: dict[str, object] = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-counterfactual-evidence-packet",
+            "cycle_id": settings.cycle_id,
+            "round_id": settings.round_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "parent_bank_sha256": binding.bank_sha256,
+            "parent_route_results_sha256": binding.route_results_sha256,
+            "target_capability": target,
+            "preparatory_round_id": binding.preparatory_round_id,
+            "preparatory_bank_sha256": binding.preparatory_bank_sha256,
+            "portfolio_fallback_bank_sha256": load_json(
+                self._bound_path(binding.preparatory_binding_path)
+            )["s2_contract"]["on_s2_reject_portfolio_selected_bank_sha256"],
+            "confusion_pair": {
+                "expected_capability": target,
+                "predicted_capability": predicted,
+            },
+            "selection_policy": "dominant-confusion-3f-3p-3r-v1",
+            "examples": [
+                {
+                    "role": role,
+                    "query": {
+                        "query_id": row.query_id,
+                        "turns": [
+                            turn.model_dump(mode="json")
+                            for turn in queries[row.query_id].turns
+                        ],
+                        "acceptable_capabilities": list(row.acceptable_capabilities),
+                    },
+                    "parent_selected_capability": row.selected_capability,
+                }
+                for role, row in selected
+            ],
+            "prior_experiment_memory": list(settings.prior_experiment_memory),
+        }
+        packet["packet_sha256"] = sha256_bytes(canonical_json_bytes(packet))
+        return packet
+
+    def prepare_s2_round(self) -> dict[str, object]:
+        """Freeze or verify the no-provider S2 evidence packet."""
+
+        packet = self._build_s2_evidence_packet()
+        path = self.output_root / "inputs" / "s2-evidence-packet.json"
+        self._write_or_verify_json(path, packet, label="S2 evidence packet")
+        return {
+            "status": "s2_round_prepared",
+            "round_id": packet["round_id"],
+            "target_capability": packet["target_capability"],
+            "confusion_pair": packet["confusion_pair"],
+            "example_count": len(packet["examples"]),
+            "packet_sha256": packet["packet_sha256"],
+            "provider_calls": 0,
+        }
+
+    def s2_readiness(self) -> dict[str, object]:
+        """Prove a frozen adaptive S2 round can start without making calls."""
+
+        settings = self.spec.s2_settings
+        binding = self.spec.s2_parent
+        if settings is None or binding is None:
+            raise FastPathError("S2 readiness requires adaptive settings and parent")
+        self.initialize()
+        packet = self._require_s2_prepared_packet()
+        if self._existing_decision("s2") is not None:
+            raise FastPathError("S2 readiness is only for a not-yet-decided round")
+        call_ceiling = {
+            "creator": 1,
+            "assistant": 24 + 75 + 75,
+            "route_only": 200 + 6,
+            "feedback": 0,
+            "judge": 0,
+        }
+        dashscope_cost = sum(
+            call_ceiling[role] * self.spec.models[role].estimated_call_cost_cny
+            for role in ("assistant", "route_only")
+            if self.spec.models[role].provider == "dashscope"
+        )
+        if dashscope_cost > 10.0:
+            raise FastPathError(
+                "adaptive S2 round exceeds the CNY 10 autonomous stage budget"
+            )
+        preparatory = load_json(self._bound_path(binding.preparatory_binding_path))
+        assert isinstance(preparatory, dict)
+        s2_contract = preparatory["s2_contract"]
+        assert isinstance(s2_contract, dict)
+        return {
+            "status": "s2_runtime_ready",
+            "cycle_id": settings.cycle_id,
+            "round_id": settings.round_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "preparatory_round_id": binding.preparatory_round_id,
+            "preparatory_bank_sha256": binding.preparatory_bank_sha256,
+            "parent_bank_sha256": self.s2_parent_bank().bank_sha256,
+            "portfolio_selected_bank_sha256": s2_contract[
+                "on_s2_reject_portfolio_selected_bank_sha256"
+            ],
+            "target_capability": settings.target_capability,
+            "evidence_packet_sha256": packet["packet_sha256"],
+            "call_ceiling_after_parent_profile": call_ceiling,
+            "projected_dashscope_cost_cny": dashscope_cost,
+            "within_autonomous_stage_budget": True,
+            "creator_session_ceiling": 1,
+            "route_gate_query_count": 75,
+            "sealed_stages": ["s3", "judge", "test300", "five-config-matrix"],
+            "provider_calls": 0,
+        }
+
+    def _require_s2_prepared_packet(self) -> dict[str, object]:
+        expected = self._build_s2_evidence_packet()
+        path = self.output_root / "inputs" / "s2-evidence-packet.json"
+        if not path.is_file() or load_json(path) != expected:
+            raise FastPathError(
+                "S2 evidence packet must be prepared byte-exact before Creator"
+            )
+        return expected
+
+    def _s2_local_route_screen(
+        self,
+        *,
+        candidate: StaticBankArtifact,
+        packet: Mapping[str, object],
+    ) -> tuple[bool, tuple[str, ...], dict[str, object]]:
+        settings = self.spec.s2_settings
+        if settings is None:
+            raise FastPathError("S2 settings are absent")
+        roles = self.opt_fold_roles()
+        queries = [
+            query
+            for query in self.queries()
+            if query.split == "opt_pool" and roles[query.query_id] == "replay"
+        ]
+        parent = self.s2_parent_routes()
+        candidate_rows = self._route_only_many(
+            call_prefix=f"{settings.round_id}-candidate-replay200-route",
+            queries=queries,
+            bank=candidate,
+        )
+        gains: list[str] = []
+        regressions: list[str] = []
+        for query in queries:
+            parent_ok = parent[query.query_id].selected_capability in set(
+                query.acceptable_capabilities
+            )
+            candidate_ok = candidate_rows[query.query_id].selected_capability in set(
+                query.acceptable_capabilities
+            )
+            if not parent_ok and candidate_ok:
+                gains.append(query.query_id)
+            elif parent_ok and not candidate_ok:
+                regressions.append(query.query_id)
+        protected_ids = {
+            str(example["query"]["query_id"])
+            for example in packet["examples"]
+            if isinstance(example, dict)
+            and example.get("role") in {"parent_success", "historical_regression"}
+            and isinstance(example.get("query"), dict)
+        }
+        protected_queries = [self.query_by_id()[query_id] for query_id in protected_ids]
+        protected_candidate = self._route_only_many(
+            call_prefix=f"{settings.round_id}-candidate-protected-route",
+            queries=protected_queries,
+            bank=candidate,
+        )
+        protected_regressions = sorted(
+            query.query_id
+            for query in protected_queries
+            if protected_candidate[query.query_id].selected_capability
+            not in set(query.acceptable_capabilities)
+        )
+        gain_count = len(gains)
+        regression_count = len(regressions)
+        net_gain = gain_count - regression_count
+        reasons: list[str] = []
+        if protected_regressions:
+            reasons.append("explicit S2 parent-success protection regressed")
+        if gain_count < 1:
+            reasons.append("S2 route gains are below 1")
+        if net_gain < 1:
+            reasons.append("S2 route net gain is below 1")
+        if regression_count > 2:
+            reasons.append("S2 route regressions exceed 2")
+        if regression_count and gain_count < 4 * regression_count:
+            reasons.append("S2 route gain/regression ratio is below 4")
+        metrics = {
+            "policy_version": "s2-bounded-route-screen-v1",
+            "gain_count": gain_count,
+            "gain_query_ids": sorted(gains),
+            "regression_count": regression_count,
+            "regression_query_ids": sorted(regressions),
+            "net_gain": net_gain,
+            "protected_success_query_ids": sorted(protected_ids),
+            "protected_success_regression_query_ids": protected_regressions,
+        }
+        return not reasons, tuple(reasons), metrics
+
+    def _compile_adaptive_s2_rule(
+        self,
+        *,
+        result: CallResult,
+        parent: StaticBankArtifact,
+        packet: Mapping[str, object],
+        target: str,
+    ) -> tuple[StaticBankArtifact | None, dict[str, object] | None]:
+        """Compile one typed counterfactual rule into the target Description."""
+
+        if (
+            result.status != "success"
+            or not result.schema_valid
+            or not isinstance(result.output, dict)
+        ):
+            return None, None
+        edits = result.output.get("edits")
+        if not isinstance(edits, list) or len(edits) != 1:
+            return None, None
+        edit = edits[0]
+        if not isinstance(edit, dict) or set(edit) != {
+            "capability_id",
+            "when",
+            "route_to",
+            "must_preserve_query_ids",
+        }:
+            return None, None
+        when = edit.get("when")
+        preserve = edit.get("must_preserve_query_ids")
+        protected_ids = sorted(
+            str(example["query"]["query_id"])
+            for example in packet["examples"]
+            if isinstance(example, dict)
+            and example.get("role") in {"parent_success", "historical_regression"}
+            and isinstance(example.get("query"), dict)
+        )
+        forbidden = (
+            "query_id",
+            "canonical_capability",
+            "expected_capability",
+            "gold",
+            "r2-core-",
+            "op-",
+            "test300",
+        )
+        if (
+            edit.get("capability_id") != target
+            or edit.get("route_to") != target
+            or not isinstance(when, str)
+            or not when.strip()
+            or when != when.strip()
+            or "\n" in when
+            or ";" in when
+            or any(token in when.casefold() for token in forbidden)
+            or not isinstance(preserve, list)
+            or sorted(preserve) != protected_ids
+            or len(set(preserve)) != len(preserve)
+        ):
+            return None, None
+        parent_skill = _bank_by_capability(parent)[target]
+        condition = when.rstrip(". ")
+        description = (
+            f"{parent_skill.description.rstrip()}\n"
+            f"If and only if {condition}, route this query to {target}. "
+            "Otherwise preserve the parent routing behavior for all other states."
+        )
+        bank = self._compile_candidate_payload(
+            {
+                "edits": [
+                    {
+                        "capability_id": target,
+                        "description": description,
+                    }
+                ]
+            },
+            stage="s2",
+            parent=parent,
+        )
+        if bank is None:
+            return None, None
+        rule: dict[str, object] = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-conditional-route-rule",
+            "capability_id": target,
+            "when": when,
+            "route_to": target,
+            "must_preserve_query_ids": protected_ids,
+            "parent_skill_sha256": parent_skill.skill_sha256,
+            "candidate_skill_sha256": _bank_by_capability(bank)[target].skill_sha256,
+        }
+        rule["rule_sha256"] = sha256_bytes(canonical_json_bytes(rule))
+        self._write_or_verify_json(
+            self.output_root / "artifacts" / "s2-conditional-route-rule.json",
+            rule,
+            label="S2 conditional route rule",
+        )
+        self._write_canonical_resume_artifact(
+            self.output_root / "banks" / "s2-candidate.json",
+            bank.model_dump(mode="json"),
+            label="s2 candidate Bank",
+        )
+        return bank, rule
+
+    def _run_adaptive_s2(self) -> StageDecision:
+        settings = self.spec.s2_settings
+        binding = self.spec.s2_parent
+        if settings is None or binding is None:
+            raise FastPathError("adaptive S2 settings or parent binding are absent")
+        parent = self.s2_parent_bank()
+        packet = self._require_s2_prepared_packet()
+        target = settings.target_capability
+        preparatory = load_json(self._bound_path(binding.preparatory_binding_path))
+        assert isinstance(preparatory, dict)
+        s2_contract = preparatory["s2_contract"]
+        assert isinstance(s2_contract, dict)
+        portfolio_fallback = s2_contract["on_s2_reject_portfolio_selected_bank_sha256"]
+        creator_call_id = f"{settings.round_id}-route-optimizer-once"
+        creator = self._call(
+            role="creator",
+            call_id=creator_call_id,
+            purpose="S2 counterfactual single-Description route optimizer",
+            payload={
+                "operation": "s2_counterfactual_route_optimizer",
+                "parent_bank": parent.model_dump(mode="json"),
+                "evidence_packet": packet,
+                "target_capability": target,
+                "prior_experiment_memory": list(settings.prior_experiment_memory),
+                "requirements": {
+                    "single_candidate": True,
+                    "single_capability": target,
+                    "description_only": True,
+                    "preserve_body_operators_static_refs": True,
+                    "conditional_minimal_edit": True,
+                },
+                "output_schema": self._creator_schema("s2"),
+            },
+        )
+        reasons: list[str] = []
+        metrics: dict[str, object] = {
+            "round_id": settings.round_id,
+            "cycle_id": settings.cycle_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "target_capability": target,
+            "preparatory_round_id": binding.preparatory_round_id,
+            "preparatory_bank_sha256": binding.preparatory_bank_sha256,
+            "portfolio_selected_bank_sha256": portfolio_fallback,
+            "evidence_packet_sha256": packet["packet_sha256"],
+            "creator_call_id": creator_call_id,
+            "local_replay_accessed": False,
+            "route_gate75_accessed": False,
+        }
+        candidate, compiled_rule = self._compile_adaptive_s2_rule(
+            result=creator,
+            parent=parent,
+            packet=packet,
+            target=target,
+        )
+        metrics["compiled_rule_sha256"] = (
+            None if compiled_rule is None else compiled_rule["rule_sha256"]
+        )
+        accepted = False
+        if candidate is None:
+            reasons.append("optimizer failed or returned an invalid Bank")
+        else:
+            before = _bank_by_capability(parent)
+            after = _bank_by_capability(candidate)
+            changed = {
+                capability
+                for capability in CAPABILITIES
+                if before[capability].description != after[capability].description
+            }
+            if changed != {target}:
+                reasons.append(
+                    "S2 candidate did not change exactly the target Description"
+                )
+            violations = self._boundary_changes(parent, candidate, "s2")
+            reasons.extend(violations)
+            if not reasons:
+                smoke_queries = [
+                    self.query_by_id()[item.query_id]
+                    for item in self.spec.fixed_samples.dev_smoke24
+                ]
+                smoke = self._assistant_many(
+                    split=f"{settings.round_id}-dev-smoke24",
+                    config="s2-candidate",
+                    queries=smoke_queries,
+                    bank=candidate,
+                )
+                metrics["smoke_hard_errors"] = sum(
+                    row.hard_error for row in smoke.values()
+                )
+                if not self._smoke_ok(smoke):
+                    reasons.append("candidate failed fixed dev smoke24")
+                else:
+                    local_ok, local_reasons, local_metrics = (
+                        self._s2_local_route_screen(
+                            candidate=candidate,
+                            packet=packet,
+                        )
+                    )
+                    metrics["local_replay_accessed"] = True
+                    metrics["local_route_screen"] = local_metrics
+                    reasons.extend(local_reasons)
+                    if local_ok:
+                        gate_queries = self._queries_for_val_gate("route_gate")
+                        parent_config = (
+                            "s1-candidate"
+                            if binding.source_stage == "s1"
+                            else "s2-candidate"
+                        )
+                        parent_rows = self._assistant_many(
+                            split=f"{settings.round_id}-route-gate75-parent",
+                            config=parent_config,
+                            queries=gate_queries,
+                            bank=parent,
+                        )
+                        candidate_rows = self._assistant_many(
+                            split=f"{settings.round_id}-route-gate75-candidate",
+                            config="s2-candidate",
+                            queries=gate_queries,
+                            bank=candidate,
+                        )
+                        accepted, gate_reasons, gate_metrics = self._s2_gate(
+                            parent_rows, candidate_rows, gate_queries
+                        )
+                        metrics["route_gate75_accessed"] = True
+                        metrics["gate"] = gate_metrics
+                        reasons.extend(gate_reasons)
+        selected = candidate if accepted and candidate is not None else parent
+        self._write_selected_bank("s2", selected)
+        decision = StageDecision(
+            stage="s2",
+            accepted=accepted,
+            alias_of=(
+                None if accepted else ("s1" if binding.source_stage == "s1" else "s1s2")
+            ),
+            parent_bank=parent.bank_sha256,
+            candidate_bank=None if candidate is None else candidate.bank_sha256,
+            selected_bank=selected.bank_sha256,
+            reasons=tuple(reasons),
+            metrics=metrics,
+        )
+        saved = self._save_decision(decision)
+        receipt = {
+            "schema_version": 1,
+            "kind": "core-fast-s2-adaptive-round-receipt",
+            "cycle_id": settings.cycle_id,
+            "round_id": settings.round_id,
+            "source_stage": binding.source_stage,
+            "source_round_id": binding.source_round_id,
+            "parent_bank_sha256": parent.bank_sha256,
+            "candidate_bank_sha256": saved.candidate_bank,
+            "selected_bank_sha256": saved.selected_bank,
+            "accepted": saved.accepted,
+            "target_capability": target,
+            "preparatory_round_id": binding.preparatory_round_id,
+            "preparatory_bank_sha256": binding.preparatory_bank_sha256,
+            "portfolio_selected_bank_sha256": saved.metrics[
+                "portfolio_selected_bank_sha256"
+            ],
+            "evidence_packet_sha256": packet["packet_sha256"],
+            "creator_call_id": creator_call_id,
+            "compiled_rule_sha256": saved.metrics["compiled_rule_sha256"],
+            "local_replay_accessed": saved.metrics["local_replay_accessed"],
+            "route_gate75_accessed": saved.metrics["route_gate75_accessed"],
+            "reasons": list(saved.reasons),
+            "decision_file_sha256": _file_sha(self._decision_path("s2")),
+            "selected_bank_file_sha256": _file_sha(
+                self.output_root / "banks" / "s2-selected.json"
+            ),
+            "candidate_bank_file_sha256": (
+                _file_sha(self.output_root / "banks" / "s2-candidate.json")
+                if (self.output_root / "banks" / "s2-candidate.json").is_file()
+                else None
+            ),
+        }
+        receipt["receipt_sha256"] = sha256_bytes(canonical_json_bytes(receipt))
+        self._write_or_verify_json(
+            self.output_root / "artifacts" / "s2-round-receipt.json",
+            receipt,
+            label="S2 adaptive round receipt",
+        )
+        return saved
+
     def run_s2(self) -> StageDecision:
         existing = self._existing_decision("s2")
         if existing is not None:
+            if self.spec.s2_parent is not None:
+                selected = self._load_selected_bank("s2")
+                receipt_path = self.output_root / "artifacts" / "s2-round-receipt.json"
+                receipt = load_json(receipt_path) if receipt_path.is_file() else None
+                receipt_unsigned = (
+                    {
+                        key: value
+                        for key, value in receipt.items()
+                        if key != "receipt_sha256"
+                    }
+                    if isinstance(receipt, dict)
+                    else {}
+                )
+                settings = self.spec.s2_settings
+                binding = self.spec.s2_parent
+                candidate_path = self.output_root / "banks" / "s2-candidate.json"
+                if (
+                    selected.bank_sha256 != existing.selected_bank
+                    or not isinstance(receipt, dict)
+                    or settings is None
+                    or receipt.get("receipt_sha256")
+                    != sha256_bytes(canonical_json_bytes(receipt_unsigned))
+                    or receipt.get("round_id") != settings.round_id
+                    or receipt.get("source_stage") != binding.source_stage
+                    or receipt.get("source_round_id") != binding.source_round_id
+                    or receipt.get("selected_bank_sha256") != existing.selected_bank
+                    or receipt.get("accepted") != existing.accepted
+                    or receipt.get("decision_file_sha256")
+                    != _file_sha(self._decision_path("s2"))
+                    or receipt.get("selected_bank_file_sha256")
+                    != _file_sha(self.output_root / "banks" / "s2-selected.json")
+                    or (
+                        existing.candidate_bank is not None
+                        and (
+                            not candidate_path.is_file()
+                            or receipt.get("candidate_bank_file_sha256")
+                            != _file_sha(candidate_path)
+                        )
+                    )
+                ):
+                    raise FastPathError("adaptive S2 resume artifacts drifted")
             return existing
+        if self.spec.s2_parent is not None:
+            return self._run_adaptive_s2()
         self.run_s1()
         parent = self._load_selected_bank("s1")
         attribution = self.opt_attribution()
@@ -6431,6 +7445,13 @@ class CoreFastEngine:
         if through not in {"s1", "s2", "full", "test"}:
             raise ValueError(f"unknown through stage: {through}")
         self.initialize()
+        if self.spec.s2_parent is not None:
+            if through != "s2":
+                raise FastPathError(
+                    "adaptive S2 specs are forward-only and may run only through s2"
+                )
+            self.run_s2()
+            return
         self.run_s1()
         if through == "s1":
             return

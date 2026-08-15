@@ -11,6 +11,8 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 > **前向阶段决定（2026-08-15）：R52 现冻结为进入 S2 前的正式预备分支。S2 的工作 parent 使用 R52 Bank `67b92b61…55bc8`，只允许 Description-only 修改；这不追认 R52 的 test300、也不把它改称 deployable。S2 尚未启动，在 S2 正式通过独立 route gate 前，Portfolio 最终 selected Bank 仍是 R12。机器可读绑定见 [`specs/s2-r52-preparatory-branch-v1.json`](specs/s2-r52-preparatory-branch-v1.json)。**
 
+> **S2 runtime readiness（2026-08-15）：多轮 forward-only S2 已完成离线实现与 fake-provider 因果回归，真实 provider 仍为 0-call。每轮绑定 R52 或上一轮 accepted S2 Bank，fresh/reuse 该 parent 的 route-only opt800，只允许一个 capability 的一条 typed conditional route rule；先过 replay200 有界风险 screen，再只访问冻结 route_gate75。已接受轮可成为下一轮 parent，rejected 轮 byte-exact 回滚到 working parent；Portfolio selected 仍保持 R12。**
+
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
 > GitHub 默认展示 HTML 源码；HTML 报告与实验日志建议下载后用浏览器打开。
@@ -471,7 +473,7 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 3. R34–R63 已完成 30/30，冻结停止；不追加第 31 个自适应 round，不重测 R52，不因 test 的 +1.6393pp 方向性增益放宽门，也不测试第二个 finalist。
 4. 当前 test300 已永久消费，不再是 untouched 五配置 test。若未来需要无偏五配置最终比较，必须建立新的 holdout；不得把本次 600 个 paired outer calls 混入新的开发证据。
 5. 若进入后续机制周期，必须使用新的预注册开发证据，并在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；所有独立候选仍只从 R12 派生。
-6. S2 尚未启动；启动时必须在新的 forward-only root 中验证 R52 binding、保持 Body byte-exact 并执行独立 route gate。S2 未通过则 Portfolio selected 仍回退 R12；S3/Judge 继续关闭。
+6. S2 runtime 已离线 ready、真实 S2 尚未启动。启动时必须先生成 R52 route-only opt800、冻结 9-case packet 并通过 `s2-readiness`；每轮使用独立 root，保持 Body byte-exact，只运行 replay route screen 与 route_gate75。rejected working branch 回滚到其 accepted parent，Portfolio selected 仍保持 R12；S3/Judge/test300 继续关闭。
 
 ---
 

@@ -47,8 +47,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="run create-only opt800 under a SHA-bound accepted S1 parent",
     )
     commands.add_parser(
+        "s2-parent-route800",
+        help="run create-only route-only opt800 under a SHA-bound S2 parent",
+    )
+    commands.add_parser(
         "prepare-feedback-selection",
         help="freeze or verify discovery600 Feedback summary/selection without provider calls",
+    )
+    commands.add_parser(
+        "prepare-s2-round",
+        help="freeze or verify the 3-failure/3-success/3-regression S2 packet",
+    )
+    commands.add_parser(
+        "s2-readiness",
+        help="verify one frozen adaptive S2 round without provider calls",
     )
     run = commands.add_parser("run", help="run or conservatively resume the experiment")
     run.add_argument("--through", choices=("s1", "s2", "full", "test"), required=True)
@@ -110,6 +122,11 @@ def main(argv: list[str] | None = None) -> int:
             result = engine.run_s1_parent_opt800()
             print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
+        if args.command == "s2-parent-route800":
+            engine.initialize_s2_parent_route800()
+            result = engine.run_s2_parent_route800()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
         if args.command == "prepare-feedback-selection":
             result = engine.prepare_feedback_selection()
             manifest = result["selection_manifest"]
@@ -136,6 +153,15 @@ def main(argv: list[str] | None = None) -> int:
                     sort_keys=True,
                 )
             )
+            return 0
+        if args.command == "prepare-s2-round":
+            engine.initialize()
+            result = engine.prepare_s2_round()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+            return 0
+        if args.command == "s2-readiness":
+            result = engine.s2_readiness()
+            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
             return 0
         report = engine.report()
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
