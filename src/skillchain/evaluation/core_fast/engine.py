@@ -2815,7 +2815,43 @@ class CoreFastEngine:
                 ),
             )
         if stage == "s2" and self.spec.s2_settings is not None:
-            target = self.spec.s2_settings.target_capability
+            settings = self.spec.s2_settings
+            target = settings.target_capability
+            if settings.proposal_mode == "contrastive-description-ir-v2":
+                required = [
+                    "capability_id",
+                    "include_intent",
+                    "exclude_intent",
+                    "route_to",
+                ]
+                fields: dict[str, object] = {
+                    "capability_id": {"type": "string", "const": target},
+                    "include_intent": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 180,
+                    },
+                    "exclude_intent": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100,
+                    },
+                    "route_to": {"type": "string", "const": target},
+                }
+            else:
+                required = ["capability_id", "when", "route_to"]
+                fields = {
+                    "capability_id": {
+                        "type": "string",
+                        "const": target,
+                    },
+                    "when": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 320,
+                    },
+                    "route_to": {"type": "string", "const": target},
+                }
             return {
                 "type": "object",
                 "additionalProperties": False,
@@ -2828,23 +2864,8 @@ class CoreFastEngine:
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
-                            "required": [
-                                "capability_id",
-                                "when",
-                                "route_to",
-                            ],
-                            "properties": {
-                                "capability_id": {
-                                    "type": "string",
-                                    "const": target,
-                                },
-                                "when": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 320,
-                                },
-                                "route_to": {"type": "string", "const": target},
-                            },
+                            "required": required,
+                            "properties": fields,
                         },
                     }
                 },
@@ -6404,13 +6425,17 @@ class CoreFastEngine:
         if not isinstance(edits, list) or len(edits) != 1:
             return None, None
         edit = edits[0]
-        if not isinstance(edit, dict) or set(edit) != {
-            "capability_id",
-            "when",
-            "route_to",
-        }:
+        settings = self.spec.s2_settings
+        if settings is None:
             return None, None
-        when = edit.get("when")
+        v2 = settings.proposal_mode == "contrastive-description-ir-v2"
+        expected_fields = (
+            {"capability_id", "include_intent", "exclude_intent", "route_to"}
+            if v2
+            else {"capability_id", "when", "route_to"}
+        )
+        if not isinstance(edit, dict) or set(edit) != expected_fields:
+            return None, None
         protected_ids = sorted(
             str(example["query"]["query_id"])
             for example in packet["examples"]
@@ -6427,26 +6452,58 @@ class CoreFastEngine:
             "op-",
             "test300",
         )
+        if v2:
+            include = edit.get("include_intent")
+            exclude = edit.get("exclude_intent")
+            fragments = (include, exclude)
+            invalid_text = (
+                any(not isinstance(item, str) for item in fragments)
+                or any(not item.strip() or item != item.strip() for item in fragments)
+                or any("\n" in item or ";" in item for item in fragments)
+                or not str(include).isascii()
+                or not str(exclude).isascii()
+                or len(str(include)) > 180
+                or len(str(exclude)) > 100
+                or any(
+                    token in str(item).casefold()
+                    for item in fragments
+                    for token in forbidden
+                )
+            )
+            when = None
+        else:
+            when = edit.get("when")
+            invalid_text = (
+                not isinstance(when, str)
+                or not when.strip()
+                or when != when.strip()
+                or "\n" in when
+                or len(when) > 320
+                or when.count(";") > 1
+                or not when.startswith("Route here when ")
+                or any(token in when.casefold() for token in forbidden)
+            )
         if (
             edit.get("capability_id") != target
             or edit.get("route_to") != target
-            or not isinstance(when, str)
-            or not when.strip()
-            or when != when.strip()
-            or "\n" in when
-            or len(when) > 320
-            or when.count(";") > 1
-            or not when.startswith("Route here when ")
-            or any(token in when.casefold() for token in forbidden)
+            or invalid_text
         ):
             return None, None
         parent_skill = _bank_by_capability(parent)[target]
-        condition = when.rstrip(". ")
-        description = (
-            f"Conditional routing boundary: {condition}. "
-            f"Otherwise do not route to {target}; preserve the other capability "
-            "boundaries."
-        )
+        if v2:
+            assert isinstance(include, str) and isinstance(exclude, str)
+            description = (
+                f"Use this capability only when {include.rstrip('. ')}. "
+                f"Exclude cases where {exclude.rstrip('. ')}."
+            )
+        else:
+            assert isinstance(when, str)
+            condition = when.rstrip(". ")
+            description = (
+                f"Conditional routing boundary: {condition}. "
+                f"Otherwise do not route to {target}; preserve the other capability "
+                "boundaries."
+            )
         bank = self._compile_candidate_payload(
             {
                 "edits": [
@@ -6464,13 +6521,18 @@ class CoreFastEngine:
         rule: dict[str, object] = {
             "schema_version": 1,
             "kind": "core-fast-s2-conditional-route-rule",
+            "proposal_mode": settings.proposal_mode,
             "capability_id": target,
-            "when": when,
             "route_to": target,
             "must_preserve_query_ids": protected_ids,
             "parent_skill_sha256": parent_skill.skill_sha256,
             "candidate_skill_sha256": _bank_by_capability(bank)[target].skill_sha256,
         }
+        if v2:
+            rule["include_intent"] = include
+            rule["exclude_intent"] = exclude
+        else:
+            rule["when"] = when
         rule["rule_sha256"] = sha256_bytes(canonical_json_bytes(rule))
         self._write_or_verify_json(
             self.output_root / "artifacts" / "s2-conditional-route-rule.json",
@@ -6504,6 +6566,7 @@ class CoreFastEngine:
             purpose="S2 counterfactual single-Description route optimizer",
             payload={
                 "operation": "s2_counterfactual_route_optimizer",
+                "proposal_mode": settings.proposal_mode,
                 "parent_bank": parent.model_dump(mode="json"),
                 "evidence_packet": packet,
                 "target_capability": target,
@@ -6519,6 +6582,9 @@ class CoreFastEngine:
                     "when_max_characters": 320,
                     "when_must_be_a_complete_ascii_sentence": True,
                     "at_most_one_exclusion_clause": True,
+                    "v2_slots_are_fragments_not_full_descriptions": (
+                        settings.proposal_mode == "contrastive-description-ir-v2"
+                    ),
                 },
                 "output_schema": self._creator_schema("s2"),
             },

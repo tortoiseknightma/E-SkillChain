@@ -233,9 +233,10 @@ class S2Settings(FrozenStrictModel):
     cycle_id: str
     target_capability: str
     target_predicted_capability: str | None = None
-    proposal_mode: Literal["single-description-counterfactual-v1"] = (
-        "single-description-counterfactual-v1"
-    )
+    proposal_mode: Literal[
+        "single-description-counterfactual-v1",
+        "contrastive-description-ir-v2",
+    ] = "single-description-counterfactual-v1"
     failure_example_count: Literal[3] = 3
     parent_success_example_count: Literal[3] = 3
     historical_regression_example_count: Literal[3] = 3

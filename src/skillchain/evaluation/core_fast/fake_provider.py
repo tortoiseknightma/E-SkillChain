@@ -386,20 +386,32 @@ class FakeCoreFastAdapter:
                     skills[0],
                 )
                 if operation == "s2_counterfactual_route_optimizer":
+                    if (
+                        intent.payload.get("proposal_mode")
+                        == "contrastive-description-ir-v2"
+                    ):
+                        edit = {
+                            "capability_id": skill["capability_id"],
+                            "include_intent": (
+                                "the user explicitly requests the target intent"
+                            ),
+                            "exclude_intent": (
+                                "only a neighboring capability intent is requested"
+                            ),
+                            "route_to": skill["capability_id"],
+                        }
+                    else:
+                        edit = {
+                            "capability_id": skill["capability_id"],
+                            "when": (
+                                "Route here when the visible request matches the clarified "
+                                "boundary cues; preserve the parent boundary otherwise"
+                            ),
+                            "route_to": skill["capability_id"],
+                        }
                     return self._result(
                         intent,
-                        {
-                            "edits": [
-                                {
-                                    "capability_id": skill["capability_id"],
-                                    "when": (
-                                        "Route here when the visible request matches the clarified "
-                                        "boundary cues; preserve the parent boundary otherwise"
-                                    ),
-                                    "route_to": skill["capability_id"],
-                                }
-                            ]
-                        },
+                        {"edits": [edit]},
                     )
                 return self._result(
                     intent,

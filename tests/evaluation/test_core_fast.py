@@ -2801,6 +2801,57 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         "expected_capability": first_target,
         "predicted_capability": "product.exact_match",
     }
+    v2_spec = first_spec.model_copy(
+        update={
+            "s2_settings": first_spec.s2_settings.model_copy(
+                update={"proposal_mode": "contrastive-description-ir-v2"}
+            )
+        }
+    )
+    v2_engine = CoreFastEngine(
+        spec=v2_spec,
+        spec_path=first_spec_path,
+        output_root=tmp_path / "s2-v2-compile",
+        adapter=FakeCoreFastAdapter(),
+    )
+    v2_fields = v2_engine._creator_schema("s2")["properties"]["edits"][  # noqa: SLF001
+        "items"
+    ]["properties"]
+    assert set(v2_fields) == {
+        "capability_id",
+        "include_intent",
+        "exclude_intent",
+        "route_to",
+    }
+    v2_bank, v2_rule = v2_engine._compile_adaptive_s2_rule(  # noqa: SLF001
+        result=CallResult(
+            call_id="valid-contrastive-s2",
+            role="creator",
+            status="success",
+            schema_valid=True,
+            requested_model="gpt-5.6-sol",
+            output={
+                "edits": [
+                    {
+                        "capability_id": first_target,
+                        "include_intent": "the user explicitly asks for an explanation",
+                        "exclude_intent": "the user asks to purchase a specific product",
+                        "route_to": first_target,
+                    }
+                ]
+            },
+        ),
+        parent=_bank(),
+        packet=packet,
+        target=first_target,
+    )
+    assert v2_rule is not None
+    assert v2_rule["proposal_mode"] == "contrastive-description-ir-v2"
+    assert "Use this capability only when" in next(
+        skill.description
+        for skill in v2_bank.skills
+        if skill.capability_id == first_target
+    )
     invalid_candidate, invalid_rule = first_engine._compile_adaptive_s2_rule(
         result=CallResult(
             call_id="invalid-freeform-s2",
