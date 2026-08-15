@@ -12,6 +12,7 @@ from skillchain.evaluation.core_fast.engine import CoreFastEngine
 from skillchain.evaluation.core_fast.live_adapter import LiveCoreFastAdapter
 from skillchain.evaluation.core_fast.live_adapter import (
     _normalize_dual_policy_feedback_labels,
+    _parse_route_only_selection_v1,
     _route_only_response_format_v1,
 )
 from skillchain.evaluation.core_fast.models import (
@@ -62,6 +63,22 @@ def test_route_only_response_format_binds_a_strict_scalar_enum() -> None:
             },
         },
     }
+
+
+def test_route_only_parser_normalizes_only_a_valid_singleton_array() -> None:
+    capabilities = ("product.exact_match", "product.multi_search")
+
+    assert _parse_route_only_selection_v1(
+        '{"selected_capability":["product.exact_match"]}', capabilities
+    ) == ("product.exact_match", "dashscope-singleton-array-to-scalar-v1")
+    assert _parse_route_only_selection_v1(
+        '{"selected_capability":"product.multi_search"}', capabilities
+    ) == ("product.multi_search", None)
+    with pytest.raises(ValueError, match="singleton"):
+        _parse_route_only_selection_v1(
+            '{"selected_capability":["product.exact_match","product.multi_search"]}',
+            capabilities,
+        )
 
 
 def test_dual_policy_feedback_labels_normalize_order_without_changing_text() -> None:

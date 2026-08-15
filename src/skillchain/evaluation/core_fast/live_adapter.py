@@ -123,6 +123,26 @@ def _route_only_response_format_v1(capabilities: tuple[str, ...]) -> dict[str, o
     }
 
 
+def _parse_route_only_selection_v1(
+    text: str, capabilities: tuple[str, ...]
+) -> tuple[str, str | None]:
+    """Parse a route while tolerating only DashScope's scalar singleton wrapper."""
+
+    parsed = json.loads(text)
+    if not isinstance(parsed, dict) or set(parsed) != {"selected_capability"}:
+        raise ValueError("route-only answer is not the exact object contract")
+    selected = parsed["selected_capability"]
+    normalization: str | None = None
+    if isinstance(selected, list):
+        if len(selected) != 1 or not isinstance(selected[0], str):
+            raise ValueError("route-only list is not a singleton string")
+        selected = selected[0]
+        normalization = "dashscope-singleton-array-to-scalar-v1"
+    if not isinstance(selected, str) or selected not in capabilities:
+        raise ValueError("route is outside the capability enum")
+    return selected, normalization
+
+
 def _normalize_dual_policy_feedback_labels(
     feedback: VisualFeedbackOutput,
 ) -> VisualFeedbackOutput:
@@ -1311,21 +1331,23 @@ class LiveCoreFastAdapter:
             "latency_ms": latency_ms,
         }
         try:
-            parsed = json.loads(text)
-            selected = parsed["selected_capability"]
-            if selected not in self.spec.capabilities:
-                raise ValueError("route is outside the capability enum")
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            selected, normalization = _parse_route_only_selection_v1(
+                text, self.spec.capabilities
+            )
+        except (json.JSONDecodeError, TypeError, ValueError):
             return CallResult(
                 **common,
                 status="schema_error",
                 failure_reason="route-only answer failed the local enum schema",
             )
+        output = {"selected_capability": selected}
+        if normalization is not None:
+            output["normalization"] = normalization
         return CallResult(
             **common,
             status="success",
             schema_valid=True,
-            output={"selected_capability": selected},
+            output=output,
         )
 
     def invoke(self, intent: CallIntent) -> CallResult:

@@ -2458,6 +2458,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r15-exact-concise-identity\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r15-exact-concise-identity\calls\route_only\s2r15-candidate-replay200-route-r2-core-0796.result.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r16" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R16 · EXACT STRICT ROUTE</div><h3>Provider-side strict schema 仍返回 singleton array；Exact treatment 再次未评分</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Operational stop</span><span class="tag">wire incompatibility confirmed</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…5bc8</code>；packet <code>0b81bf4a…c41d</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>2fcc8770…7027</code> / <code>6827c0df…36f6</code></dd></div>
+            <div><dt>Failure</dt><dd><code>r2-core-0442</code> 在 strict JSON Schema 请求下仍返回 singleton array</dd></div>
+            <div><dt>Calls / cost</dt><dd>200 route_only + 1 Creator；priced DashScope ¥0.0176544；protected6 与 route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>DashScope Qwen3.7 接受请求但没有遵守 <code>selected_capability:string enum</code> 的 provider-side strict schema；本地 strict parser 因此按约停止。Creator 的 320 字符 Description 也在 exclusion 短语中间结束，不能视为完整算法候选。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该模型/兼容接口上的 <code>strict</code> 不是可依赖的 wire guarantee。singleton array 中仍只有一个合法 enum，确定性解包不会改变模型选择；它比格式重试更少引入额外采样和选择偏差。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R16 回滚且不重采。parser 仅允许 exact-object 中的合法 scalar 或单元素合法 enum array，并把 normalization policy 写入 CallResult；多元素、额外字段和越界值继续拒绝。Creator requirements 另增加 220 字符目标与完整 ASCII 句约束；R17 使用新 root。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r16-exact-strict-route\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r16-exact-strict-route\calls\route_only\s2r16-candidate-replay200-route-r2-core-0442.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
