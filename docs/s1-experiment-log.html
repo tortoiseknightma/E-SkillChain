@@ -2277,6 +2277,31 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r6-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r6-exact-multi-boundary\calls\assistant\s2r6-dev-smoke24-s2-candidate-dm-006.result.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r7" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R7 · EXACT→MULTI BOUNDARY</div><h3>首次可归因 route treatment：8 gains / 6 regressions，按有界风险门回滚</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">treatment 1/1</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>8</strong><span>replay route gains</span></div>
+            <div class="result-box"><strong>6</strong><span>parent-success regressions</span></div>
+            <div class="result-box"><strong>+2</strong><span>net gain</span></div>
+            <div class="result-box"><strong>0</strong><span>protected6 regressions</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；packet <code>a40e2bec…e29d</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>318fb4de…bb1f</code> / <code>89693343…09c5</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；88,277 / 3,113 Qwen tokens；¥0.0201458；Creator cost unavailable</dd></div>
+            <div><dt>Gate</dt><dd>regressions≤2 与 gains≥4×regressions 均失败；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>8 个 gain 全是 parent Multi→candidate Exact。6 个 regression 中 5 个是 parent Style→candidate Exact，另 1 个是 Recipe→Exact；显式 packet 保护集 6/6 均保持正确。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>“one tightly specified product”边界能修复多属性单品误判，但把“类似/推荐/搭配”的 Style 请求和一个菜名请求也吸入 Exact，规则仍过宽。该轮支持收紧意图谓词，不支持放宽风险门。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R7 回滚到 R52。R8 仍只改 Exact Description，但要求显式 same-item/同款/identity-match 意图；将 alternative、similar、recommend、outfit/style 与 recipe-guidance 状态列为必须保持的排除边界。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r7-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r7-exact-multi-boundary\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
