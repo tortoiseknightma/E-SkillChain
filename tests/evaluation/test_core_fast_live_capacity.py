@@ -12,6 +12,7 @@ from skillchain.evaluation.core_fast.engine import CoreFastEngine
 from skillchain.evaluation.core_fast.live_adapter import LiveCoreFastAdapter
 from skillchain.evaluation.core_fast.live_adapter import (
     _normalize_dual_policy_feedback_labels,
+    _route_only_response_format_v1,
 )
 from skillchain.evaluation.core_fast.models import (
     AssistantObservation,
@@ -38,6 +39,29 @@ class _FakeClock:
     def sleep(self, delay: float) -> None:
         self.sleeps.append(delay)
         self.now += delay
+
+
+def test_route_only_response_format_binds_a_strict_scalar_enum() -> None:
+    capabilities = ("product.exact_match", "product.multi_search")
+
+    assert _route_only_response_format_v1(capabilities) == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "core_fast_route_only_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["selected_capability"],
+                "properties": {
+                    "selected_capability": {
+                        "type": "string",
+                        "enum": list(capabilities),
+                    }
+                },
+            },
+        },
+    }
 
 
 def test_dual_policy_feedback_labels_normalize_order_without_changing_text() -> None:

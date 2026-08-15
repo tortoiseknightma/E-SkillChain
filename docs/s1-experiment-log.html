@@ -2439,6 +2439,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r14-style-runner-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r14-style-runner-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r15" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R15 · EXACT CONCISE IDENTITY</div><h3>Exact 短 Description 已生成，但第二次被单元素数组 route 输出中止</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Operational stop</span><span class="tag">algorithm not scored</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…5bc8</code>；packet <code>9c16467c…edc1</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>e32e7c45…3c29</code> / <code>f3f260d5…e553</code></dd></div>
+            <div><dt>Failure</dt><dd><code>r2-core-0796</code> 返回 <code>selected_capability:[knowledge.visual_encyclopedia]</code>，违反 scalar enum</dd></div>
+            <div><dt>Calls / cost</dt><dd>200 route_only + 1 Creator；priced DashScope ¥0.017504；protected6 与 route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator 与 candidate compilation 均成功，Exact replacement 小于 320 字符；局部 replay 的单条 schema error 使矩阵不可计算。它与 S2R12 的 <code>0257</code> 单元素数组属于同型故障；本轮未得到 gains/regressions。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>两次独立轮次重复出现同型 scalar-vs-array 失配，已从偶发样本升级为实验吞吐 P0。把数组在本地强制取首项会改变 strict router 语义；在 provider 请求上绑定 strict JSON Schema 更能保持比较合同。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R15 保留为 operational stop，不重采。route-only wire 从 JSON object 升为 provider-side strict scalar enum schema，本地仍 fail closed；通过聚焦回归后，R16 用新 root 重做 Exact concise treatment。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r15-exact-concise-identity\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r15-exact-concise-identity\calls\route_only\s2r15-candidate-replay200-route-r2-core-0796.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>

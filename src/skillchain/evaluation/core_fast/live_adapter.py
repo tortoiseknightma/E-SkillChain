@@ -100,6 +100,29 @@ _FEEDBACK_DISPOSITIONS = (
 _FEEDBACK_SURFACES = ("action-policy", "response-policy")
 
 
+def _route_only_response_format_v1(capabilities: tuple[str, ...]) -> dict[str, object]:
+    """Bind the route decision to the provider-side scalar enum contract."""
+
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "core_fast_route_only_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["selected_capability"],
+                "properties": {
+                    "selected_capability": {
+                        "type": "string",
+                        "enum": list(capabilities),
+                    }
+                },
+            },
+        },
+    }
+
+
 def _normalize_dual_policy_feedback_labels(
     feedback: VisualFeedbackOutput,
 ) -> VisualFeedbackOutput:
@@ -1158,7 +1181,7 @@ class LiveCoreFastAdapter:
         raw = judge.chat.completions.create(
             model=intent.requested_model,
             messages=self._judge_messages(query, observation),
-            response_format={"type": "json_object"},
+            response_format=_route_only_response_format_v1(self.spec.capabilities),
             max_tokens=1024,
             timeout=180,
         )
