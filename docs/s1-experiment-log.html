@@ -2302,6 +2302,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r7-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r7-exact-multi-boundary\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r8" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R8 · EXACT EXPLICIT-IDENTITY</div><h3>加入真实跨能力反例后仍为 9 gains / 6 regressions</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">protected examples failed</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>9</strong><span>route gains</span></div><div class="result-box"><strong>6</strong><span>regressions</span></div><div class="result-box"><strong>+3</strong><span>net gain</span></div><div class="result-box"><strong>3 / 3</strong><span>historical regressions repeated</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Packet</dt><dd><code>fcd82a7c…760b</code>；历史反例为 Style <code>0439/0665</code> 与 Recipe <code>0448</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>45511eb8…591a</code> / <code>a307f121…12a3</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.020726；Creator cost unavailable</dd></div>
+            <div><dt>Gate</dt><dd>显式保护回退、regressions&gt;2、4:1 ratio 三项拒绝；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator 明确写出“exclude similar alternatives, styling recommendations, recipe guidance”，但三条输入 packet 的保护例仍全部从正确 Style/Recipe 路由成 Exact；另外三条 Style parent-success 同样回退。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>宽泛的“one specific purchasable product”正向谓词压过了后置排除从句。继续对 Exact 追加更多排除 prose 很可能重复 R7/R8 的错误结构。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R8 回滚到 R52，暂停 Exact。S2R9 转向独立 Style→Multi cluster，修复 R52 Style Description 缺少“相似替代/搭配推荐”意图边界的问题；不组合任何 rejected Exact 描述。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r8-exact-explicit-identity\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r8-exact-explicit-identity\inputs\s2-evidence-packet.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
