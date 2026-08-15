@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>17 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>18 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥0.5665296；17 个尝试中 17 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥0.8765744；18 个尝试中 18 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2500,6 +2500,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>接纳 <code>3767a383…78a2</code> 为后续 adaptive S2 的唯一合法 parent。下一轮先 fresh 运行该 Bank 的 route800，再独立优化剩余 Style confusion；R1–R16 均保持 rejected/operational 历史，不参与组合。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r17-exact-stable-wire\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r17-exact-stable-wire\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r18" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R18 · STYLE FROM ACCEPTED S2R17</div><h3>Style 局部 2/0，但 route_gate75 无修正且破坏一条，回滚到 S2R17</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Formal gate rollback</span><span class="tag">accepted parent preserved</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>2 / 0</strong><span>local gains / regressions</span></div><div class="result-box"><strong>0 / 1</strong><span>formal corrected / broken</span></div><div class="result-box"><strong>0.9773</strong><span>candidate route macro-F1</span></div><div class="result-box"><strong>+1.67pp</strong><span>formal capability-macro GCS</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>d5014c3c…0851</code></dd></div>
+            <div><dt>Route profile / packet</dt><dd>767/800；SHA <code>b3a52820…ab4d</code>；packet <code>56f3396a…8b36</code></dd></div>
+            <div><dt>Rule</dt><dd><code>feaad8ca…b894</code>；Style→Exact dominant cluster</dd></div>
+            <div><dt>Calls / cost</dt><dd>fresh parent route800 ¥0.0670322；本轮 ¥0.2430126；Creator cost unavailable</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>local replay 修复 <code>0431/0965</code>，零 regression，六个显式保护例全部保持；因此进入正式门。route_gate75 的 candidate/parent route macro-F1 分别为 0.9773/0.9885，corrected=0、broken=1，触发固定的 strict-improvement 与 corrected−2.5×broken 门。candidate GCS macro 虽高 1.67pp，仍不能抵消 route 门失败。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Style concise boundary 在 opt replay 上有局部信号，但没有迁移到冻结 route gate；formal parent/candidate 的高 F1 与单条波动也显示样本噪声仍存在。保持 worst-case gate 比据 GCS 追认更诚实。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R18 回滚并以 <code>alias_of=s1s2</code> 继续选择 S2R17。下一轮不读取 formal gate 个案调 prompt，改从 S2R17 route800 的另一个独立 capability cluster（Multi→Exact）做单 Description 优化；accepted Exact Skill byte-exact 保持。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r18-style-from-s2r17\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r18-style-from-s2r17\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
