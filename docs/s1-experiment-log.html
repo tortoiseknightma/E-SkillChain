@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>S2 campaign 已启动：R52 route800 800/800；S2R1 因 Creator schema 在 treatment 前停止，R52 working parent 与 R12 Portfolio selected 均未改变</span>
+        <span>S2 campaign 进行中：S2R17 已通过局部 route screen 与 route_gate75，selected S2 Bank 为 3767a383…78a2；R12 仍是独立 Portfolio selected</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>30 / 30</strong><span>adaptive rounds completed</span></div>
+        <div class="hero-stat"><strong>17 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -533,7 +533,7 @@
         <div class="metric"><strong>removed</strong><span>deterministic response compiler</span></div>
         <div class="metric"><strong>restored</strong><span>model tool choice + final response</span></div>
         <div class="metric"><strong>qualified</strong><span>fresh Static + parent/no-op</span></div>
-        <div class="metric"><strong>1 accepted</strong><span>dual-policy R1–R30</span></div>
+        <div class="metric"><strong>1 accepted</strong><span>adaptive S2 · R17</span></div>
       </div>
 
       <div class="grid-2">
@@ -584,7 +584,11 @@
         replay macro +1.1111pp，但 body 0pp 且 hard-error +1.3333pp；R63 局部 5/8。30/30 结束后，
         R52 成为唯一 finalist；一次 paired test300 得到 macro +1.6393pp，低于 +2pp 门，最终回滚到
         R12。随后前向阶段决定把 R52 冻结为 S2 的正式预备 working parent；这不追认其 test300，
-        S2/S3/Judge 仍未访问，test300 已消费。
+        test300 已消费。随后 adaptive S2 以 R52 为 working parent：S2R1–R16 均在 Creator/runtime
+        或局部有界风险门停止；S2R17 的 Exact concise Description 得到 replay route 6 gains / 1
+        regression、六个显式保护例 0 regression，并在 route_gate75 达到 route macro-F1 0.9773
+        （parent 0.9162）、corrected 4 / broken 0、capability-macro GCS +2.3485pp、hard errors −1，
+        因而成为首个 accepted S2 Bank <code>3767a383…78a2</code>。S3/Judge 仍未访问。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -595,7 +599,8 @@
         Creator 会话。R44–R48 再新增 ¥1.23552605、5 个 Creator 会话；R49–R54 新增
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
-        一次性 test300 另计 ¥0.9376664。
+        一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
+        DashScope ¥0.5665296；17 个尝试中 17 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2475,6 +2480,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R16 回滚且不重采。parser 仅允许 exact-object 中的合法 scalar 或单元素合法 enum array，并把 normalization policy 写入 CallResult；多元素、额外字段和越界值继续拒绝。Creator requirements 另增加 220 字符目标与完整 ASCII 句约束；R17 使用新 root。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r16-exact-strict-route\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r16-exact-strict-route\calls\route_only\s2r16-candidate-replay200-route-r2-core-0442.result.json</code></div></details>
+        </article>
+
+        <article class="experiment status-accepted" id="exp-20260815-s2r17" data-status="accepted" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R17 · EXACT STABLE WIRE</div><h3>首个 S2 正式接受：Exact 短边界通过 replay 与 route_gate75</h3></div>
+            <div class="experiment-labels"><span class="state accepted">Accepted</span><span class="tag">new legal S2 parent</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>6 / 1</strong><span>replay gains / regressions</span></div><div class="result-box"><strong>+5</strong><span>replay net gain</span></div><div class="result-box"><strong>0.9773</strong><span>candidate route macro-F1</span></div><div class="result-box"><strong>+2.35pp</strong><span>gate capability-macro GCS</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Parent → selected</dt><dd><code>67b92b61…5bc8</code> → <code>3767a383…78a2</code></dd></div>
+            <div><dt>Packet / rule</dt><dd><code>1892def9…3872</code> / <code>77d0e432…53dc</code></dd></div>
+            <div><dt>Formal gate</dt><dd>corrected 4 / broken 0；hard errors 14→13；micro GCS 29.33%→32.00%</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route-only + 150 Assistant outer + 1 Creator；priced DashScope ¥0.2544522；Creator cost unavailable</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>局部 screen 的六个显式 parent-success/historical-regression 均保持正确；唯一 replay regression 为 <code>0965</code>，满足冻结的 6≥4×1 有界风险门。route_gate75 中 candidate 的六能力 GCS macro 为 24.80%，parent 为 22.45%，且没有 broken route。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>把 Description 压缩成一个完整、短、正向身份边界，配合稳定 route parser，终于把 R52 的 dominant Exact→Multi confusion 转化为正式收益。相较 R7/R8 的长附加规则，减少类别 attention/verbosity bias 是最可信的机制解释，但仍只对当前模型与 gate 有证据。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>接纳 <code>3767a383…78a2</code> 为后续 adaptive S2 的唯一合法 parent。下一轮先 fresh 运行该 Bank 的 route800，再独立优化剩余 Style confusion；R1–R16 均保持 rejected/operational 历史，不参与组合。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r17-exact-stable-wire\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r17-exact-stable-wire\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
