@@ -2852,6 +2852,30 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         for skill in v2_bank.skills
         if skill.capability_id == first_target
     )
+    rejected_v2_bank, rejected_v2_rule = v2_engine._compile_adaptive_s2_rule(  # noqa: SLF001
+        result=CallResult(
+            call_id="truncated-contrastive-s2",
+            role="creator",
+            status="success",
+            schema_valid=True,
+            requested_model="gpt-5.6-sol",
+            output={
+                "edits": [
+                    {
+                        "capability_id": first_target,
+                        "include_intent": "the user asks for an explanation,",
+                        "exclude_intent": "the user asks for product/m",
+                        "route_to": first_target,
+                    }
+                ]
+            },
+        ),
+        parent=_bank(),
+        packet=packet,
+        target=first_target,
+    )
+    assert rejected_v2_bank is None
+    assert rejected_v2_rule is None
     invalid_candidate, invalid_rule = first_engine._compile_adaptive_s2_rule(
         result=CallResult(
             call_id="invalid-freeform-s2",

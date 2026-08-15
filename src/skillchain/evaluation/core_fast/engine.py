@@ -6456,14 +6456,37 @@ class CoreFastEngine:
             include = edit.get("include_intent")
             exclude = edit.get("exclude_intent")
             fragments = (include, exclude)
+            incomplete_tail_words = {
+                "a",
+                "an",
+                "and",
+                "by",
+                "for",
+                "in",
+                "including",
+                "of",
+                "on",
+                "or",
+                "rather",
+                "the",
+                "to",
+                "with",
+            }
             invalid_text = (
                 any(not isinstance(item, str) for item in fragments)
                 or any(not item.strip() or item != item.strip() for item in fragments)
                 or any("\n" in item or ";" in item for item in fragments)
+                or any("/" in item or "\\" in item for item in fragments)
                 or not str(include).isascii()
                 or not str(exclude).isascii()
                 or len(str(include)) > 180
                 or len(str(exclude)) > 100
+                or any(str(item).endswith((",", ":", "-")) for item in fragments)
+                or any(
+                    str(item).rstrip(". ").split()[-1].casefold()
+                    in incomplete_tail_words
+                    for item in fragments
+                )
                 or any(
                     token in str(item).casefold()
                     for item in fragments
@@ -6585,6 +6608,10 @@ class CoreFastEngine:
                     "v2_slots_are_fragments_not_full_descriptions": (
                         settings.proposal_mode == "contrastive-description-ir-v2"
                     ),
+                    "v2_include_intent_target_max_characters": 120,
+                    "v2_exclude_intent_target_max_characters": 70,
+                    "v2_fragments_must_end_with_a_complete_word": True,
+                    "v2_fragments_forbid_slash_and_backslash": True,
                 },
                 "output_schema": self._creator_schema("s2"),
             },

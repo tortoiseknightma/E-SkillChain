@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>24 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>25 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥1.1991972；24 个尝试中 23 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥1.4436098；25 个尝试中 24 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2634,6 +2634,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>停止 v1 Style→Multi。下一机制改为 <code>contrastive-description-ir-v2</code>：Creator 只填 include-intent 与 exclude-intent 两个有界 ASCII slot，compiler 统一生成完整短 Description；历史 v1 artifacts 不改写。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r24-style-explicit-goal\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r24-style-explicit-goal\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r25" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R25 · STYLE CONTRASTIVE IR V2</div><h3>typed include/exclude 进入 formal gate；1/1 route 风险失败，并暴露 slot 截断</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Formal gate rollback</span><span class="tag">v2 compiler hardened</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>15570b1c…2e11</code></dd></div>
+            <div><dt>Packet / rule</dt><dd>Style→Exact；<code>82c7ab0e…c1e9</code> / <code>6a358541…c0ee</code></dd></div>
+            <div><dt>Local / formal</dt><dd>1/0；corrected 1 / broken 1；route F1 0.9773→0.9761；GCS macro +6.3636pp；hard 10→6</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route-only + 150 Assistant outer + 1 Creator；priced DashScope ¥0.2444126</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>v2 schema 与 compiler 成功限制 Creator 只输出 include/exclude slots；候选 local 修复 <code>0965</code>、零回退并进入正式门。正式 route 仍为 1 corrected / 1 broken，未过 2.5× penalty。两个 slot 同时触及 hard max，include 以逗号结束，exclude 含截断的 <code>/m</code>。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>typed slots 比 v1 更容易进入正式门，但 slot 的硬长度上限被模型当成目标，导致语义不完整。GCS/hard-error 改善不能覆盖 route 门，也不能把截断候选追认为有效机制。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R25 回滚。v2 compiler 增加目标长度提示、完整词尾检查、slash/backslash 与悬空连接词拒绝；R26 用新 root 重做同簇。正式 gate 个案不进入 Creator memory。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r25-style-contrastive-ir\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r25-style-contrastive-ir\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
