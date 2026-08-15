@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -2751,21 +2750,9 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     assert prepared["provider_calls"] == 0
     readiness = first_engine.s2_readiness()
     assert readiness["status"] == "s2_runtime_ready"
-    captured_hard_error = SimpleNamespace(oracle_available=True, hard_error=True)
-    assert CoreFastEngine._s2_smoke_ok(
-        {f"smoke-{index}": captured_hard_error for index in range(24)}
-    )
-    assert not CoreFastEngine._s2_smoke_ok(
-        {
-            **{f"smoke-{index}": captured_hard_error for index in range(23)},
-            "smoke-unscorable": SimpleNamespace(
-                oracle_available=False, hard_error=True
-            ),
-        }
-    )
     assert readiness["call_ceiling_after_parent_profile"] == {
         "creator": 1,
-        "assistant": 174,
+        "assistant": 150,
         "route_only": 206,
         "feedback": 0,
         "judge": 0,
@@ -2824,6 +2811,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     assert first.selected_bank != first.parent_bank
     assert first.metrics["local_route_screen"]["gain_count"] == 4
     assert first.metrics["local_route_screen"]["regression_count"] == 0
+    assert first.metrics["dev_smoke24_accessed"] is False
     assert first.metrics["route_gate75_accessed"] is True
     rule = json.loads(
         (first_root / "artifacts" / "s2-conditional-route-rule.json").read_text(

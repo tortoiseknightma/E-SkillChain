@@ -2098,14 +2098,6 @@ class CoreFastEngine:
         return len(rows) == 24 and all(row.oracle_available for row in rows.values())
 
     @staticmethod
-    def _s2_smoke_ok(rows: Mapping[str, AssistantObservation]) -> bool:
-        # S2 changes routing only.  Captured action/response failures are not
-        # attributable at this preflight and remain visible to the paired
-        # route_gate75 GCS/hard-error checks.  Smoke stops only on incomplete
-        # or unscorable execution.
-        return len(rows) == 24 and all(row.oracle_available for row in rows.values())
-
-    @staticmethod
     def _s1_development_scores(
         rows: Mapping[str, AssistantObservation],
         queries: Sequence[Query],
@@ -6256,7 +6248,7 @@ class CoreFastEngine:
             raise FastPathError("S2 readiness is only for a not-yet-decided round")
         call_ceiling = {
             "creator": 1,
-            "assistant": 24 + 75 + 75,
+            "assistant": 75 + 75,
             "route_only": 200 + 6,
             "feedback": 0,
             "judge": 0,
@@ -6569,58 +6561,39 @@ class CoreFastEngine:
             violations = self._boundary_changes(parent, candidate, "s2")
             reasons.extend(violations)
             if not reasons:
-                smoke_queries = [
-                    self.query_by_id()[item.query_id]
-                    for item in self.spec.fixed_samples.dev_smoke24
-                ]
-                smoke = self._assistant_many(
-                    split=f"{settings.round_id}-dev-smoke24",
-                    config="s2-candidate",
-                    queries=smoke_queries,
-                    bank=candidate,
+                metrics["dev_smoke24_accessed"] = False
+                local_ok, local_reasons, local_metrics = self._s2_local_route_screen(
+                    candidate=candidate,
+                    packet=packet,
                 )
-                metrics["smoke_hard_errors"] = sum(
-                    row.hard_error for row in smoke.values()
-                )
-                if not self._s2_smoke_ok(smoke):
-                    reasons.append(
-                        "candidate failed fixed dev smoke24 operational/oracle coverage"
+                metrics["local_replay_accessed"] = True
+                metrics["local_route_screen"] = local_metrics
+                reasons.extend(local_reasons)
+                if local_ok:
+                    gate_queries = self._queries_for_val_gate("route_gate")
+                    parent_config = (
+                        "s1-candidate"
+                        if binding.source_stage == "s1"
+                        else "s2-candidate"
                     )
-                else:
-                    local_ok, local_reasons, local_metrics = (
-                        self._s2_local_route_screen(
-                            candidate=candidate,
-                            packet=packet,
-                        )
+                    parent_rows = self._assistant_many(
+                        split=f"{settings.round_id}-route-gate75-parent",
+                        config=parent_config,
+                        queries=gate_queries,
+                        bank=parent,
                     )
-                    metrics["local_replay_accessed"] = True
-                    metrics["local_route_screen"] = local_metrics
-                    reasons.extend(local_reasons)
-                    if local_ok:
-                        gate_queries = self._queries_for_val_gate("route_gate")
-                        parent_config = (
-                            "s1-candidate"
-                            if binding.source_stage == "s1"
-                            else "s2-candidate"
-                        )
-                        parent_rows = self._assistant_many(
-                            split=f"{settings.round_id}-route-gate75-parent",
-                            config=parent_config,
-                            queries=gate_queries,
-                            bank=parent,
-                        )
-                        candidate_rows = self._assistant_many(
-                            split=f"{settings.round_id}-route-gate75-candidate",
-                            config="s2-candidate",
-                            queries=gate_queries,
-                            bank=candidate,
-                        )
-                        accepted, gate_reasons, gate_metrics = self._s2_gate(
-                            parent_rows, candidate_rows, gate_queries
-                        )
-                        metrics["route_gate75_accessed"] = True
-                        metrics["gate"] = gate_metrics
-                        reasons.extend(gate_reasons)
+                    candidate_rows = self._assistant_many(
+                        split=f"{settings.round_id}-route-gate75-candidate",
+                        config="s2-candidate",
+                        queries=gate_queries,
+                        bank=candidate,
+                    )
+                    accepted, gate_reasons, gate_metrics = self._s2_gate(
+                        parent_rows, candidate_rows, gate_queries
+                    )
+                    metrics["route_gate75_accessed"] = True
+                    metrics["gate"] = gate_metrics
+                    reasons.extend(gate_reasons)
         selected = candidate if accepted and candidate is not None else parent
         self._write_selected_bank("s2", selected)
         decision = StageDecision(

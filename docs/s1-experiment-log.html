@@ -2258,6 +2258,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r5-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r5-exact-multi-boundary\calls\assistant</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r6" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R6 · EXACT→MULTI BOUNDARY</div><h3>非目标 action smoke 的一次 Provider fatal 再次阻断 route treatment</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Operational stop</span><span class="tag">treatment not screened</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；Exact→Multi packet <code>da8009a1…408e</code></dd></div>
+            <div><dt>Candidate</dt><dd>Bank <code>9dab6810…8f3f7</code>；typed rule <code>7df822c8…8ace</code></dd></div>
+            <div><dt>Smoke</dt><dd>23 可评分 + dm-006 Provider fatal；3 hard errors；本轮 priced DashScope ¥0.0391608</dd></div>
+            <div><dt>Unvisited</dt><dd>local route replay200、protected6、route_gate75、S3、Judge、test300</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>dm-006 返回 <code>AssistantFatalProviderConfigurationError</code>，无可评分 observation；另两条 captured hard errors仍是 Encyclopedia/Document action-response failure。oracle gate 因此按设计停止，但这些调用均发生在 route-only treatment 前。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>连续 R5/R6 证明 full Assistant smoke 是 S2 的错误前置资格：它不测 Description 的路由效果，却引入 action、tool、response 和 Provider 的额外失败面。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不重采 R6。adaptive S2 删除 dev_smoke24；首个执行门直接为 candidate replay200 route-only + protected6。正式 route_gate75 仍成对执行 parent/candidate，继续检查 route F1、GCS 和 hard-error 非增加。readiness 的 Assistant ceiling 由 174 降为 150。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r6-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r6-exact-multi-boundary\calls\assistant\s2r6-dev-smoke24-s2-candidate-dm-006.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
