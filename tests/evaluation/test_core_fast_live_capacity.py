@@ -102,6 +102,92 @@ def test_local_s1_trace_labels_use_the_bound_s1_runtime(label: str) -> None:
     assert LiveCoreFastAdapter._canonical_config(label) == "s1"  # noqa: SLF001
 
 
+def test_live_s2_candidate_prepares_shared_route_before_assistant_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = LiveCoreFastAdapter(
+        spec=SimpleNamespace(
+            concurrency=SimpleNamespace(assistant_requests_per_second=20.0),
+            runtime=SimpleNamespace(
+                assistant_contract="core-fast-model-generated-action-response-v1"
+            ),
+        ),
+        cwd=tmp_path,
+        base_dir=tmp_path,
+    )
+    calls: list[object] = []
+    route_artifact = object()
+    response = SimpleNamespace(
+        response_text="answer",
+        selected_capability="product.exact_match",
+        route_trace_sha256="a" * 64,
+        tool_trace=(),
+        error_code=None,
+        backbone_model=config.ASSISTANT_MODEL,
+        latency_ms=1,
+        model_dump=lambda **_kwargs: {"response": "answer"},
+    )
+    receipt = SimpleNamespace(
+        aggregate_usage=SimpleNamespace(input_tokens=2, output_tokens=1),
+        model_dump=lambda **_kwargs: {"receipt": "bound"},
+    )
+    execution = SimpleNamespace(response=response, receipt=receipt, scorer_calls=())
+
+    class _Runner:
+        def prepare_shared_stage2_route(self, request: object) -> object:
+            calls.append(("prepare", request))
+            return route_artifact
+
+        def execute(self, request: object, **kwargs: object) -> object:
+            calls.append(("execute", request, kwargs))
+            return execution
+
+    request = object()
+    monkeypatch.setattr(
+        adapter,
+        "_request",
+        lambda **_kwargs: (request, _Runner()),
+    )
+    score = SimpleNamespace(
+        route_acceptable=True,
+        no_hard_error=True,
+        tool_contract_pass=True,
+        evidence_grounded=True,
+        output_contract_pass=True,
+        answer_mode="supported",
+        oracle_available=True,
+        gcs=1.0,
+        reason_codes=(),
+        hard_error=False,
+        style_support_status=None,
+    )
+    monkeypatch.setattr(
+        adapter,
+        "_assistant_result",
+        lambda **_kwargs: (SimpleNamespace(model_dump=lambda **_dump: {}), score),
+    )
+    query = _query()
+    result = adapter._invoke_assistant(  # noqa: SLF001
+        CallIntent(
+            call_id="live-s2-shared-route",
+            role="assistant",
+            requested_model=config.ASSISTANT_MODEL,
+            purpose="bind the live S2 shared route",
+            payload={
+                "query": query.model_dump(mode="json"),
+                "config": "s2-candidate",
+            },
+        )
+    )
+
+    assert result.status == "success"
+    assert calls[0] == ("prepare", request)
+    assert calls[1][0:2] == ("execute", request)
+    assert calls[1][2]["shared_stage2_route"] is route_artifact
+    assert calls[1][2]["scorer_query"] == query
+
+
 def test_windows_creator_prefers_independently_updated_npm_codex_shim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

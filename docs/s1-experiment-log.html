@@ -2220,6 +2220,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r3-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r3-exact-multi-boundary\calls\creator\s2r3-route-optimizer-once.result.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r4" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R4 · EXACT→MULTI BOUNDARY</div><h3>首个 candidate 成功编译；live adapter 未准备共享 Stage-2 route</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Runtime stop</span><span class="tag">treatment 0</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；Exact→Multi packet <code>c335a667…8282</code></dd></div>
+            <div><dt>Candidate</dt><dd>Bank <code>cfdad33a…ce37</code>；typed rule <code>15888178…a788</code></dd></div>
+            <div><dt>Creator</dt><dd>schema-valid；20,314 input / 322 output tokens；人民币 cost basis unavailable</dd></div>
+            <div><dt>Execution</dt><dd>smoke24 为 24/24 本地 runtime_error、0 model calls、0 DashScope cost；local replay/gate 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>candidate 确实只改变 Exact Description，并通过 typed compiler。所有 smoke row 都在 8–12ms 内、无 provider request ID、无 token 地失败；runner receipt 显示 route_attempt=failed。原因是 live adapter 对 <code>s1s2</code> 直接调用 <code>execute()</code>，没有先调用 runner 已有的 <code>prepare_shared_stage2_route()</code>。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>24/24 失败是确定性的接线缺口，不代表 Exact 条件规则的风险。由于没有发生路由模型调用，S2 treatment 仍为 0。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保留 R4 终态，不在原 root 续跑。live adapter 接入共享 route artifact，并新增 route-before-execute 回归；S2R5 继续同一冻结 confusion，首次产生可归因 route replay。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\artifacts\s2-conditional-route-rule.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\calls\assistant</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>

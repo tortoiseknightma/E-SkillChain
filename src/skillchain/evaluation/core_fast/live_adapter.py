@@ -605,7 +605,16 @@ class LiveCoreFastAdapter:
                     scorer_query=query,
                 )
         else:
-            execution = runner.execute(request, scorer_query=query)
+            shared_stage2_route = (
+                runner.prepare_shared_stage2_route(request)
+                if config_name in {"s1s2", "full"}
+                else None
+            )
+            execution = runner.execute(
+                request,
+                shared_stage2_route=shared_stage2_route,
+                scorer_query=query,
+            )
         result, score = self._assistant_result(
             query=query,
             config_name=config_name,
