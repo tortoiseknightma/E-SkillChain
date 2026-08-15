@@ -2823,6 +2823,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     assert creator_intent.payload["requirements"]["when_must_start_with"] == (
         "Route here when"
     )
+    assert creator_intent.payload["requirements"]["when_max_characters"] == 320
     assert (
         creator_intent.payload["requirements"]["at_most_one_exclusion_clause"] is True
     )
@@ -2849,6 +2850,8 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     for before, after in zip(_bank().skills, first_selected.skills, strict=True):
         if before.capability_id == first_target:
             assert before.description != after.description
+            assert not after.description.startswith(before.description)
+            assert len(after.description) < 500
         else:
             assert before == after
 

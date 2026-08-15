@@ -2362,6 +2362,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r10-style-single-reference\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r10-style-single-reference\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r11" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R11 · STYLE IDENTITY EXCLUSION</div><h3>更强身份排除仍为 6 gains / 3 regressions；长 Description 存在类别吸附</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">verbosity bias diagnosed</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Packet / protection</dt><dd><code>7c89c767…4f49</code>；<code>0684/0766/0956</code></dd></div>
+            <div><dt>Result</dt><dd>6 gains / 3 regressions / net +3；<code>0956</code> 再次回退；route_gate75 未访问</dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>ed3c6a24…7517</code> / <code>59990457…3643</code></dd></div>
+            <div><dt>Cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.020718；Creator cost unavailable</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Creator 已明确排除 exact wording/artwork、device compatibility、packaging 与 factual explanation，但 <code>0956</code> 仍从 Exact 变 Style，并新增 <code>0258/0965</code> 回退。候选 Style Description 明显长于其余五类。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>连续多轮的回退多流向被改写的长 Description，符合类别 verbosity/attention bias；继续增加 exclusion prose 会同时加强该偏差。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R11 回滚。后续 typed rule 限 320 字符，并直接成为替代 Description，而不是追加到 parent 摘要；只改变目标 Description，风险门不变。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r11-style-identity-exclusion\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r11-style-identity-exclusion\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
