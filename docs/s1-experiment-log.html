@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>20 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>21 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥0.9142208；20 个尝试中 20 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥0.9142208；21 个尝试中 20 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2558,6 +2558,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>停止当前 Multi 方向，R20 回滚到 S2R17。R21 以 S2R17 为 parent 做 Exact residual 单 Description edit，历史保护固定为 R17 的三个 accepted gains；不使用 R19/R20 Bank。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r20-multi-regression-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r20-multi-regression-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r21" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R21 · EXACT RESIDUAL PREFLIGHT</div><h3>accepted parent 的 residual Exact errors 无三例同簇，0-call 停止</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Evidence infeasible</span><span class="tag">no Creator</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>S2R17 <code>3767a383…78a2</code>；route800 <code>b3a52820…ab4d</code></dd></div>
+            <div><dt>Discovery evidence</dt><dd>4 Exact errors：Exact→Style 2；Exact→Multi 2</dd></div>
+            <div><dt>Frozen requirement</dt><dd>单一 confusion cluster 至少 3 failure + 3 parent-success + 3 regression</dd></div>
+            <div><dt>Calls / cost</dt><dd>Creator 0；DashScope 0；candidate/replay/route_gate75 0</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p><code>prepare-s2-round</code> 在读取已冻结的 S2R17 route800 后报 <code>insufficient S2 route-failure cluster evidence</code>；bootstrap/frozen spec 已 create-only 保存，但没有创建实验 manifest、decision 或任何 provider call。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>S2R17 已把原 Exact 主簇压到两个不同的二例边界；此时继续用统一 Exact 描述做优化会把两个机制不同的 confusion 混合，降低可归因性。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不降低三例资格、不合并 prediction cluster。R21 作为 preflight stop 计入 30 次尝试但不计 Creator；R22 转向 discovery 中具备 8 条 Style→Exact 同簇失败的 Style surface。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\specs\s2r21-exact-residual.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\parent-profiles\s2r17\route800.jsonl</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
