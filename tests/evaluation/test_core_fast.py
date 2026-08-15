@@ -2547,6 +2547,7 @@ def _prepare_adaptive_s2_spec(
     output_spec: Path,
     wrong_ids: frozenset[str],
     preparatory_binding_path: Path | None = None,
+    historical_regression_ids: tuple[str, ...] = (),
 ) -> CoreFastSpec:
     bootstrap_spec_path = output_spec.with_name(f"{round_id}-bootstrap.json")
     bootstrap_args = [
@@ -2574,6 +2575,8 @@ def _prepare_adaptive_s2_spec(
     ]
     if preparatory_binding_path is not None:
         bootstrap_args.extend(["--preparatory-binding", str(preparatory_binding_path)])
+    for query_id in historical_regression_ids:
+        bootstrap_args.extend(["--historical-regression-query-id", query_id])
     assert prepare_s2_cli.main(bootstrap_args) == 0
     bootstrap_spec = load_core_fast_spec(bootstrap_spec_path)
     route_engine = CoreFastEngine(
@@ -2719,6 +2722,15 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
 
     first_target = "knowledge.visual_encyclopedia"
     first_wrong = target_wrong_ids(first_target)
+    cross_capability_regressions = tuple(
+        sorted(
+            query.query_id
+            for query in queries
+            if query.split == "opt_pool"
+            and fold_roles[query.query_id] == "discovery"
+            and query.canonical_capability == "product.style_recommendation"
+        )[:3]
+    )
     first_spec_path = tmp_path / "s2r1.json"
     first_spec = _prepare_adaptive_s2_spec(
         source_spec_path=source_spec_path,
@@ -2732,6 +2744,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         output_spec=first_spec_path,
         wrong_ids=first_wrong,
         preparatory_binding_path=preparatory_path,
+        historical_regression_ids=cross_capability_regressions,
     )
     first_root = tmp_path / "s2r1-root"
     first_adapter = FakeCoreFastAdapter(route_only_wrong_ids=first_wrong)
@@ -2770,6 +2783,14 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     assert "uniqueItems" not in creator_fields["must_preserve_query_ids"]
     packet = json.loads(
         (first_root / "inputs" / "s2-evidence-packet.json").read_text(encoding="utf-8")
+    )
+    assert (
+        tuple(
+            item["query"]["query_id"]
+            for item in packet["examples"]
+            if item["role"] == "historical_regression"
+        )
+        == cross_capability_regressions
     )
     invalid_candidate, invalid_rule = first_engine._compile_adaptive_s2_rule(
         result=CallResult(

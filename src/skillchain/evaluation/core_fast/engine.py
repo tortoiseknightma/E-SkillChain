@@ -6138,7 +6138,6 @@ class CoreFastEngine:
             key=lambda item: (-len(item[1]), item[0]),
         )[0]
         failure_rows = failures[: settings.failure_example_count]
-        success_by_id = {row.query_id: row for row in successes}
         configured_regressions = settings.historical_regression_query_ids
         if configured_regressions:
             if (
@@ -6149,13 +6148,18 @@ class CoreFastEngine:
                     "S2 historical regression evidence must contain exactly three IDs"
                 )
             try:
-                regression_rows = [
-                    success_by_id[item] for item in configured_regressions
-                ]
+                regression_rows = [routes[item] for item in configured_regressions]
             except KeyError as error:
                 raise FastPathError(
-                    "S2 historical regression evidence is not parent-success"
+                    "S2 historical regression evidence is absent from parent route800"
                 ) from error
+            if any(
+                row.selected_capability not in set(row.acceptable_capabilities)
+                for row in regression_rows
+            ):
+                raise FastPathError(
+                    "S2 historical regression evidence is not parent-success"
+                )
         else:
             regression_rows = sorted(successes, key=lambda item: item.query_id)[
                 : settings.historical_regression_example_count
