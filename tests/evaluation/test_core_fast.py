@@ -2781,6 +2781,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         "const": first_target,
     }
     assert "uniqueItems" not in creator_fields["must_preserve_query_ids"]
+    assert creator_fields["when"]["maxLength"] == 320
     packet = json.loads(
         (first_root / "inputs" / "s2-evidence-packet.json").read_text(encoding="utf-8")
     )

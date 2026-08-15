@@ -2839,7 +2839,11 @@ class CoreFastEngine:
                                     "type": "string",
                                     "const": target,
                                 },
-                                "when": {"type": "string", "minLength": 1},
+                                "when": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 320,
+                                },
                                 "route_to": {"type": "string", "const": target},
                                 "must_preserve_query_ids": {
                                     "type": "array",
