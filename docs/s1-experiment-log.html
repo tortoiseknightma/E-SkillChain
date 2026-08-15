@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>18 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>19 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥0.8765744；18 个尝试中 18 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥0.8954654；19 个尝试中 19 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2520,6 +2520,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R18 回滚并以 <code>alias_of=s1s2</code> 继续选择 S2R17。下一轮不读取 formal gate 个案调 prompt，改从 S2R17 route800 的另一个独立 capability cluster（Multi→Exact）做单 Description 优化；accepted Exact Skill byte-exact 保持。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r18-style-from-s2r17\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r18-style-from-s2r17\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r19" data-status="rollback" data-capability="product.multi_search">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R19 · MULTI FROM ACCEPTED S2R17</div><h3>Multi concise boundary 为 1 gain / 2 regressions，局部回滚</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">accepted parent preserved</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>e9b18265…b1af</code></dd></div>
+            <div><dt>Packet / rule</dt><dd><code>1df39b01…72aa</code> / <code>afc3c78f…f0b0</code></dd></div>
+            <div><dt>Local screen</dt><dd>gain <code>0431</code>；regressions <code>0448/0780</code>；net −1；protected6 0 regression</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0188910；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>规则把“最终请求寻找两个或更多独立产品”归 Multi 并排除单产品；它仅修复一条 parent route error，却破坏两条 parent success，未达到 net≥1 和 4:1 门。accepted Exact Skill 与其他四项保持 byte-exact。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Multi→Exact cluster 只有三条 failure，信号弱于 Exact 主簇；对“多个属性/配件”与“多个独立商品”的文字区分仍受模型采样影响。两条新 regression 适合成为下一轮显式反例，而不是放宽风险门。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R19 回滚到 S2R17。R20 保持同一 Multi 单 Description surface，把 <code>0448/0780</code> 与一个既有 Multi 边界成功例设为历史保护；不携带 R19 candidate bytes，正式门不变。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r19-multi-from-s2r17\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r19-multi-from-s2r17\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
