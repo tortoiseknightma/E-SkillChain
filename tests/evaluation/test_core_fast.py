@@ -2757,6 +2757,16 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         "feedback": 0,
         "judge": 0,
     }
+    creator_schema = first_engine._creator_schema("s2")
+    creator_fields = creator_schema["properties"]["edits"]["items"]["properties"]
+    assert creator_fields["capability_id"] == {
+        "type": "string",
+        "const": first_target,
+    }
+    assert creator_fields["route_to"] == {
+        "type": "string",
+        "const": first_target,
+    }
     packet = json.loads(
         (first_root / "inputs" / "s2-evidence-packet.json").read_text(encoding="utf-8")
     )

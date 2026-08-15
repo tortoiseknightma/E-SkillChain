@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R34–R63 已完成 30/30；最终仍选择 R12，R52 为 S2 正式预备分支，adaptive S2 runtime 已离线 ready、provider 0-call</span>
+        <span>S2 campaign 已启动：R52 route800 800/800；S2R1 因 Creator schema 在 treatment 前停止，R52 working parent 与 R12 Portfolio selected 均未改变</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -2147,6 +2147,38 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b09-20260815\artifacts\r63-retrospective.json</code>
             <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-finalization-20260815\cycle-finalist.json</code>
             <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-finalization-20260815\test300-r52\s1-finalist-test300.json</code>
+          </div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r1" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div>
+              <div class="experiment-id">ADAPTIVE S2 · S2R1 · EXACT→MULTI BOUNDARY</div>
+              <h3>Parent route profile 成功；首轮因 Creator JSON Schema 不合法在 treatment 前停止</h3>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">Infrastructure stop</span><span class="tag">treatment 0</span></div>
+          </div>
+          <div class="result-grid">
+            <div class="result-box"><strong>800 / 800</strong><span>R52 route-only profile</span></div>
+            <div class="result-box"><strong>760 / 40</strong><span>correct / error</span></div>
+            <div class="result-box"><strong>0</strong><span>candidate Assistant calls</span></div>
+            <div class="result-box"><strong>¥0.0607554</strong><span>profile DashScope cost</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Working parent</dt><dd>R52 · <code>67b92b61…55bc8</code>；Portfolio selected 仍为 R12</dd></div>
+            <div><dt>Profile</dt><dd>SHA <code>011cd412…15a57</code>；Exact discovery 20/157 error，dominant Exact→Multi 14；replay 同向 12</dd></div>
+            <div><dt>Frozen packet</dt><dd>Exact→Multi · 3 failure + 3 parent-success + 3 protection；SHA <code>d890b231…5ffd</code></dd></div>
+            <div><dt>Unvisited</dt><dd>smoke24、replay candidate、route_gate75、S3、Judge、test300</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>唯一 Creator session 在 OpenAI response-format 校验处返回 400：两个 <code>const</code> 字段缺少显式 <code>type</code>。candidate Bank 为 null，local replay 和正式 gate 均未访问。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该终态不包含 S2 treatment，不能支持 Exact route rule 的正面或负面算法结论。R52 profile 则提供了稳定的首轮方向：Exact→Multi 是 discovery 与 replay 的共同主 confusion。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保留 S2R1 终态，不原 root 重试。修复 schema 并增加结构回归；S2R2 继续绑定同一 R52/profile、同一 Exact→Multi 单变量，避免把基础设施失败伪装成算法失败。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\parent-profiles\r52\run\s2-parent-route800-bootstrap.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r1-exact-multi-boundary\decisions\s2.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r1-exact-multi-boundary\calls\creator\s2r1-route-optimizer-once.result.json</code>
           </div></details>
         </article>
 

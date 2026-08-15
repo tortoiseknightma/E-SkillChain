@@ -2835,9 +2835,12 @@ class CoreFastEngine:
                                 "must_preserve_query_ids",
                             ],
                             "properties": {
-                                "capability_id": {"const": target},
+                                "capability_id": {
+                                    "type": "string",
+                                    "const": target,
+                                },
                                 "when": {"type": "string", "minLength": 1},
-                                "route_to": {"const": target},
+                                "route_to": {"type": "string", "const": target},
                                 "must_preserve_query_ids": {
                                     "type": "array",
                                     "minItems": 6,
