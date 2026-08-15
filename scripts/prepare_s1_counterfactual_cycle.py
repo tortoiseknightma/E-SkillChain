@@ -300,7 +300,9 @@ def _round_spec(
         "feedback_allocation": "target-focused",
         "target_capabilities": [capability],
         "proposal_mode": (
-            "single-surface-counterfactual-fanout-v8"
+            "single-surface-counterfactual-fanout-v9"
+            if typed_contract and selection_policy == "parent-counterfactual-v12"
+            else "single-surface-counterfactual-fanout-v8"
             if typed_contract and selection_policy == "parent-counterfactual-v11"
             else "single-surface-counterfactual-fanout-v7"
             if typed_contract and selection_policy == "parent-counterfactual-v10"
@@ -468,15 +470,18 @@ def _treatment_probe(
         "single-surface-counterfactual-fanout-v6",
         "single-surface-counterfactual-fanout-v7",
         "single-surface-counterfactual-fanout-v8",
+        "single-surface-counterfactual-fanout-v9",
     }
     surface_closed_contract = (
         getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
         == "single-surface-counterfactual-fanout-v7"
     )
-    capability_response_contract = (
-        getattr(settings, "proposal_mode", "single-surface-counterfactual-fanout-v5")
-        == "single-surface-counterfactual-fanout-v8"
-    )
+    capability_response_contract = getattr(
+        settings, "proposal_mode", "single-surface-counterfactual-fanout-v5"
+    ) in {
+        "single-surface-counterfactual-fanout-v8",
+        "single-surface-counterfactual-fanout-v9",
+    }
     payload: dict[str, object] = {
         "schema_version": 5
         if capability_response_contract
@@ -527,6 +532,7 @@ def _treatment_probe(
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
             "parent-counterfactual-v11",
+            "parent-counterfactual-v12",
         }:
             if not isinstance(action_signature, dict):
                 raise ValueError(
@@ -537,22 +543,33 @@ def _treatment_probe(
             if (
                 action_signature.get("phase") != "after-tool"
                 or prior not in operators
-                or prior_status not in {"invalid-arguments", "error"}
+                or prior_status not in {"success", "invalid-arguments", "error"}
                 or action_signature.get("public_evidence") != "unknown"
             ):
                 raise ValueError("action treatment failure state is not representable")
+            action_directive = selected_failure.get("action_treatment_directive")
+            if not isinstance(action_directive, dict):
+                if settings.feedback_selection_policy == "parent-counterfactual-v12":
+                    raise ValueError("action treatment directive is not frozen")
+                action_directive = {
+                    "operation": (
+                        "stop-action-loop"
+                        if prior_status == "success"
+                        else "retry-tool-once"
+                    ),
+                    "tool_name": None if prior_status == "success" else prior,
+                    "arguments_from": (
+                        "none"
+                        if prior_status == "success"
+                        else "current-user-request"
+                        if prior_status == "invalid-arguments"
+                        else "last-valid-arguments"
+                    ),
+                }
             payload.update(
                 {
                     "action_when": dict(action_signature),
-                    "action_then": {
-                        "operation": "retry-tool-once",
-                        "tool_name": prior,
-                        "arguments_from": (
-                            "current-user-request"
-                            if prior_status == "invalid-arguments"
-                            else "last-valid-arguments"
-                        ),
-                    },
+                    "action_then": dict(action_directive),
                 }
             )
         else:
@@ -605,6 +622,7 @@ def _treatment_probe(
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
             "parent-counterfactual-v11",
+            "parent-counterfactual-v12",
         }:
             if not isinstance(response_signature, dict):
                 raise ValueError(
@@ -661,6 +679,9 @@ def _treatment_probe(
             parent_success_query_ids=success_ids,
             expected_action_condition=(
                 payload.get("action_when") if surface == "action-policy" else None
+            ),
+            expected_action_directive=(
+                payload.get("action_then") if surface == "action-policy" else None
             ),
             expected_response_signature=(
                 response_signature if surface == "response-policy" else None
@@ -847,6 +868,7 @@ def _build_cycle_preflight(
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
                 "parent-counterfactual-v11",
+                "parent-counterfactual-v12",
             }:
                 if spec.s1_settings.target_surface == "action-policy":
                     failure_signatures = {

@@ -121,6 +121,7 @@ _COUNTERFACTUAL_PROPOSAL_MODES = frozenset(
         "single-surface-counterfactual-fanout-v6",
         "single-surface-counterfactual-fanout-v7",
         "single-surface-counterfactual-fanout-v8",
+        "single-surface-counterfactual-fanout-v9",
     }
 )
 _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
@@ -131,6 +132,7 @@ _COUNTERFACTUAL_SELECTION_POLICIES = frozenset(
         "parent-counterfactual-v9",
         "parent-counterfactual-v10",
         "parent-counterfactual-v11",
+        "parent-counterfactual-v12",
     }
 )
 
@@ -2391,6 +2393,7 @@ class CoreFastEngine:
         | None = None,
         counterfactual_parent_success_ids: tuple[str, ...] = (),
         counterfactual_action_condition: Mapping[str, object] | None = None,
+        counterfactual_action_directive: Mapping[str, object] | None = None,
         counterfactual_response_signature: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         capability_enum = list(CAPABILITIES)
@@ -2403,15 +2406,17 @@ class CoreFastEngine:
                 if len(targets) != 1:
                     raise ValueError("counterfactual schema requires one target")
                 capability = targets[0]
-                if self.spec.s1_settings.proposal_mode == (
-                    "single-surface-counterfactual-fanout-v8"
-                ):
+                if self.spec.s1_settings.proposal_mode in {
+                    "single-surface-counterfactual-fanout-v8",
+                    "single-surface-counterfactual-fanout-v9",
+                }:
                     return counterfactual_capability_response_policy_patch_output_json_schema(
                         capability_id=capability,
                         parent_skill_sha256=by_capability[capability].skill_sha256,
                         target_surface=counterfactual_surface,
                         parent_success_query_ids=counterfactual_parent_success_ids,
                         expected_action_condition=counterfactual_action_condition,
+                        expected_action_directive=counterfactual_action_directive,
                         expected_response_signature=counterfactual_response_signature,
                     )
                 if self.spec.s1_settings.proposal_mode == (
@@ -2423,6 +2428,7 @@ class CoreFastEngine:
                         target_surface=counterfactual_surface,
                         parent_success_query_ids=counterfactual_parent_success_ids,
                         expected_action_condition=counterfactual_action_condition,
+                        expected_action_directive=counterfactual_action_directive,
                         expected_response_signature=counterfactual_response_signature,
                     )
                 if self.spec.s1_settings.proposal_mode == (
@@ -2434,6 +2440,7 @@ class CoreFastEngine:
                         target_surface=counterfactual_surface,
                         parent_success_query_ids=counterfactual_parent_success_ids,
                         expected_action_condition=counterfactual_action_condition,
+                        expected_action_directive=counterfactual_action_directive,
                         expected_response_signature=counterfactual_response_signature,
                     )
                 if self.spec.s1_settings.proposal_mode == (
@@ -2445,6 +2452,7 @@ class CoreFastEngine:
                         target_surface=counterfactual_surface,
                         parent_success_query_ids=counterfactual_parent_success_ids,
                         expected_action_condition=counterfactual_action_condition,
+                        expected_action_directive=counterfactual_action_directive,
                     )
                 return counterfactual_policy_patch_output_json_schema(
                     capability_id=capability,
@@ -2669,6 +2677,7 @@ class CoreFastEngine:
             "single-surface-counterfactual-fanout-v6",
             "single-surface-counterfactual-fanout-v7",
             "single-surface-counterfactual-fanout-v8",
+            "single-surface-counterfactual-fanout-v9",
         }:
             return None
         if (
@@ -2704,6 +2713,7 @@ class CoreFastEngine:
                         "parent-counterfactual-v9",
                         "parent-counterfactual-v10",
                         "parent-counterfactual-v11",
+                        "parent-counterfactual-v12",
                     }
                     and item.get("treatment_separable") is not True
                 )
@@ -2883,7 +2893,10 @@ class CoreFastEngine:
             "failure_cluster": sample["failure_cluster"],
             "target_surface": self.spec.s1_settings.target_surface,
             "attribution_policy": (
-                "single-surface-counterfactual-v8"
+                "single-surface-counterfactual-v9"
+                if self.spec.s1_settings.proposal_mode
+                == "single-surface-counterfactual-fanout-v9"
+                else "single-surface-counterfactual-v8"
                 if self.spec.s1_settings.proposal_mode
                 == "single-surface-counterfactual-fanout-v8"
                 else "single-surface-counterfactual-v7"
@@ -2995,6 +3008,15 @@ class CoreFastEngine:
                             ]
                         }
                         if "action_treatment_signature" in sample
+                        else {}
+                    ),
+                    **(
+                        {
+                            "action_treatment_directive": sample[
+                                "action_treatment_directive"
+                            ]
+                        }
+                        if "action_treatment_directive" in sample
                         else {}
                     ),
                     **(
@@ -4532,6 +4554,7 @@ class CoreFastEngine:
             )
         )
         expected_action_condition: Mapping[str, object] | None = None
+        expected_action_directive: Mapping[str, object] | None = None
         expected_response_signature: Mapping[str, object] | None = None
         if (
             settings.feedback_selection_policy
@@ -4540,6 +4563,7 @@ class CoreFastEngine:
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
                 "parent-counterfactual-v11",
+                "parent-counterfactual-v12",
             }
             and settings.target_surface == "action-policy"
         ):
@@ -4565,12 +4589,36 @@ class CoreFastEngine:
                     "counterfactual action treatment state is not an object"
                 )
             expected_action_condition = raw_condition
+            if settings.proposal_mode == "single-surface-counterfactual-fanout-v9":
+                action_directives = {
+                    canonical_json_bytes(row.get("action_treatment_directive"))
+                    for row in evidence_rows
+                    if row.get("sample_role") == "cluster_failure"
+                }
+                if (
+                    len(action_directives) != 1
+                    or canonical_json_bytes(None) in action_directives
+                ):
+                    raise FastPathError(
+                        "counterfactual action evidence lacks one bound treatment directive"
+                    )
+                raw_directive = next(
+                    row.get("action_treatment_directive")
+                    for row in evidence_rows
+                    if row.get("sample_role") == "cluster_failure"
+                )
+                if not isinstance(raw_directive, dict):
+                    raise FastPathError(
+                        "counterfactual action treatment directive is not an object"
+                    )
+                expected_action_directive = raw_directive
         if (
             settings.feedback_selection_policy
             in {
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
                 "parent-counterfactual-v11",
+                "parent-counterfactual-v12",
             }
             and settings.target_surface == "response-policy"
         ):
@@ -4684,12 +4732,14 @@ class CoreFastEngine:
                             "single-surface-counterfactual-fanout-v6",
                             "single-surface-counterfactual-fanout-v7",
                             "single-surface-counterfactual-fanout-v8",
+                            "single-surface-counterfactual-fanout-v9",
                         }
                         and settings.target_surface == "action-policy"
                     ),
                     "action_condition_is_bound_to_selected_failure_state": (
                         expected_action_condition
                     ),
+                    "action_directive_is_bound_to_preflight": expected_action_directive,
                     "action_transition_obeys_capability_tool_order": (
                         settings.proposal_mode
                         in {
@@ -4697,6 +4747,7 @@ class CoreFastEngine:
                             "single-surface-counterfactual-fanout-v6",
                             "single-surface-counterfactual-fanout-v7",
                             "single-surface-counterfactual-fanout-v8",
+                            "single-surface-counterfactual-fanout-v9",
                         }
                         and settings.target_surface == "action-policy"
                     ),
@@ -4706,6 +4757,7 @@ class CoreFastEngine:
                             "single-surface-counterfactual-fanout-v6",
                             "single-surface-counterfactual-fanout-v7",
                             "single-surface-counterfactual-fanout-v8",
+                            "single-surface-counterfactual-fanout-v9",
                         }
                         and settings.target_surface == "response-policy"
                     ),
@@ -4726,6 +4778,7 @@ class CoreFastEngine:
                     counterfactual_surface=settings.target_surface,
                     counterfactual_parent_success_ids=parent_success_ids,
                     counterfactual_action_condition=expected_action_condition,
+                    counterfactual_action_directive=expected_action_directive,
                     counterfactual_response_signature=expected_response_signature,
                 ),
             },
@@ -4740,7 +4793,10 @@ class CoreFastEngine:
                 or creator.output is None
             ):
                 raise S1SparsePatchError("counterfactual Creator result is invalid")
-            if settings.proposal_mode == "single-surface-counterfactual-fanout-v8":
+            if settings.proposal_mode in {
+                "single-surface-counterfactual-fanout-v8",
+                "single-surface-counterfactual-fanout-v9",
+            }:
                 semantic_proposal = (
                     parse_counterfactual_capability_response_policy_patch(
                         canonical_json_bytes(creator.output),
@@ -4749,6 +4805,7 @@ class CoreFastEngine:
                         target_surface=settings.target_surface,
                         parent_success_query_ids=parent_success_ids,
                         expected_action_condition=expected_action_condition,
+                        expected_action_directive=expected_action_directive,
                         expected_response_signature=expected_response_signature,
                     )
                 )

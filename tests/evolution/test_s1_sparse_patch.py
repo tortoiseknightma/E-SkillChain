@@ -523,6 +523,70 @@ def test_typed_recipe_action_cannot_bypass_detection_for_lookup() -> None:
         )
 
 
+def test_v9_action_schema_and_parser_bind_the_preflight_directive(
+    parent_materials,
+) -> None:
+    parent, _authoring_input = parent_materials
+    capability = "utility.recipe_guidance"
+    parent_skill = next(
+        item for item in parent.skills if item.capability_id == capability
+    )
+    success_ids = ("success-1", "success-2", "success-3")
+    condition = {
+        "phase": "after-tool",
+        "prior_tool_name": "recipe_lookup",
+        "prior_tool_status": "invalid-arguments",
+        "public_evidence": "unknown",
+    }
+    directive = {
+        "operation": "retry-tool-once",
+        "tool_name": "recipe_lookup",
+        "arguments_from": "last-successful-tool-output",
+    }
+    schema = counterfactual_capability_response_policy_patch_output_json_schema(
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="action-policy",
+        parent_success_query_ids=success_ids,
+        expected_action_condition=condition,
+        expected_action_directive=directive,
+    )
+    action_then = schema["properties"]["action_then"]["properties"]
+    assert action_then["operation"]["enum"] == ["retry-tool-once"]
+    assert action_then["arguments_from"]["enum"] == ["last-successful-tool-output"]
+    raw = {
+        "schema_version": 5,
+        "capability_id": capability,
+        "parent_skill_sha256": parent_skill.skill_sha256,
+        "target_surface": "action-policy",
+        "non_target_surface_action": "inherit",
+        "action_when": condition,
+        "action_then": directive,
+        "must_preserve": [{"query_id": query_id} for query_id in success_ids],
+    }
+    parse_counterfactual_capability_response_policy_patch(
+        canonical_json_bytes(raw),
+        capability_id=capability,
+        parent_skill_sha256=parent_skill.skill_sha256,
+        target_surface="action-policy",
+        parent_success_query_ids=success_ids,
+        expected_action_condition=condition,
+        expected_action_directive=directive,
+    )
+    drifted = json.loads(json.dumps(raw))
+    drifted["action_then"]["arguments_from"] = "current-user-request"
+    with pytest.raises(S1SparsePatchError, match="directive drifted"):
+        parse_counterfactual_capability_response_policy_patch(
+            canonical_json_bytes(drifted),
+            capability_id=capability,
+            parent_skill_sha256=parent_skill.skill_sha256,
+            target_surface="action-policy",
+            parent_success_query_ids=success_ids,
+            expected_action_condition=condition,
+            expected_action_directive=directive,
+        )
+
+
 def test_typed_action_retry_binds_arguments_to_failure_status() -> None:
     base = {
         "schema_version": 2,

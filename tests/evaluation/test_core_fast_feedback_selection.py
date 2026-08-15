@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from skillchain.evaluation.core_fast import (
+    feedback_selection as feedback_selection_module,
+)
 from skillchain.evaluation.core_fast.engine import CoreFastEngine, FastPathError
 from skillchain.evaluation.core_fast.fake_provider import FakeCoreFastAdapter
 from skillchain.evaluation.core_fast.feedback_selection import (
@@ -450,6 +453,37 @@ def test_v8_action_selector_requires_a_provider_visible_failure_state(
         )["action_treatment_separable"]
         is False
     )
+
+
+def test_v9_repeated_successful_terminal_tool_binds_stop_directive() -> None:
+    signature = feedback_selection_module._action_failure_signature(
+        {
+            "tool_trace": [
+                {
+                    "tool_name": "recipe_lookup",
+                    "status": "success",
+                    "error_code": None,
+                },
+                {
+                    "tool_name": "recipe_lookup",
+                    "status": "success",
+                    "error_code": None,
+                },
+            ]
+        }
+    )
+
+    assert signature == {
+        "phase": "after-tool",
+        "prior_tool_name": "recipe_lookup",
+        "prior_tool_status": "success",
+        "public_evidence": "unknown",
+    }
+    assert feedback_selection_module._action_treatment_directive(signature) == {
+        "operation": "stop-action-loop",
+        "tool_name": None,
+        "arguments_from": "none",
+    }
 
 
 def test_v8_response_selector_uses_one_failure_family_and_stable_controls(

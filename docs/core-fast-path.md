@@ -103,6 +103,28 @@ hard-error 超限；R29 的 Multi+Style hard-error delta=0，body macro 仅 +1.6
 位于 `D:\athena\experiment-runs\portfolio-core-dual-policy-campaign-20260814-v2\campaign-top10.json`，
 完整逐轮事实、成本与边界见 [S1 实验日志](s1-experiment-log.html)。
 
+### R12 自适应 30 轮与一次性 test300 终态（2026-08-15）
+
+R34–R63 共 30 个前向 round 已全部终结，所有独立候选都只从 R12 Bank
+`e70ed907…096cd` 派生；R17/R26/R29 和其他 rejected Bank 从未成为 parent、未复制局部 Skill、
+也未进入 fan-in。R52 是唯一新增 `AcceptedBranchArtifact`：Encyclopedia response-policy 在
+replay200 为 macro `+0.8333pp`，在 body75 为 macro `+3.125pp`、CI95 lower `+2.7778pp`、
+hard-error `−4pp`。其余 round 均在 Feedback、局部有界风险、replay 或 body 正式门回滚。
+
+最后的 B09 在任何调用前同时冻结 R61–R63，并以零调用 preflight 证明 3/3/3 evidence、surface
+separability、结构与行为 treatment sensitivity。R61 因 live Feedback projection 未识别新 v9 attribution
+label 而在本地 canary3 停止，0 provider/Creator/Assistant，不能作为算法结论。前向修复后，R62 的
+Recipe stop-after-first-success action rule 局部为 9 gains / 1 regression，replay Recipe `+6.6667pp`、
+macro `+1.1111pp`，但 body75 macro `0pp`、hard-error `+1.3333pp`，因此回滚。R63 的
+Encyclopedia stop rule 局部为 5 gains / 8 regressions、net `−3`，未进入正式 replay。B09 计费
+DashScope 为 `¥1.24871935`，2 个 Creator 会话，Creator 人民币成本不可得。
+
+accepted-only finalization 没有可与 R52 组合的 Recipe 分支，因此直接冻结 R52 为唯一 finalist。
+唯一一次 paired test300 共运行 R12 与 R52 600 个 outer query，成本 `¥0.9376664`：R52 的
+Encyclopedia `+9.8361pp`，capability macro `+1.6393pp`，CI95 lower `0pp`，hard-error `+1pp`。
+它只因未达到冻结的 macro `+2pp` 门而失败，最终 `cycle-selected` 回滚为 R12。该 test300 已永久
+消费，不能再描述为 untouched 五配置 test；本次没有 Judge、S2、S3 或五配置矩阵调用。
+
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 

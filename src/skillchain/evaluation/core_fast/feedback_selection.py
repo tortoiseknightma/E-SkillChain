@@ -166,6 +166,32 @@ def _action_failure_signature(state: Mapping[str, object]) -> dict[str, object] 
     trace = state.get("tool_trace")
     if not isinstance(trace, list) or not trace:
         return None
+    successful_counts = Counter(
+        str(item.get("tool_name"))
+        for item in trace
+        if isinstance(item, dict)
+        and item.get("status") == "success"
+        and item.get("error_code") is None
+        and isinstance(item.get("tool_name"), str)
+    )
+    repeated_terminal = next(
+        (
+            str(item.get("tool_name"))
+            for item in reversed(trace)
+            if isinstance(item, dict)
+            and item.get("status") == "success"
+            and item.get("error_code") is None
+            and successful_counts[str(item.get("tool_name"))] > 1
+        ),
+        None,
+    )
+    if repeated_terminal is not None:
+        return {
+            "phase": "after-tool",
+            "prior_tool_name": repeated_terminal,
+            "prior_tool_status": "success",
+            "public_evidence": "unknown",
+        }
     for item in reversed(trace):
         if not isinstance(item, dict):
             continue
@@ -183,6 +209,36 @@ def _action_failure_signature(state: Mapping[str, object]) -> dict[str, object] 
                 "invalid-arguments" if error_code == "invalid_arguments" else "error"
             ),
             "public_evidence": "unknown",
+        }
+    return None
+
+
+def _action_treatment_directive(
+    signature: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    if signature is None:
+        return None
+    tool_name = signature.get("prior_tool_name")
+    status = signature.get("prior_tool_status")
+    if not isinstance(tool_name, str):
+        return None
+    if status == "success":
+        return {
+            "operation": "stop-action-loop",
+            "tool_name": None,
+            "arguments_from": "none",
+        }
+    if status == "invalid-arguments":
+        return {
+            "operation": "retry-tool-once",
+            "tool_name": tool_name,
+            "arguments_from": "last-successful-tool-output",
+        }
+    if status == "error":
+        return {
+            "operation": "retry-tool-once",
+            "tool_name": tool_name,
+            "arguments_from": "last-valid-arguments",
         }
     return None
 
@@ -349,6 +405,7 @@ def _counterfactual_cluster_state(
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
             "parent-counterfactual-v11",
+            "parent-counterfactual-v12",
         }:
             return {
                 "action_failure_signature": _action_failure_signature(state),
@@ -363,6 +420,7 @@ def _counterfactual_cluster_state(
         "parent-counterfactual-v9",
         "parent-counterfactual-v10",
         "parent-counterfactual-v11",
+        "parent-counterfactual-v12",
     }:
         signature = state.get("response_treatment_signature")
         return {
@@ -409,12 +467,14 @@ def build_parent_counterfactual_population(
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
             "parent-counterfactual-v11",
+            "parent-counterfactual-v12",
         }
         action_signature = (
             _action_failure_signature(state)
             if strict_policy and settings.target_surface == "action-policy"
             else None
         )
+        action_directive = _action_treatment_directive(action_signature)
         response_signature = (
             _response_treatment_signature_v9(observation)
             if settings.feedback_selection_policy
@@ -422,6 +482,7 @@ def build_parent_counterfactual_population(
                 "parent-counterfactual-v9",
                 "parent-counterfactual-v10",
                 "parent-counterfactual-v11",
+                "parent-counterfactual-v12",
             }
             and settings.target_surface == "response-policy"
             and not success
@@ -441,6 +502,7 @@ def build_parent_counterfactual_population(
             "parent-counterfactual-v9",
             "parent-counterfactual-v10",
             "parent-counterfactual-v11",
+            "parent-counterfactual-v12",
         }:
             state = {
                 **state,
@@ -477,7 +539,10 @@ def build_parent_counterfactual_population(
                 **(
                     {
                         "action_treatment_signature": action_signature,
-                        "action_treatment_separable": bool(action_signature),
+                        "action_treatment_directive": action_directive,
+                        "action_treatment_separable": bool(
+                            action_signature and action_directive
+                        ),
                     }
                     if strict_policy and settings.target_surface == "action-policy"
                     else {}
@@ -509,6 +574,7 @@ def select_parent_counterfactual_samples(
         "parent-counterfactual-v9",
         "parent-counterfactual-v10",
         "parent-counterfactual-v11",
+        "parent-counterfactual-v12",
     }
 
     def treatment_separable(row: Mapping[str, object]) -> bool:
@@ -603,6 +669,7 @@ def select_parent_counterfactual_samples(
                     "parent-counterfactual-v9",
                     "parent-counterfactual-v10",
                     "parent-counterfactual-v11",
+                    "parent-counterfactual-v12",
                 }
                 else "response_evidence_class"
             )
@@ -1378,7 +1445,10 @@ def build_parent_counterfactual_manifest(
                     {
                         "action_treatment_signature": row.get(
                             "action_treatment_signature"
-                        )
+                        ),
+                        "action_treatment_directive": row.get(
+                            "action_treatment_directive"
+                        ),
                     }
                     if settings.feedback_selection_policy
                     in {
@@ -1386,6 +1456,7 @@ def build_parent_counterfactual_manifest(
                         "parent-counterfactual-v9",
                         "parent-counterfactual-v10",
                         "parent-counterfactual-v11",
+                        "parent-counterfactual-v12",
                     }
                     and settings.target_surface == "action-policy"
                     else {}
@@ -1402,6 +1473,7 @@ def build_parent_counterfactual_manifest(
                         "parent-counterfactual-v9",
                         "parent-counterfactual-v10",
                         "parent-counterfactual-v11",
+                        "parent-counterfactual-v12",
                     }
                     and settings.target_surface == "response-policy"
                     else {}

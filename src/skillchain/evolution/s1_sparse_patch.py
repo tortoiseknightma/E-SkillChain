@@ -63,6 +63,9 @@ S1_COUNTERFACTUAL_SURFACE_CLOSED_POLICY_VERSION = (
 S1_COUNTERFACTUAL_CAPABILITY_RESPONSE_POLICY_VERSION = (
     "single-surface-counterfactual-fanout-v8"
 )
+S1_COUNTERFACTUAL_BOUND_ACTION_POLICY_VERSION = (
+    "single-surface-counterfactual-fanout-v9"
+)
 S1_POLICY_SURFACES = ("action-policy", "response-policy")
 S1_CAPABILITY_ACTION_TOOLS = {
     "knowledge.visual_encyclopedia": ("object_detect", "encyclopedia_lookup"),
@@ -457,6 +460,7 @@ class CounterfactualActionDirectiveV1(_StrictFrozenModel):
     arguments_from: Literal[
         "current-user-request",
         "last-visible-tool-output",
+        "last-successful-tool-output",
         "last-valid-arguments",
         "none",
     ]
@@ -609,7 +613,11 @@ class SingleSurfaceCounterfactualPatchV2(_StrictFrozenModel):
                     or condition.prior_tool_status not in {"invalid-arguments", "error"}
                     or (
                         condition.prior_tool_status == "invalid-arguments"
-                        and directive.arguments_from != "current-user-request"
+                        and directive.arguments_from
+                        not in {
+                            "current-user-request",
+                            "last-successful-tool-output",
+                        }
                     )
                     or (
                         condition.prior_tool_status == "error"
@@ -1335,6 +1343,7 @@ def counterfactual_typed_policy_patch_output_json_schema(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return a strict v5 schema with no response-text channel for action."""
 
@@ -1352,6 +1361,17 @@ def counterfactual_typed_policy_patch_output_json_schema(
         if expected_action_condition is not None
         else None
     )
+    bound_action_directive = (
+        CounterfactualActionDirectiveV1.model_validate(
+            expected_action_directive, strict=True
+        )
+        if expected_action_directive is not None
+        else None
+    )
+    if bound_action_directive is not None and bound_action_condition is None:
+        raise S1SparsePatchError(
+            "typed counterfactual action binding must include condition and directive"
+        )
     if expected_action_condition is not None and target_surface != "action-policy":
         raise S1SparsePatchError(
             "typed counterfactual action condition targets the wrong surface"
@@ -1468,31 +1488,60 @@ def counterfactual_typed_policy_patch_output_json_schema(
                     "properties": {
                         "operation": {
                             "type": "string",
-                            "enum": [
-                                "invoke-tool-once",
-                                "retry-tool-once",
-                                "stop-action-loop",
-                            ],
+                            "enum": (
+                                [bound_action_directive.operation]
+                                if bound_action_directive is not None
+                                else [
+                                    "invoke-tool-once",
+                                    "retry-tool-once",
+                                    "stop-action-loop",
+                                ]
+                            ),
                         },
                         "tool_name": {
-                            "anyOf": [
-                                {
-                                    "type": "string",
-                                    "enum": list(
-                                        S1_CAPABILITY_ACTION_TOOLS[capability_id]
-                                    ),
-                                },
-                                {"type": "null"},
-                            ]
+                            "anyOf": (
+                                [{"type": "null"}]
+                                if bound_action_directive is not None
+                                and bound_action_directive.tool_name is None
+                                else [
+                                    {
+                                        "type": "string",
+                                        "enum": (
+                                            [bound_action_directive.tool_name]
+                                            if bound_action_directive is not None
+                                            else list(
+                                                S1_CAPABILITY_ACTION_TOOLS[
+                                                    capability_id
+                                                ]
+                                            )
+                                        ),
+                                    }
+                                ]
+                                if bound_action_directive is not None
+                                else [
+                                    {
+                                        "type": "string",
+                                        "enum": list(
+                                            S1_CAPABILITY_ACTION_TOOLS[capability_id]
+                                        ),
+                                    },
+                                    {"type": "null"},
+                                ]
+                            )
                         },
                         "arguments_from": {
                             "type": "string",
-                            "enum": [
-                                "current-user-request",
-                                "last-visible-tool-output",
-                                "last-valid-arguments",
-                                "none",
-                            ],
+                            "enum": (
+                                [bound_action_directive.arguments_from]
+                                if bound_action_directive is not None
+                                else [
+                                    "current-user-request",
+                                    "last-visible-tool-output",
+                                    "last-successful-tool-output",
+                                    "last-valid-arguments",
+                                    "none",
+                                ]
+                            ),
                         },
                     },
                 },
@@ -1611,6 +1660,7 @@ def counterfactual_semantic_policy_patch_output_json_schema(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return the v6 schema; neither surface exposes arbitrary treatment prose."""
@@ -1624,12 +1674,17 @@ def counterfactual_semantic_policy_patch_output_json_schema(
             target_surface=target_surface,
             parent_success_query_ids=parent_success_query_ids,
             expected_action_condition=expected_action_condition,
+            expected_action_directive=expected_action_directive,
         )
         properties = schema["properties"]
         assert isinstance(properties, dict)
         properties["schema_version"] = {"type": "integer", "enum": [3]}
         return schema
-    if expected_action_condition is not None or expected_response_signature is None:
+    if (
+        expected_action_condition is not None
+        or expected_action_directive is not None
+        or expected_response_signature is None
+    ):
         raise S1SparsePatchError("response schema requires one behavior signature")
     if (
         capability_id not in S1_CAPABILITY_ACTION_TOOLS
@@ -1744,6 +1799,7 @@ def counterfactual_surface_closed_policy_patch_output_json_schema(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return v7 schema with no free-form treatment or preservation text."""
@@ -1754,6 +1810,7 @@ def counterfactual_surface_closed_policy_patch_output_json_schema(
         target_surface=target_surface,
         parent_success_query_ids=parent_success_query_ids,
         expected_action_condition=expected_action_condition,
+        expected_action_directive=expected_action_directive,
         expected_response_signature=expected_response_signature,
     )
     properties = schema["properties"]
@@ -1785,6 +1842,7 @@ def counterfactual_capability_response_policy_patch_output_json_schema(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return v8 schema with capability-specific response operations."""
@@ -1795,6 +1853,7 @@ def counterfactual_capability_response_policy_patch_output_json_schema(
         target_surface=target_surface,
         parent_success_query_ids=parent_success_query_ids,
         expected_action_condition=expected_action_condition,
+        expected_action_directive=expected_action_directive,
         expected_response_signature=expected_response_signature,
     )
     properties = schema["properties"]
@@ -1850,6 +1909,7 @@ def parse_counterfactual_typed_policy_patch(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
 ) -> SingleSurfaceCounterfactualPatchV2:
     try:
         raw = parse_strict_json(
@@ -1876,6 +1936,14 @@ def parse_counterfactual_typed_policy_patch(
             raise S1SparsePatchError(
                 "S1 typed counterfactual action condition drifted from evidence"
             )
+    if expected_action_directive is not None:
+        expected = CounterfactualActionDirectiveV1.model_validate(
+            expected_action_directive, strict=True
+        )
+        if proposal.action_then != expected:
+            raise S1SparsePatchError(
+                "S1 typed counterfactual action directive drifted from preflight"
+            )
     return proposal
 
 
@@ -1887,6 +1955,7 @@ def parse_counterfactual_semantic_policy_patch(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> SingleSurfaceCounterfactualPatchV3:
     try:
@@ -1916,8 +1985,20 @@ def parse_counterfactual_semantic_policy_patch(
             raise S1SparsePatchError(
                 "S1 semantic action condition drifted from evidence"
             )
+        if expected_action_directive is not None:
+            expected_directive = CounterfactualActionDirectiveV1.model_validate(
+                expected_action_directive, strict=True
+            )
+            if proposal.action_then != expected_directive:
+                raise S1SparsePatchError(
+                    "S1 semantic action directive drifted from preflight"
+                )
     else:
-        if expected_action_condition is not None or expected_response_signature is None:
+        if (
+            expected_action_condition is not None
+            or expected_action_directive is not None
+            or expected_response_signature is None
+        ):
             raise S1SparsePatchError("S1 semantic response evidence binding is absent")
         if proposal.response_when != _response_condition_from_signature(
             expected_response_signature
@@ -1938,6 +2019,7 @@ def parse_counterfactual_surface_closed_policy_patch(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> SingleSurfaceCounterfactualPatchV4:
     try:
@@ -1971,8 +2053,20 @@ def parse_counterfactual_surface_closed_policy_patch(
             raise S1SparsePatchError(
                 "S1 surface-closed action condition drifted from evidence"
             )
+        if expected_action_directive is not None:
+            expected_directive = CounterfactualActionDirectiveV1.model_validate(
+                expected_action_directive, strict=True
+            )
+            if proposal.action_then != expected_directive:
+                raise S1SparsePatchError(
+                    "S1 surface-closed action directive drifted from preflight"
+                )
     else:
-        if expected_action_condition is not None or expected_response_signature is None:
+        if (
+            expected_action_condition is not None
+            or expected_action_directive is not None
+            or expected_response_signature is None
+        ):
             raise S1SparsePatchError(
                 "S1 surface-closed response evidence binding is absent"
             )
@@ -1995,6 +2089,7 @@ def parse_counterfactual_capability_response_policy_patch(
     target_surface: Literal["action-policy", "response-policy"],
     parent_success_query_ids: tuple[str, ...],
     expected_action_condition: Mapping[str, object] | None = None,
+    expected_action_directive: Mapping[str, object] | None = None,
     expected_response_signature: Mapping[str, object] | None = None,
 ) -> SingleSurfaceCounterfactualPatchV5:
     try:
@@ -2028,8 +2123,20 @@ def parse_counterfactual_capability_response_policy_patch(
             raise S1SparsePatchError(
                 "S1 capability-response action condition drifted from evidence"
             )
+        if expected_action_directive is not None:
+            expected_directive = CounterfactualActionDirectiveV1.model_validate(
+                expected_action_directive, strict=True
+            )
+            if proposal.action_then != expected_directive:
+                raise S1SparsePatchError(
+                    "S1 capability-response action directive drifted from preflight"
+                )
     else:
-        if expected_action_condition is not None or expected_response_signature is None:
+        if (
+            expected_action_condition is not None
+            or expected_action_directive is not None
+            or expected_response_signature is None
+        ):
             raise S1SparsePatchError(
                 "S1 capability-response evidence binding is absent"
             )

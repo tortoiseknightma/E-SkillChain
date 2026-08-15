@@ -49,7 +49,10 @@ def _load_cycle(path: Path) -> dict[str, object]:
     unsigned = {key: value for key, value in cycle.items() if key != "receipt_sha256"}
     if receipt != sha256_bytes(canonical_json_bytes(unsigned)):
         raise FastPathError("cycle definition receipt SHA-256 drifted")
-    if cycle.get("kind") != "core-fast-s1-counterfactual-cycle-definition":
+    if cycle.get("kind") not in {
+        "core-fast-s1-counterfactual-cycle-definition",
+        "core-fast-s1-adaptive-campaign-definition",
+    }:
         raise FastPathError("cycle definition kind differs")
     budget = cycle.get("budget_estimate")
     if (
@@ -82,7 +85,10 @@ def _require_remaining_budget(
     budget = cycle["budget_estimate"]
     assert isinstance(budget, dict)
     observed = float(budget["parent_opt800_observed_cny"])
-    for round_id in ("r31", "r32"):
+    finalization_rounds = cycle.get("finalization_round_ids", ["r31", "r32"])
+    if not isinstance(finalization_rounds, list):
+        raise FastPathError("cycle finalization round IDs are invalid")
+    for round_id in finalization_rounds:
         row = rounds.get(round_id)
         if isinstance(row, dict):
             observed += _recorded_cost(Path(str(row["run_root"])))
@@ -238,10 +244,13 @@ def finalize(args: argparse.Namespace) -> int:
     cycle_path = args.cycle_definition.resolve()
     cycle = _load_cycle(cycle_path)
     cycle_root = cycle_path.parent
+    finalization_rounds = cycle.get("finalization_round_ids", ["r31", "r32"])
+    if not isinstance(finalization_rounds, list) or not finalization_rounds:
+        raise FastPathError("cycle has no frozen finalization rounds")
     accepted = [
         branch
-        for round_id in ("r31", "r32")
-        if (branch := _load_accepted_branch(cycle, round_id)) is not None
+        for raw_round_id in finalization_rounds
+        if (branch := _load_accepted_branch(cycle, str(raw_round_id))) is not None
     ]
     _require_remaining_budget(
         cycle,
@@ -250,7 +259,11 @@ def finalize(args: argparse.Namespace) -> int:
             1150 if len(accepted) == 2 else 600 if accepted else 0
         ),
     )
-    engine = _load_engine(cycle, "r31", cycle_root / "runs" / "r33-fanin")
+    engine = _load_engine(
+        cycle,
+        str(finalization_rounds[0]),
+        cycle_root / "runs" / "r33-fanin",
+    )
     parent = engine.s1_parent_bank()
     r33_manifest = {
         "schema_version": 1,
@@ -426,6 +439,66 @@ def finalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def freeze_adaptive(args: argparse.Namespace) -> int:
+    cycle_root = args.cycle_root.resolve()
+    spec_path = args.spec.resolve()
+    run_root = args.run_root.resolve()
+    artifact_path = run_root / "accepted-branch.json"
+    decision_path = run_root / "decisions" / "s1.json"
+    bank_path = run_root / "banks" / "s1-selected.json"
+    artifact = load_json(artifact_path)
+    decision = StageDecision.model_validate_json(
+        decision_path.read_bytes(), strict=True
+    )
+    bank = StaticBankArtifact.model_validate_json(bank_path.read_bytes(), strict=True)
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("kind") != "core-fast-s1-accepted-branch"
+        or artifact.get("round_id") != args.round_id
+        or artifact.get("parent_round_id") != "r12"
+        or artifact.get("parent_bank_sha256")
+        != "e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd"
+        or artifact.get("candidate_bank_sha256") != bank.bank_sha256
+        or not decision.accepted
+        or decision.selected_bank != bank.bank_sha256
+        or decision.alias_of is not None
+    ):
+        raise FastPathError("adaptive finalist branch is not a valid R12 descendant")
+    unsigned = {
+        "schema_version": 1,
+        "kind": "core-fast-s1-adaptive-campaign-definition",
+        "cycle_id": args.cycle_id,
+        "parent_round_id": "r12",
+        "parent_bank_sha256": artifact["parent_bank_sha256"],
+        "dashscope_stage_budget_cny": 10.0,
+        "finalization_round_ids": [args.round_id],
+        "round_specs": {
+            args.round_id: {
+                "path": str(spec_path),
+                "sha256": _sha(spec_path),
+                "run_root": str(run_root),
+                "target_capability": artifact["capability"],
+                "target_surface": artifact["surface"],
+            }
+        },
+        "budget_estimate": {
+            "within_cny10": True,
+            "projected_total_dashscope_cny": 2.0,
+            "parent_opt800_observed_cny": 0.0,
+            "assistant_cny_per_outer_ceiling": 0.01,
+        },
+        "test300_consumption_policy": "one-create-only-paired-r12-vs-finalist",
+    }
+    cycle = {
+        **unsigned,
+        "receipt_sha256": sha256_bytes(canonical_json_bytes(unsigned)),
+    }
+    path = cycle_root / "cycle-definition.json"
+    _write_or_verify(path, cycle, label="adaptive cycle definition")
+    print(json.dumps({"cycle_definition": str(path)}, indent=2))
+    return 0
+
+
 def finalist_test(args: argparse.Namespace) -> int:
     cycle_path = args.cycle_definition.resolve()
     cycle = _load_cycle(cycle_path)
@@ -466,7 +539,10 @@ def finalist_test(args: argparse.Namespace) -> int:
         "test_root": str(test_root),
     }
     _write_or_verify(lease_path, lease, label="test300 consumption lease")
-    engine = _load_engine(cycle, "r31", test_root)
+    finalization_rounds = cycle.get("finalization_round_ids", ["r31", "r32"])
+    if not isinstance(finalization_rounds, list) or not finalization_rounds:
+        raise FastPathError("cycle has no frozen engine spec for test300")
+    engine = _load_engine(cycle, str(finalization_rounds[0]), test_root)
     engine.validate(require_runtime=True)
     parent = engine.s1_parent_bank()
     test_queries = tuple(
@@ -553,6 +629,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Finalize and test the R12 counterfactual S1 cycle"
     )
     sub = parser.add_subparsers(dest="command", required=True)
+    freeze = sub.add_parser("freeze-adaptive")
+    freeze.add_argument("--cycle-root", type=Path, required=True)
+    freeze.add_argument("--cycle-id", required=True)
+    freeze.add_argument("--round-id", required=True)
+    freeze.add_argument("--spec", type=Path, required=True)
+    freeze.add_argument("--run-root", type=Path, required=True)
     finalize_parser = sub.add_parser("finalize")
     finalize_parser.add_argument("--cycle-definition", type=Path, required=True)
     test = sub.add_parser("s1-finalist-test")
@@ -565,6 +647,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "freeze-adaptive":
+            return freeze_adaptive(args)
         return finalize(args) if args.command == "finalize" else finalist_test(args)
     except (FastPathError, OSError, ValueError) as error:
         print(f"S1 counterfactual cycle error: {error}", file=sys.stderr)

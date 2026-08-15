@@ -491,14 +491,14 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R12 仍是 cycle selected；R52 是唯一新增 accepted branch，R34–R60 已完成 27/30，test 未访问</span>
+        <span>R34–R63 已完成 30/30；R52 是唯一 finalist，但一次性 test300 未过 +2pp macro 门，最终仍选择 R12</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>27 / 30</strong><span>adaptive rounds completed</span></div>
+        <div class="hero-stat"><strong>30 / 30</strong><span>adaptive rounds completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -580,7 +580,10 @@
         accepted-only fan-in/finalist 排序。第五阶段 R55–R60 中，R55 在完整 Feedback gate 停止；
         R56–R60 全部进入可归因 local response screen。R56、R59 各为局部 1/0，但分别被 replay
         capability/macro 门与 hard-error 门回滚；R57 为 0/1、R58 为 0/2、R60 为 0/0。完成轮数现为
-        27/30，body75、test300、S2/S3/Judge 仍未新增访问。
+        27/30。最后的 R61–R63 中，R61 在 provider 前暴露 v9 projection 漏接；R62 局部 9/1、
+        replay macro +1.1111pp，但 body 0pp 且 hard-error +1.3333pp；R63 局部 5/8。30/30 结束后，
+        R52 成为唯一 finalist；一次 paired test300 得到 macro +1.6393pp，低于 +2pp 门，最终回滚到
+        R12。S2/S3/Judge 未访问，test300 已消费。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -589,8 +592,9 @@
         ¥2.52357745，另有一个 provider orphan 与 Creator 人民币成本未知。自适应首批 R34–R38
         新增可追踪 DashScope ¥0.3496057、4 个 Creator 会话。R39–R43 再新增 ¥0.67932075、5 个
         Creator 会话。R44–R48 再新增 ¥1.23552605、5 个 Creator 会话；R49–R54 新增
-        ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话。五个自适应阶段
-        合计 ¥5.47501575、24 个 Creator 会话。
+        ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
+        新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
+        一次性 test300 另计 ¥0.9376664。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2092,6 +2096,59 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-r61-r63-final" data-status="rollback" data-capability="all">
+          <div class="experiment-head">
+            <div>
+              <div class="experiment-id">ADAPTIVE STAGE 06 · R61–R63 · FINALIST TEST</div>
+              <h3>最后三轮与一次性 test300：R52 有方向性泛化，但未达到冻结接受门</h3>
+            </div>
+            <div class="experiment-labels"><span class="state rollback">Final selected · R12</span><span class="tag">test300 consumed</span></div>
+          </div>
+
+          <div class="result-grid">
+            <div class="result-box"><strong>30 / 30</strong><span>adaptive rounds completed</span></div>
+            <div class="result-box"><strong>1</strong><span>unique finalist · R52</span></div>
+            <div class="result-box"><strong>+1.6393pp</strong><span>test capability macro</span></div>
+            <div class="result-box"><strong>¥2.18638575</strong><span>B09 + test priced cost</span></div>
+          </div>
+
+          <div class="table-wrap" role="region" aria-labelledby="adaptive-stage06-caption" tabindex="0">
+            <table>
+              <caption id="adaptive-stage06-caption">R61–R63 与唯一 finalist 的终态；门槛和 parent 均未改变。</caption>
+              <thead><tr><th scope="col">Round</th><th scope="col">唯一 treatment</th><th scope="col">结果</th><th scope="col">最深 gate</th><th scope="col">Disposition</th><th scope="col">Priced CNY</th></tr></thead>
+              <tbody>
+                <tr id="exp-20260815-r61"><th scope="row">R61</th><td>Recipe action · invalid-args retry from last successful output</td><td>v9 projection 本地不一致；0 provider/Creator/Assistant</td><td>local canary3</td><td>基础设施失败；无算法结论</td><td class="num">0</td></tr>
+                <tr id="exp-20260815-r62"><th scope="row">R62</th><td>Recipe action · stop after first successful lookup</td><td>local 9/1；replay +1.1111pp；body 0pp，HE +1.3333pp</td><td>body_gate75</td><td>正式门回滚</td><td class="num">1.0367808</td></tr>
+                <tr id="exp-20260815-r63"><th scope="row">R63</th><td>Encyclopedia action · stop after first successful lookup</td><td>local 5/8，net −3</td><td>local action screen</td><td>有界风险门回滚</td><td class="num">0.21193855</td></tr>
+                <tr id="exp-20260815-finalist-test"><th scope="row">test300</th><td>R12 parent ↔ R52 finalist</td><td>Encyclopedia +9.8361pp；macro +1.6393pp；CI low 0；HE +1pp</td><td>paired test300</td><td>低于 +2pp；最终选择 R12</td><td class="num">0.9376664</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <dl class="experiment-meta">
+            <div><dt>Parent</dt><dd>R12 only · <code>e70ed907…096cd</code></dd></div>
+            <div><dt>Finalist</dt><dd>R52 only · <code>67b92b61…55bc8</code>；没有可组合的 accepted Recipe branch</dd></div>
+            <div><dt>Preflight</dt><dd>R61–R63 在调用前 3/3 evidence-feasible、surface-separable、structurally and behaviorally treatment-sensitive；0 provider calls</dd></div>
+            <div><dt>Unvisited</dt><dd>Judge、S2、S3、五配置矩阵；test300 已永久消费</dd></div>
+          </dl>
+
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R62 是本批唯一进入正式 replay/body 的 treatment：局部和 replay 都有清晰正信号，但 body75 没有增益且 hard error 超门。R63 的全局 terminal-stop 条件破坏八个 parent-success。R61 的失败发生在 provider 前，不属于算法结果。</p></div>
+            <div class="finding"><span class="kind fact">FACT</span><p>R52 在此前完全未访问的 test300 上继续改善 Encyclopedia 9.8361pp，CI95 下界为 0，hard-error delta 恰为 +1pp；但六能力 macro 只提高 1.6393pp，未达到预注册 +2pp。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>具体 citation closure 的方向性信号跨 replay、body 与 test 一致，但它只覆盖一个能力，无法稳定贡献足够的六能力 macro。扩大效果应来自新的独立 accepted capability，而不是放宽 R52 的最终门。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>30 轮自适应周期结束，gate 不变，最终 selected Bank 为 R12。R52 保留为研究型正向分支案例，但不得称为最终 accepted Bank。test300 已消费，不允许测试第二个 finalist；后续若做无偏五配置比较必须建立新 holdout。</p></div>
+          </div>
+
+          <details open><summary>Canonical evidence</summary><div class="artifact-list">
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b09-20260815\batch-preflight.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b09-20260815\artifacts\r61-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b09-20260815\artifacts\r62-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-b09-20260815\artifacts\r63-retrospective.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-finalization-20260815\cycle-finalist.json</code>
+            <code>D:\athena\experiment-runs\portfolio-core-r12-adaptive-v1-finalization-20260815\test300-r52\s1-finalist-test300.json</code>
+          </div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
@@ -2259,11 +2316,10 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         当前 model-generated fresh Static、no-op qualification 与双策略 30 轮 campaign 均已结束；
         R12 是双策略周期唯一 accepted/selected Bank。R31 Recipe action、R32 Multi response 与 accepted-only R33
         fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
-        parent 或被复制。自适应 R34–R60 已完成 27/30；R52 是唯一新增 accepted branch，但 R12
-        仍是所有独立 round 的 parent 和当前 selected Bank。R52 只能参加 accepted-only fan-in/finalist；
-        其余自适应 candidate 均不得复制。test300 仍 untouched。最后三轮必须在一个新 batch 中先共同
-        完成零调用 evidence-feasibility、surface-separability 和 behavior-level treatment-sensitivity preflight；
-        不得事后缩保护集、重跑已终结 round 或放宽 gate。
+        parent 或被复制。自适应 R34–R63 已完成 30/30；R52 是唯一新增 accepted branch 和唯一 finalist，
+        但一次性 paired test300 的 capability macro 仅 +1.6393pp，低于冻结 +2pp 门，因此最终 selected
+        Bank 仍为 R12。其余自适应 candidate 均未参加 fan-in。test300 已永久消费，不得测试第二个
+        finalist，也不再是 untouched 五配置 test；若未来需要无偏五配置最终比较，必须另建 holdout。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">

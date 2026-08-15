@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s1-adaptive-batch-plan",
+  "campaign_id": "s1-r12-adaptive-v1",
+  "batch_id": "b09",
+  "rounds": [
+    {
+      "round_id": "r61",
+      "capability": "utility.recipe_guidance",
+      "surface": "action-policy",
+      "selection_policy": "parent-counterfactual-v12",
+      "gain_seeds": ["r2-core-0225", "r2-core-0397", "r2-core-0399", "r2-core-0472", "r2-core-0474"],
+      "regressions": ["r2-core-0374", "r2-core-0447", "r2-core-0975"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "utility.recipe_guidance",
+          "hypothesis": "After recipe_lookup rejects model-authored arguments, retry it once from the most recent successful object-detection output instead of the whole user request.",
+          "historical_signal": "R44 produced seven local gains and one regression, but its current-user-request retry caused invalid lookup arguments and a +2pp hard-error delta. R61 isolates the argument-source correction and binds it before Creator.",
+          "forbidden_carry_forward": "Do not inherit R44, change response policy, add another condition, use a rejected Bank, or let Creator choose a different action directive."
+        }
+      ]
+    },
+    {
+      "round_id": "r62",
+      "capability": "utility.recipe_guidance",
+      "surface": "action-policy",
+      "selection_policy": "parent-counterfactual-v12",
+      "gain_seeds": ["r2-core-0273", "r2-core-0275", "r2-core-0498", "r2-core-0697", "r2-core-0773", "r2-core-0947"],
+      "regressions": ["r2-core-0374", "r2-core-0447", "r2-core-0975"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "utility.recipe_guidance",
+          "hypothesis": "Stop the Recipe action loop immediately after its first successful recipe_lookup instead of issuing a duplicate terminal lookup.",
+          "historical_signal": "R12 contains six Recipe rows with two successful recipe_lookup calls; all six fail GCS and five are hard errors. R62 binds the single stop transition and leaves response behavior unchanged.",
+          "forbidden_carry_forward": "Do not combine R61, change lookup arguments, change response policy, add another condition, or use a rejected Bank."
+        }
+      ]
+    },
+    {
+      "round_id": "r63",
+      "capability": "knowledge.visual_encyclopedia",
+      "surface": "action-policy",
+      "selection_policy": "parent-counterfactual-v12",
+      "gain_seeds": ["r2-core-0242", "r2-core-0295", "r2-core-0393", "r2-core-0394", "r2-core-0420", "r2-core-0441", "r2-core-0666", "r2-core-0967"],
+      "regressions": ["r2-core-0367", "r2-core-0691", "r2-core-0768"],
+      "unstable_parent_successes": [],
+      "memory": [
+        {
+          "capability": "knowledge.visual_encyclopedia",
+          "hypothesis": "Stop the Encyclopedia action loop immediately after its first successful encyclopedia_lookup instead of issuing a duplicate terminal lookup.",
+          "historical_signal": "R12 contains eight Encyclopedia rows with repeated successful terminal lookups; all eight are hard failures. R63 is an action-only challenger to accepted response branch R52 and cannot inherit it.",
+          "forbidden_carry_forward": "Do not inherit R52, change response or citation policy, add another condition, or use a rejected Bank."
+        }
+      ]
+    }
+  ]
+}

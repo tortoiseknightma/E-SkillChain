@@ -740,6 +740,7 @@ class LiveCoreFastAdapter:
                 "single-surface-counterfactual-v6",
                 "single-surface-counterfactual-v7",
                 "single-surface-counterfactual-v8",
+                "single-surface-counterfactual-v9",
             }
             and target_surface in {"action-policy", "response-policy"}
             else project_feedback_observation(baseline)

@@ -144,7 +144,10 @@ class FakeCoreFastAdapter:
                     "schema_version": (
                         5
                         if intent.payload.get("proposal_mode")
-                        == "single-surface-counterfactual-fanout-v8"
+                        in {
+                            "single-surface-counterfactual-fanout-v8",
+                            "single-surface-counterfactual-fanout-v9",
+                        }
                         else 4
                         if intent.payload.get("proposal_mode")
                         == "single-surface-counterfactual-fanout-v7"
@@ -167,6 +170,7 @@ class FakeCoreFastAdapter:
                             in {
                                 "single-surface-counterfactual-fanout-v7",
                                 "single-surface-counterfactual-fanout-v8",
+                                "single-surface-counterfactual-fanout-v9",
                             }
                             else {
                                 "query_id": query_id,
@@ -186,6 +190,9 @@ class FakeCoreFastAdapter:
                     expected = requirements.get(
                         "action_condition_is_bound_to_selected_failure_state"
                     )
+                    expected_directive = requirements.get(
+                        "action_directive_is_bound_to_preflight"
+                    )
                     payload.update(
                         {
                             "action_when": expected
@@ -196,7 +203,9 @@ class FakeCoreFastAdapter:
                                 "prior_tool_status": "not-called",
                                 "public_evidence": "unknown",
                             },
-                            "action_then": {
+                            "action_then": expected_directive
+                            if isinstance(expected_directive, dict)
+                            else {
                                 "operation": "retry-tool-once"
                                 if isinstance(expected, dict)
                                 and expected.get("phase") == "after-tool"

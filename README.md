@@ -7,7 +7,7 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 项目的核心不是“让模型自己改 Prompt”，而是把每次修改变成一个**有输入证据、有字段边界、有统一评测、可接受也可精确回滚**的工程闭环。
 
-> **当前状态：model-generated runtime 的 30 轮双策略 S1 已完成，R12 的 Style action-policy Bank `e70ed907…096cd` 仍是当前 cycle selected 和后续独立实验的唯一 parent。自适应周期已完成 R34–R60（27/30）。R52 Encyclopedia citation closure 仍是唯一新增 AcceptedBranchArtifact：局部 2/0，replay macro +0.8333pp，body macro +3.125pp，CI95 lower +2.7778pp，hard-error −4pp。B08 在任何 provider call 前让 R56–R60 共同通过 evidence feasibility、surface separability 与行为级 treatment sensitivity；五轮全部进入可归因 local response screen。R56、R59 分别得到局部 1/0，但前者在 replay 上 macro −1.7241pp、Multi −10.3448pp，后者 hard-error +1.5pp，均按冻结正式门回滚；R57 为 0/1、R58 为 0/2、R60 为 0/0。R55 是 Feedback terminal failure，没有 Creator/Assistant，不能写成算法负结果。R52 只能进入后续 accepted-only fan-in/finalist，尚未成为 selected Bank；test300/S2/S3/Judge 均未访问。B08 阶段新增可追踪 DashScope ¥1.85708305、5 个 Creator 会话；五个自适应阶段合计 ¥5.47501575、24 个 Creator 会话，Creator 人民币 cost basis 不可得。**
+> **当前状态：以 accepted R12 为唯一 parent 的 R34–R63 自适应周期已完成 30/30。R52 Encyclopedia citation closure 是唯一通过 local/replay/body 三层门的新增分支（Bank `67b92b61…55bc8`），并成为唯一冻结 finalist；最后三轮中，R61 因本地 Feedback projection 漏接 v9 标签而在 provider 前停止、没有算法结论，R62 Recipe stop-after-first-success 局部 9/1、replay macro +1.1111pp，但 body macro 0pp 且 hard-error +1.3333pp，R63 Encyclopedia stop rule 局部 5/8，均按原门回滚。唯一一次 paired test300 已永久消费：R52 在 test 上 Encyclopedia +9.8361pp、capability macro +1.6393pp、CI95 lower 0pp、hard-error +1pp；因 macro 未达到冻结 +2pp 门而失败，最终 selected Bank 回滚为 R12 `e70ed907…096cd`。没有运行 Judge、S2、S3 或五配置矩阵；test300 此后不再是 untouched 五配置 test。B09 新增可追踪 DashScope ¥1.24871935、2 个 Creator 会话，test300 新增 ¥0.9376664；Creator 人民币 cost basis 不可得。**
 
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
@@ -465,11 +465,11 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 ## 下一步
 
 1. 保持历史 deterministic rounds、当前 30 轮 canonical artifacts 及所有 rejected Bank 只读，不追溯重判，也不跨 runtime resume。
-2. 后续阶段唯一合法 S1 起点是 accepted R12 Bank `e70ed907…096cd`；top 10 的其余九项只用于算法诊断。
-3. `s1-counterfactual-v1` 已结束且没有 finalist：保持 R12 selected Bank，不追认 R31 Creator 输出，不放宽 R32 parent-success 匹配，也不访问 test300。
-4. 每个后续 batch 必须在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；不能把 R12 Style 同时声明为 byte-exact protected Skill 和可修改 target。
-5. 后续独立 round 仍从 R12 出发；冻结 R52 AcceptedBranchArtifact，只允许它进入 accepted-only fan-in/finalist。R34–R51、R53–R60 的失败或无 treatment 候选不得作为 parent、不得复制局部 Skill，也不得拼入组合。
-6. 局部有界风险门、正式 replay/body 门与 R33/test300 规则保持冻结；不因 R52 已通过 body75 而访问 test300。当前自适应进度为 27/30；最后三轮必须先作为一个新 batch 在任何 Feedback 前共同完成零调用 preflight。S2/S3/Judge 继续关闭。
+2. 后续阶段唯一合法 S1 起点仍是 accepted R12 Bank `e70ed907…096cd`；R52 只保留为“开发证据与 body75 均为正、但一次性 test300 未达到 +2pp macro 门”的诊断分支，不能部署或成为新 parent。
+3. R34–R63 已完成 30/30，冻结停止；不追加第 31 个自适应 round，不重测 R52，不因 test 的 +1.6393pp 方向性增益放宽门，也不测试第二个 finalist。
+4. 当前 test300 已永久消费，不再是 untouched 五配置 test。若未来需要无偏五配置最终比较，必须建立新的 holdout；不得把本次 600 个 paired outer calls 混入新的开发证据。
+5. 若进入后续机制周期，必须使用新的预注册开发证据，并在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；所有独立候选仍只从 R12 派生。
+6. S2/S3/Judge 继续关闭，直到项目所有者基于当前负最终选择明确启动下一阶段；本周期最终 selected Bank 为 R12。
 
 ---
 
