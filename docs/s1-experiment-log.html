@@ -2182,6 +2182,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           </div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r2" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R2 · EXACT→MULTI BOUNDARY</div><h3>第二个 Creator schema compatibility 缺口：treatment 前停止</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Infrastructure stop</span><span class="tag">treatment 0</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；Exact→Multi packet <code>a1acf723…a6f6</code></dd></div>
+            <div><dt>Only change from R1</dt><dd><code>const</code> fields 增加显式 <code>type:string</code>；算法假设、样本、parent、gate 均不变</dd></div>
+            <div><dt>Failure</dt><dd>Codex API 拒绝 <code>uniqueItems</code> keyword；candidate null，Assistant/route replay/gate 0-call</dd></div>
+            <div><dt>Cost</dt><dd>1 个 Creator session；人民币 cost basis unavailable；DashScope 0</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R2 修复了 R1 的缺失 type，但 strict response-format 不支持 <code>uniqueItems</code>；runtime 本来就会精确比较 6 个保护 ID 并拒绝重复，因此该 schema keyword 是冗余的。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>R2 仍没有可归因 S2 输出，不能累计为 Exact 算法负证据；连续两个 stop 说明离线 JSON Schema 结构测试不足以代表 provider 支持子集。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不改 gate、不重放 R2。删除冗余 keyword并保留 runtime duplicate guard；S2R3 继续同一 Exact→Multi 假设，直到首次真实 treatment 后才允许基于效果改算法。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r2-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r2-exact-multi-boundary\calls\creator\s2r2-route-optimizer-once.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>

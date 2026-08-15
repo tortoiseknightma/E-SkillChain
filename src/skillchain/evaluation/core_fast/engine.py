@@ -2845,7 +2845,6 @@ class CoreFastEngine:
                                     "type": "array",
                                     "minItems": 6,
                                     "maxItems": 6,
-                                    "uniqueItems": True,
                                     "items": {"type": "string"},
                                 },
                             },
