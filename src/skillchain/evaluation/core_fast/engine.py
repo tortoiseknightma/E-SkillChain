@@ -6270,6 +6270,14 @@ class CoreFastEngine:
         binding = self.spec.s2_parent
         if settings is None or binding is None:
             raise FastPathError("S2 readiness requires adaptive settings and parent")
+        if (
+            self.spec.models["assistant"].requested_model
+            != self.spec.models["route_only"].requested_model
+        ):
+            raise FastPathError(
+                "route-model qualification cannot start adaptive S2 until "
+                "Assistant and route-only model identities match"
+            )
         self.initialize()
         packet = self._require_s2_prepared_packet()
         if self._existing_decision("s2") is not None:
@@ -6574,6 +6582,14 @@ class CoreFastEngine:
         binding = self.spec.s2_parent
         if settings is None or binding is None:
             raise FastPathError("adaptive S2 settings or parent binding are absent")
+        if (
+            self.spec.models["assistant"].requested_model
+            != self.spec.models["route_only"].requested_model
+        ):
+            raise FastPathError(
+                "route-model qualification cannot run adaptive S2 until "
+                "Assistant and route-only model identities match"
+            )
         parent = self.s2_parent_bank()
         packet = self._require_s2_prepared_packet()
         target = settings.target_capability

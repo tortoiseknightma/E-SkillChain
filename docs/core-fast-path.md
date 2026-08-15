@@ -200,6 +200,29 @@ route_gate75 前停止。30/30 后不追加随机重试或放宽保护门；本�
 S2R17。adaptive S2 新增可追踪 DashScope ¥1.5343752，30 次尝试中 29 个 Creator 会话；Creator
 人民币 cost basis 不可得。S3、Judge、test300 与五配置矩阵均为 0-call。
 
+### Qwen3.5 route-model qualification（2026-08-15）
+
+为了检验 Qwen3.7 路由过强是否压缩了 S2 的可学习空间，在完全相同的 R52 Bank、opt800、query
+顺序、route prompt 与严格 parser 下，仅把 route-only 模型替换为固定版本
+`qwen3.5-flash-2026-02-23`。官方限额为 600 RPM / 1M TPM，因此 qualification profile 使用
+16 workers / 8 requests/s（480 RPM），而不是复用 Qwen3.7 的 60 / 20 rps。0–128K token 档按
+官方价格输入 ¥0.2、输出 ¥2 / 百万 token 单独计价。参见
+[模型价格](https://help.aliyun.com/zh/model-studio/model-pricing)与
+[限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
+
+结果为 800/800 provider success/schema-valid，Qwen3.5 route correct `719/800`、macro-F1
+`0.9141625`；同 Bank 的 Qwen3.7 为 `760/800`、`0.9581119`。成对比较得到 4 corrected / 45 broken，
+净增加 41 条错误。Exact 错误从 33 增至 64，Encyclopedia 0→6、Style 7→10、Document 0→1；
+Multi 与 Recipe 仍为 0。discovery600 的 Exact→Multi 主簇从 14 增至 34，replay200 错误从 14
+增至 30，因此更大的 S2 headroom 真实存在，但主要集中于 Exact/Multi 边界，并非六能力均匀变弱。
+800 calls 使用 255,225 / 8,883 input/output tokens，成本 ¥0.0688110。
+
+该 root 只用于 route-model qualification：full Assistant 仍是 Qwen3.7，`s2-readiness` 会明确拒绝
+模型身份不一致的 spec，防止局部 screen 与正式 gate 使用不同模型。若决定采用 Qwen3.5，必须另建
+route/full-Assistant 同模型的 symmetric lineage，重跑 parent baseline 并重新冻结正式 gate；本次
+719/800 不能与历史 S2 candidate 直接拼成增益。canonical evidence 位于
+`D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815`。
+
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 

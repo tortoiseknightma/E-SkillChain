@@ -212,11 +212,18 @@ def _qwen_cost(input_tokens: int, output_tokens: int) -> float:
     ) / 1_000_000
 
 
-def _assistant_cost(input_tokens: int, output_tokens: int) -> float:
-    return (
-        input_tokens * _ASSISTANT_INPUT_CNY_PER_MILLION
-        + output_tokens * _ASSISTANT_OUTPUT_CNY_PER_MILLION
-    ) / 1_000_000
+def _assistant_cost(
+    input_tokens: int,
+    output_tokens: int,
+    requested_model: str = config.ASSISTANT_MODEL,
+) -> float:
+    if requested_model == config.QWEN35_ROUTE_QUALIFICATION_MODEL:
+        input_price = config.QWEN35_INPUT_CNY_PER_MILLION
+        output_price = config.QWEN35_OUTPUT_CNY_PER_MILLION
+    else:
+        input_price = _ASSISTANT_INPUT_CNY_PER_MILLION
+        output_price = _ASSISTANT_OUTPUT_CNY_PER_MILLION
+    return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
 
 
 def _resolve_codex_cli() -> str | None:
@@ -735,7 +742,11 @@ class LiveCoreFastAdapter:
             output={"observation": observation.model_dump(mode="json")},
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            cost_cny=_assistant_cost(input_tokens, output_tokens),
+            cost_cny=_assistant_cost(
+                input_tokens,
+                output_tokens,
+                intent.requested_model,
+            ),
             cost_basis="token_pricing",
             latency_ms=response.latency_ms,
         )
@@ -1326,7 +1337,11 @@ class LiveCoreFastAdapter:
             "raw_output": text,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
-            "cost_cny": _assistant_cost(input_tokens, output_tokens),
+            "cost_cny": _assistant_cost(
+                input_tokens,
+                output_tokens,
+                intent.requested_model,
+            ),
             "cost_basis": "token_pricing",
             "latency_ms": latency_ms,
         }

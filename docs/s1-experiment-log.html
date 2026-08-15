@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>S2 campaign 已完成 30/30：最终 selected S2 Bank 为 S2R17 3767a383…78a2；R12 仍是独立 Portfolio selected</span>
+        <span>S2 campaign 已完成 30/30；Qwen3.5 route qualification 为 719/800，确认存在更大但偏 Exact 的路由优化空间</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -591,7 +591,10 @@
         因而成为首个 accepted S2 Bank <code>3767a383…78a2</code>。R18–R30 均以前向独立候选运行且全部回滚；
         R30 的 Multi boundary 得到 4 gains / 1 regression，虽满足普通 4:1 风险门，但唯一 regression
         命中显式 parent-success <code>0658</code>，因此按保护门停止且未访问 route_gate75。30/30 后不再追加轮次，
-        最终 selected S2 Bank 保持 S2R17；S3/Judge/test300 均未在本 S2 campaign 访问。
+        最终 selected S2 Bank 保持 S2R17；S3/Judge/test300 均未在本 S2 campaign 访问。随后对同一 R52
+        Bank 做隔离 route-model qualification：Qwen3.5 为 719/800、macro-F1 0.9142，低于 Qwen3.7 的
+        760/800、0.9581；新增 41 条错误主要来自 Exact→Multi。该结果只证明更大的 route headroom，
+        不自动改变默认模型，也不允许用 route-only Qwen3.5 搭配 full Assistant Qwen3.7 启动 S2。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -603,7 +606,8 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 完成 30/30（含 R52 与 S2R17 route800）新增可追踪
-        DashScope ¥1.5343752；30 个尝试中 29 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥1.5343752；30 个尝试中 29 个 Creator 会话，人民币 cost basis 不可得。隔离的
+        Qwen3.5 route800 qualification 另计 ¥0.0688110、800 个 route-only calls、0 Creator。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2754,6 +2758,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>R30 回滚到 S2R17；30/30 周期强制停止，不放宽 protected-success 或 formal gate。最终最佳 S2 Bank 为 <code>3767a383…78a2</code>，其 accepted Exact 分支覆盖一个 capability；R18–R30 rejected candidates 均不得携带。S3、Judge 与已消费的 test300 均不访问。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r30-multi-final-refinement\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r30-multi-final-refinement\artifacts\s2-conditional-route-rule.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\specs\s2r30-multi-final-refinement.json</code></div></details>
+        </article>
+
+        <article class="experiment status-analysis" id="exp-20260815-s2-route-qwen35" data-status="analysis" data-capability="routing">
+          <div class="experiment-head">
+            <div><div class="experiment-id">S2 ROUTE MODEL QUALIFICATION · QWEN3.5</div><h3>同一 R52 Bank 下路由显著更弱，新增空间集中在 Exact→Multi</h3></div>
+            <div class="experiment-labels"><span class="state analysis">Qualification only</span><span class="tag">no S2 candidate</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>719 / 800</strong><span>Qwen3.5 correct</span></div><div class="result-box"><strong>760 / 800</strong><span>Qwen3.7 correct</span></div><div class="result-box"><strong>+41</strong><span>error headroom</span></div><div class="result-box"><strong>4 / 45</strong><span>paired corrected / broken</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Frozen variable</dt><dd>route-only model：<code>qwen3.7-flash-2026-07-15</code> → <code>qwen3.5-flash-2026-02-23</code></dd></div>
+            <div><dt>Invariant</dt><dd>R52 Bank <code>67b92b61…55bc8</code>、相同 opt800 query/order、相同 prompt/parser</dd></div>
+            <div><dt>Macro-F1</dt><dd><code>0.9581119 → 0.9141625</code>（−4.3949pp）</dd></div>
+            <div><dt>Calls / cost</dt><dd>800/800 success + schema-valid；255,225 / 8,883 tokens；¥0.0688110；0 Creator</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Qwen3.5 相比 Qwen3.7 为 4 条旧错修正、45 条 parent-success 破坏，净新增 41 条 route error。按 capability，Exact 错误 33→64、Encyclopedia 0→6、Style 7→10、Document 0→1；Multi 与 Recipe 均保持 0。discovery600 的 Exact→Multi 簇从 14 增至 34，replay200 错误从 14 增至 30。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该精确版本确实为 S2 留出更大可观测优化空间，但空间并不均匀，主要是 Exact/Multi 边界；它没有自动增加六能力广覆盖，也未证明 S2 能安全收回新增错误。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>保留为候选 route baseline，不修改 tracked 默认模型。当前 qualification spec 的 full Assistant 仍是 Qwen3.7，runtime 已验证会拒绝启动 S2。若采用 Qwen3.5，必须先冻结 route/full-Assistant 同模型的新 lineage、重跑 symmetric parent baseline，并重新验证容量与正式 route gate；不得把这次 719/800 与旧 S2 candidate 拼成增益结论。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\route800.jsonl</code><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\route-model-comparison.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-route-model-qwen35-v1-20260815\run\s2-parent-route800-bootstrap.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->

@@ -516,15 +516,23 @@ class Concurrency(FrozenStrictModel):
 
     @model_validator(mode="after")
     def validate_measured_capacity_profiles(self) -> Self:
-        assistant_expected = (
-            config.ASSISTANT_VALIDATED_CONCURRENCY,
-            config.ASSISTANT_REQUESTS_PER_SECOND,
-        )
-        if (self.assistant, self.assistant_requests_per_second) != assistant_expected:
+        assistant_profiles = {
+            (
+                config.ASSISTANT_VALIDATED_CONCURRENCY,
+                config.ASSISTANT_REQUESTS_PER_SECOND,
+            ),
+            (
+                config.QWEN35_ROUTE_QUALIFICATION_CONCURRENCY,
+                config.QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND,
+            ),
+        }
+        if (
+            self.assistant,
+            self.assistant_requests_per_second,
+        ) not in assistant_profiles:
             raise ValueError(
-                "Core Fast Assistant capacity must match the measured profile "
-                f"{assistant_expected[0]} inflight/"
-                f"{assistant_expected[1]:g} requests per second"
+                "Core Fast Assistant capacity must match a frozen active or "
+                "route-qualification profile"
             )
         feedback_expected = (
             config.FEEDBACK_JUDGE_VALIDATED_CONCURRENCY,

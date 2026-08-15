@@ -32,6 +32,16 @@ ASSISTANT_REQUESTS_PER_SECOND = 20.0
 ASSISTANT_ACCEPTABLE_ERROR_RATE = 0.02
 ASSISTANT_SERVICE_ERROR_RATE = 0.0
 
+# Isolated S2 route-model qualification profile.  The pinned Qwen3.5 revision
+# is listed by DashScope with 600 RPM / 1M TPM.  Qualification keeps starts at
+# 8 requests/s (480 RPM) and 16 workers; it does not replace the active
+# Assistant until a symmetric full-runtime lineage is explicitly frozen.
+QWEN35_ROUTE_QUALIFICATION_MODEL = "qwen3.5-flash-2026-02-23"
+QWEN35_ROUTE_QUALIFICATION_CONCURRENCY = 16
+QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND = 8.0
+QWEN35_INPUT_CNY_PER_MILLION = 0.2
+QWEN35_OUTPUT_CNY_PER_MILLION = 2.0
+
 # Immutable Portfolio/Gate0/authoring artifacts predate the active Core Fast
 # Assistant switch.  Historical verifiers must bind this identity explicitly
 # instead of following the moving active Assistant constants above.

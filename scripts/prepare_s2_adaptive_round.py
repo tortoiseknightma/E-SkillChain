@@ -18,6 +18,7 @@ from skillchain.evaluation.core_fast.models import (  # noqa: E402
     StageDecision,
     load_core_fast_spec,
 )
+from skillchain import config  # noqa: E402
 from skillchain.evaluation.core_fast.store import atomic_write_json  # noqa: E402
 from skillchain.tools.serialization import sha256_bytes  # noqa: E402
 
@@ -131,6 +132,17 @@ def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("every --memory-json value must encode one object")
     payload = source_spec.model_dump(mode="json")
     payload["experiment_id"] = args.experiment_id
+    if args.route_model_qualification is not None:
+        payload["models"]["route_only"]["requested_model"] = (
+            args.route_model_qualification
+        )
+        payload["models"]["route_only"]["moving_alias"] = False
+        payload["concurrency"]["assistant"] = (
+            config.QWEN35_ROUTE_QUALIFICATION_CONCURRENCY
+        )
+        payload["concurrency"]["assistant_requests_per_second"] = (
+            config.QWEN35_ROUTE_QUALIFICATION_REQUESTS_PER_SECOND
+        )
     payload["s2_parent"] = binding
     payload["s2_settings"] = {
         "round_id": args.round_id,
@@ -152,6 +164,11 @@ def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
         "The parent route800 must be frozen before Creator or candidate calls.",
         "Adaptive S2 specs may run only through s2; S3/Judge/test remain sealed.",
     ]
+    if args.route_model_qualification is not None:
+        payload["disclosures"].append(
+            "Qualification-only route model differs from the full Assistant; "
+            "this spec may create parent route800 evidence but cannot run S2."
+        )
     return CoreFastSpec.model_validate_json(
         json.dumps(payload), strict=True
     ).model_dump(mode="json")
@@ -201,6 +218,14 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--cycle-id", required=True)
     bootstrap.add_argument("--round-id", required=True)
     bootstrap.add_argument("--target-capability", choices=CAPABILITIES, required=True)
+    bootstrap.add_argument(
+        "--route-model-qualification",
+        choices=(config.QWEN35_ROUTE_QUALIFICATION_MODEL,),
+        help=(
+            "freeze an isolated route-only model profile; S2 remains blocked "
+            "until the full Assistant uses the same model"
+        ),
+    )
     bootstrap.add_argument("--target-predicted-capability", choices=CAPABILITIES)
     bootstrap.add_argument(
         "--proposal-mode",

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts import prepare_s2_adaptive_round as prepare_s2_cli
+from skillchain import config
 from skillchain.evaluation.core_fast.engine import CoreFastEngine, FastPathError
 from skillchain.evaluation.core_fast.fake_provider import FakeCoreFastAdapter
 from skillchain.evaluation.core_fast.models import (
@@ -2695,6 +2696,66 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         == 2
     )
     assert not unauthorized_spec.exists()
+    qualification_spec_path = tmp_path / "qwen35-route-qualification.json"
+    qualification_routes = tmp_path / "qwen35-route800.jsonl"
+    assert (
+        prepare_s2_cli.main(
+            [
+                "bootstrap-spec",
+                "--source-spec",
+                str(source_spec_path),
+                "--source-root",
+                str(source_root),
+                "--source-stage",
+                "s1",
+                "--source-round-id",
+                "r52",
+                "--preparatory-binding",
+                str(preparatory_path),
+                "--route-results-path",
+                str(qualification_routes),
+                "--output-spec",
+                str(qualification_spec_path),
+                "--experiment-id",
+                "qwen35-route-qualification",
+                "--cycle-id",
+                "s2-route-model-qualification-v1",
+                "--round-id",
+                "s2r1",
+                "--target-capability",
+                "product.exact_match",
+                "--route-model-qualification",
+                config.QWEN35_ROUTE_QUALIFICATION_MODEL,
+            ]
+        )
+        == 0
+    )
+    qualification_spec = load_core_fast_spec(qualification_spec_path)
+    assert (
+        qualification_spec.models["route_only"].requested_model
+        == config.QWEN35_ROUTE_QUALIFICATION_MODEL
+    )
+    assert qualification_spec.models["assistant"].requested_model == (
+        source_spec.models["assistant"].requested_model
+    )
+    assert (
+        qualification_spec.concurrency.assistant,
+        qualification_spec.concurrency.assistant_requests_per_second,
+    ) == (16, 8.0)
+    qualification_engine = CoreFastEngine(
+        spec=qualification_spec,
+        spec_path=qualification_spec_path,
+        output_root=tmp_path / "qwen35-route-profile-root",
+        adapter=FakeCoreFastAdapter(),
+    )
+    qualification_engine.initialize_s2_parent_route800()
+    qualification_receipt = qualification_engine.run_s2_parent_route800()
+    assert qualification_receipt["route_model"] == (
+        config.QWEN35_ROUTE_QUALIFICATION_MODEL
+    )
+    assert qualification_receipt["row_count"] == 800
+    with pytest.raises(FastPathError, match="route-model qualification"):
+        qualification_engine.s2_readiness()
     fold_roles = {
         row["query_id"]: row["role"]
         for row in (

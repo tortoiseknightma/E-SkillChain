@@ -13,6 +13,8 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 > **S2 runtime ready（2026-08-15）：forward-only S2 已完成 30/30 次真实实验闭环。S2R17 的 Exact Description 以局部 6 gains / 1 regression、显式保护 0 regression 进入 route_gate75，并取得 route macro-F1 `0.9162→0.9773`、corrected/broken `4/0`、GCS macro `+2.3485pp`、hard errors `−1`，接受 Bank `3767a383…78a2`；后续 R18–R30 全部按门回滚到它。每轮绑定 R52 或上一轮 accepted S2 Bank，fresh/reuse parent route800，只允许一个 capability 的一条 typed conditional route rule。S3、Judge 和已消费的 test300 均保持 sealed。**
 
+> **Qwen3.5 route qualification（2026-08-15）：同一 R52 Bank、同一 opt800 和同一 route wire 下，`qwen3.5-flash-2026-02-23` 为 719/800 correct、macro-F1 `0.9142`，低于 Qwen3.7 的 760/800、`0.9581`；成对为 4 corrected / 45 broken，净增加 41 条错误，主要来自 Exact→Multi。它确实提供更大但偏 Exact 的 S2 空间。当前只保留为 qualification 候选，不修改默认模型；代码禁止 route-only Qwen3.5 与 full Assistant Qwen3.7 混用启动 S2。**
+
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
 > GitHub 默认展示 HTML 源码；HTML 报告与实验日志建议下载后用浏览器打开。
