@@ -491,7 +491,7 @@
       </p>
       <div class="hero-status">
         <span class="status-dot" aria-hidden="true"></span>
-        <span>R34–R63 已完成 30/30；R52 是唯一 finalist，但一次性 test300 未过 +2pp macro 门，最终仍选择 R12</span>
+        <span>R34–R63 已完成 30/30；最终仍选择 R12，R52 现冻结为进入 S2 前的正式预备分支</span>
       </div>
 
       <div class="hero-stats" aria-label="当前实验快照">
@@ -583,7 +583,8 @@
         27/30。最后的 R61–R63 中，R61 在 provider 前暴露 v9 projection 漏接；R62 局部 9/1、
         replay macro +1.1111pp，但 body 0pp 且 hard-error +1.3333pp；R63 局部 5/8。30/30 结束后，
         R52 成为唯一 finalist；一次 paired test300 得到 macro +1.6393pp，低于 +2pp 门，最终回滚到
-        R12。S2/S3/Judge 未访问，test300 已消费。
+        R12。随后前向阶段决定把 R52 冻结为 S2 的正式预备 working parent；这不追认其 test300，
+        S2/S3/Judge 仍未访问，test300 已消费。
       </div>
 
       <div class="callout warn" style="margin-top: 1rem;">
@@ -2292,6 +2293,18 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="decision-meta"><span class="tag">branch：67b92b61…55bc8</span><span class="tag">parent：R12 only</span><span class="tag">selected：R12</span><span class="tag">test：untouched</span></div>
           </div>
         </article>
+
+        <article class="decision-card" id="decision-r52-s2-preparatory">
+          <div>
+            <div class="decision-id">DEC-20260815-05</div>
+            <span class="state baseline">正式预备 · S2 未启动</span>
+          </div>
+          <div>
+            <h3>R52 作为进入 S2 前的正式预备分支</h3>
+            <p>后续 S2 的 working parent 固定为 R52 Bank <code>67b92b61…55bc8</code>，只允许 Description-only 修改并保持 R52 Body byte-exact。该前向授权不改写 R52 未通过一次性 test300 的事实，也不使其成为 deployable Bank；S2 正式通过独立 route gate 前，Portfolio selected 仍为 R12。</p>
+            <div class="decision-meta"><span class="tag">S2 parent：R52</span><span class="tag">Portfolio selected：R12</span><span class="tag">S2：0-call</span><span class="tag">rollback：R12</span></div>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -2318,8 +2331,10 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
         fan-in 已按冻结协议结束，0 个 branch accepted；R17/R26/R29 及其他 rejected Bank 均未成为
         parent 或被复制。自适应 R34–R63 已完成 30/30；R52 是唯一新增 accepted branch 和唯一 finalist，
         但一次性 paired test300 的 capability macro 仅 +1.6393pp，低于冻结 +2pp 门，因此最终 selected
-        Bank 仍为 R12。其余自适应 candidate 均未参加 fan-in。test300 已永久消费，不得测试第二个
-        finalist，也不再是 untouched 五配置 test；若未来需要无偏五配置最终比较，必须另建 holdout。
+        Bank 仍为 R12。其余自适应 candidate 均未参加 fan-in。R52 随后的前向身份是 S2 正式预备
+        working parent，而非 test-passed 或 deployable Bank；S2 尚未启动，失败时回退 R12。test300
+        已永久消费，不得测试第二个 finalist，也不再是 untouched 五配置 test；若未来需要无偏五配置
+        最终比较，必须另建 holdout。
       </div>
 
       <div class="future-grid" style="margin-top: 1rem;">

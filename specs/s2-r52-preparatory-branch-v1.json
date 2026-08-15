@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "kind": "core-fast-s2-preparatory-branch",
+  "status": "authorized-pre-s2-not-started",
+  "effective_date": "2026-08-15",
+  "source_s1": {
+    "round_id": "r52",
+    "parent_round_id": "r12",
+    "parent_bank_sha256": "e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd",
+    "bank_sha256": "67b92b61f1bf65b23724ed9e8d4ff1c4a0dcba81ea313e410af7e10bcf755bc8",
+    "bank_file_sha256": "5d6d23a501637b77c3bfaa075f61924bb7649a46f3be98c8c59b604269576ca2",
+    "skill_sha256": "76622c04385010602bc4d4537a2a2505fdf9d2a1fa10a7ac113d2d1b828d2916",
+    "decision_file_sha256": "15f9e47308610c8c55d2260f24f58f50f6940233ddc33b241afc12af21ea7a62",
+    "manifest_file_sha256": "8365db78c8a9569d2a10e364cc5c28ba926cc578f0a4eb62857ad93b30ee5ae2",
+    "accepted_branch_receipt_sha256": "f2c6e571a7db0433d711291dfcaf543536b07d13401683ad69173caeefcd0859",
+    "accepted_branch_file_sha256": "f80d19b7aeffc371ae1b02ebb3a491ced854e5ec880c7da01dea8a7e0139d3a5",
+    "accepted_s1_gates": [
+      "local-bounded-risk",
+      "replay200",
+      "body_gate75"
+    ]
+  },
+  "historical_test300": {
+    "consumed": true,
+    "passed": false,
+    "macro_delta_pp": 1.6393442622950782,
+    "target_capability_delta_pp": 9.836065573770492,
+    "ci95_lower_pp": 0.0,
+    "hard_error_delta_pp": 1.0,
+    "rejection_reason": "capability-macro GCS delta is below 2pp",
+    "test_receipt_file_sha256": "65211882c89bbb7efee1a23df1fabff554624b8328df4132479eb2581755dda5"
+  },
+  "portfolio_selection": {
+    "current_selected_round_id": "r12",
+    "current_selected_bank_sha256": "e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd",
+    "s2_preparatory_round_id": "r52",
+    "s2_preparatory_bank_sha256": "67b92b61f1bf65b23724ed9e8d4ff1c4a0dcba81ea313e410af7e10bcf755bc8",
+    "deployment_approved": false,
+    "s2_started": false
+  },
+  "s2_contract": {
+    "working_parent_bank_sha256": "67b92b61f1bf65b23724ed9e8d4ff1c4a0dcba81ea313e410af7e10bcf755bc8",
+    "mutable_surface": "description-only",
+    "body_must_remain_byte_exact": true,
+    "requires_new_forward_only_root": true,
+    "requires_explicit_s2_route_gate": true,
+    "on_s2_reject_portfolio_selected_bank_sha256": "e70ed907825833a0bbb97ccde068fd38d4a6342824cd9dcdfb543723feb096cd",
+    "prohibited_actions": [
+      "rewrite historical R52 or test300 artifacts",
+      "claim R52 passed test300",
+      "start S3 or Judge before an S2 decision",
+      "reuse test300 or test a second S1 finalist"
+    ]
+  },
+  "disclosure": "R52 is the formally authorized working branch for preparing the next S2 stage because it passed the S1 local, replay200, and body75 gates. This forward stage authorization does not override its failed one-time test300 result, does not make it deployable, and does not change the current Portfolio-selected Bank from R12 before S2 is accepted."
+}

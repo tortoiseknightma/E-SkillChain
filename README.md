@@ -9,6 +9,8 @@ E-SkillChain（仓库名 ECommerceSkillChain）是一个面向 Agent / 算法工
 
 > **当前状态：以 accepted R12 为唯一 parent 的 R34–R63 自适应周期已完成 30/30。R52 Encyclopedia citation closure 是唯一通过 local/replay/body 三层门的新增分支（Bank `67b92b61…55bc8`），并成为唯一冻结 finalist；最后三轮中，R61 因本地 Feedback projection 漏接 v9 标签而在 provider 前停止、没有算法结论，R62 Recipe stop-after-first-success 局部 9/1、replay macro +1.1111pp，但 body macro 0pp 且 hard-error +1.3333pp，R63 Encyclopedia stop rule 局部 5/8，均按原门回滚。唯一一次 paired test300 已永久消费：R52 在 test 上 Encyclopedia +9.8361pp、capability macro +1.6393pp、CI95 lower 0pp、hard-error +1pp；因 macro 未达到冻结 +2pp 门而失败，最终 selected Bank 回滚为 R12 `e70ed907…096cd`。没有运行 Judge、S2、S3 或五配置矩阵；test300 此后不再是 untouched 五配置 test。B09 新增可追踪 DashScope ¥1.24871935、2 个 Creator 会话，test300 新增 ¥0.9376664；Creator 人民币 cost basis 不可得。**
 
+> **前向阶段决定（2026-08-15）：R52 现冻结为进入 S2 前的正式预备分支。S2 的工作 parent 使用 R52 Bank `67b92b61…55bc8`，只允许 Description-only 修改；这不追认 R52 的 test300、也不把它改称 deployable。S2 尚未启动，在 S2 正式通过独立 route gate 前，Portfolio 最终 selected Bank 仍是 R12。机器可读绑定见 [`specs/s2-r52-preparatory-branch-v1.json`](specs/s2-r52-preparatory-branch-v1.json)。**
+
 [V1 结果报告（HTML）](docs/portfolio-v1-results.html) · [S1 实验日志（HTML）](docs/s1-experiment-log.html) · [数据集设计报告（HTML）](docs/e-skillchain-dataset-design-interview-report.html) · [评测协议](docs/evaluation-protocol.md) · [复现契约](docs/reproduction-contract.md)
 
 > GitHub 默认展示 HTML 源码；HTML 报告与实验日志建议下载后用浏览器打开。
@@ -272,7 +274,7 @@ Skill 被拆成影响路由的 Description 与影响执行的 Body。每个阶�
 | 阶段 | 主要输入 | 允许的变化 | 接受条件 | V1 状态 |
 | --- | --- | --- | --- | --- |
 | S1 Creator | 失败轨迹、failure attribution、锚点样本、Parent Bank | 六能力 fan-out Body patch；每项再拆 action / response surface，未改项 byte-exact inherit | 两类 surface 独立 screen、capability 内组合、六能力 fan-in replay 后一次正式 GCS 接受门 | fresh Static 与 30 轮完成；R12 Style action-policy accepted，覆盖 `1/6` |
-| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；若推进只允许从 R12 canonical Bank 开始，本阶段未启动 |
+| S2 Route Optimizer | 路由混淆、误路由样本、当前 Bank | **Description-only** | 路由指标提升且 Body SHA 不变 | 可执行原型；R52 已冻结为正式预备 working parent，S2 尚未启动 |
 | S3 Body Refiner | 内容、工具、证据和卡片失败 | **Body-only** | 端到端质量提升且路由字段不变 | 可执行原型；等待后续阶段决定是否从 R12 推进 |
 
 候选 Bank 保存 parent / candidate lineage 与内容哈希。Gate 失败时，系统恢复到逐字节一致的 Parent Bank，而不是在失败候选上继续“补丁式调参”。
@@ -465,11 +467,11 @@ uv run skillchain-offline-fixture --output runs/offline-fixture-001
 ## 下一步
 
 1. 保持历史 deterministic rounds、当前 30 轮 canonical artifacts 及所有 rejected Bank 只读，不追溯重判，也不跨 runtime resume。
-2. 后续阶段唯一合法 S1 起点仍是 accepted R12 Bank `e70ed907…096cd`；R52 只保留为“开发证据与 body75 均为正、但一次性 test300 未达到 +2pp macro 门”的诊断分支，不能部署或成为新 parent。
+2. 后续独立 S1 的唯一合法起点仍是 accepted R12 Bank `e70ed907…096cd`；进入 S2 时则使用已冻结的 R52 正式预备 Bank `67b92b61…55bc8`。两种 parent 角色不得混写。
 3. R34–R63 已完成 30/30，冻结停止；不追加第 31 个自适应 round，不重测 R52，不因 test 的 +1.6393pp 方向性增益放宽门，也不测试第二个 finalist。
 4. 当前 test300 已永久消费，不再是 untouched 五配置 test。若未来需要无偏五配置最终比较，必须建立新的 holdout；不得把本次 600 个 paired outer calls 混入新的开发证据。
 5. 若进入后续机制周期，必须使用新的预注册开发证据，并在任何 Feedback 前一次性通过 evidence-feasibility、treatment-separability、treatment-sensitivity 与 protected-target compatibility；所有独立候选仍只从 R12 派生。
-6. S2/S3/Judge 继续关闭，直到项目所有者基于当前负最终选择明确启动下一阶段；本周期最终 selected Bank 为 R12。
+6. S2 尚未启动；启动时必须在新的 forward-only root 中验证 R52 binding、保持 Body byte-exact 并执行独立 route gate。S2 未通过则 Portfolio selected 仍回退 R12；S3/Judge 继续关闭。
 
 ---
 

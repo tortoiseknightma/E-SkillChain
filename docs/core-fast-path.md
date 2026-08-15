@@ -125,6 +125,13 @@ Encyclopedia `+9.8361pp`，capability macro `+1.6393pp`，CI95 lower `0pp`，har
 它只因未达到冻结的 macro `+2pp` 门而失败，最终 `cycle-selected` 回滚为 R12。该 test300 已永久
 消费，不能再描述为 untouched 五配置 test；本次没有 Judge、S2、S3 或五配置矩阵调用。
 
+前向阶段决定不改写上述事实：R52 现作为进入 S2 前的正式预备分支。后续 S2 的 working parent
+绑定 R52 Bank `67b92b61…55bc8`，且只能修改 Description；R52 的 Body 与 accepted S1 evidence
+必须保持 byte-exact。该身份表示“允许作为 S2 优化输入”，不表示 R52 已通过 test300 或已部署。
+在新的 S2 route gate 正式接受候选前，Portfolio selected Bank 仍是 R12；S2 失败也回退 R12，
+不把 R52 自动提升为最终 Bank。机器可读边界见
+[`specs/s2-r52-preparatory-branch-v1.json`](../specs/s2-r52-preparatory-branch-v1.json)。
+
 以下 v4 accepted lineage 是前向开发历史；v5/v6 fan-out 又为 Multi/Exact 增加 typed selector，并分别
 使用 fresh Static lineage 评估。三条 lineage 彼此只读，不能互相 resume 或追溯重判。
 
