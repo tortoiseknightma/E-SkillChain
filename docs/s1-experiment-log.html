@@ -2419,6 +2419,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r13-style-concise-retry\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r13-style-concise-retry\calls\creator</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r14" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R14 · STYLE RUNNER-PROTECTED</div><h3>首个 runner-owned protection treatment：6 gains / 2 regressions，显式保护仍回退</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">treatment 1/1</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>6</strong><span>route gains</span></div><div class="result-box"><strong>2</strong><span>regressions</span></div><div class="result-box"><strong>+4</strong><span>net gain</span></div><div class="result-box"><strong>3 : 1</strong><span>below frozen 4:1</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…5bc8</code>；packet <code>05bc5758…f21d</code></dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>01896c3b…e991</code> / <code>702e9208…4f57</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>200 replay + 6 protected route_only，1 Creator；priced DashScope ¥0.0178244；Creator cost unavailable</dd></div>
+            <div><dt>Gate</dt><dd>显式保护 <code>0766</code> 回退且 6&lt;4×2；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>六个 gains 全是 R52 错路由 Multi 的 Exact 样本恢复为 Exact，并非目标 Style cluster 的直接修复；两条 regressions 为 <code>0766</code> Encyclopedia→Recipe 与 <code>0789</code> Style→Multi。compiler 从 packet 注入的六个 protected IDs 完整落盘，Creator 不再因复制 ID 失败。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>替换 Style Description 改变了六类描述的全局竞争，能间接释放 Exact，但没有稳定加强 Style 本身；“meaningful variation in brand/color/size/silhouette/motif”仍可能稀释目标边界。R14 证明运行链就绪，不支持接纳该规则。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R14 回滚到 R52，局部与正式门不变。R15 转向 replay 中占 13/14 错误的 Exact→Multi 主簇，使用同一短 replacement 机制和真实跨能力保护例；不携带任何 rejected Style Description。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r14-style-runner-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r14-style-runner-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
