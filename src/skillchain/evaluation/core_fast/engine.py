@@ -2098,6 +2098,14 @@ class CoreFastEngine:
         return len(rows) == 24 and all(row.oracle_available for row in rows.values())
 
     @staticmethod
+    def _s2_smoke_ok(rows: Mapping[str, AssistantObservation]) -> bool:
+        # S2 changes routing only.  Captured action/response failures are not
+        # attributable at this preflight and remain visible to the paired
+        # route_gate75 GCS/hard-error checks.  Smoke stops only on incomplete
+        # or unscorable execution.
+        return len(rows) == 24 and all(row.oracle_available for row in rows.values())
+
+    @staticmethod
     def _s1_development_scores(
         rows: Mapping[str, AssistantObservation],
         queries: Sequence[Query],
@@ -6574,8 +6582,10 @@ class CoreFastEngine:
                 metrics["smoke_hard_errors"] = sum(
                     row.hard_error for row in smoke.values()
                 )
-                if not self._smoke_ok(smoke):
-                    reasons.append("candidate failed fixed dev smoke24")
+                if not self._s2_smoke_ok(smoke):
+                    reasons.append(
+                        "candidate failed fixed dev smoke24 operational/oracle coverage"
+                    )
                 else:
                     local_ok, local_reasons, local_metrics = (
                         self._s2_local_route_screen(

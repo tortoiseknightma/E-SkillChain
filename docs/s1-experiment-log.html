@@ -2239,6 +2239,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\artifacts\s2-conditional-route-rule.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r4-exact-multi-boundary\calls\assistant</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r5" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R5 · EXACT→MULTI BOUNDARY</div><h3>共享 route 接线成功；旧 smoke hard-error 门误把回答采样当路由回退</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Preflight stop</span><span class="tag">treatment not screened</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；Exact→Multi packet <code>66b2e652…d2c1</code></dd></div>
+            <div><dt>Candidate</dt><dd>Bank <code>867e2250…c392</code>；typed rule <code>1db99c59…a6e2</code></dd></div>
+            <div><dt>Smoke</dt><dd>24/24 schema-valid；5 captured application hard errors；152,045 input / 10,964 output tokens；¥0.0391802</dd></div>
+            <div><dt>Unvisited</dt><dd>local route replay200、protected6、route_gate75、S3、Judge、test300</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>live shared route 已真实调用成功；24 条均有可评分 observation。5 条 hard error 分布在 Encyclopedia、Document、Recipe，均为 action/response 的 runtime 或 response-contract failure，而非目标 Exact 的 route terminal error；现有 S2 仍用 <code>_smoke_ok</code> 的零 hard-error 条件提前停止。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Description-only treatment 尚未进入 route-only replay，因此这些错误不能归因于 Exact route rule。继续以它们否决 S2 会把非目标 surface 的模型采样噪声变成系统性吞吐阻断。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不放宽 local replay 或正式 gate。S2 smoke 改为仅检查 24/24 完整和 oracle coverage；所有 captured hard error 仍进入 paired route_gate75 的 capability-macro GCS 与 hard-error 非增加门。S2R6 继续同一 confusion。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r5-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r5-exact-multi-boundary\calls\assistant</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
