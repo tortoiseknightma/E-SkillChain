@@ -399,8 +399,8 @@ class FakeCoreFastAdapter:
                                 {
                                     "capability_id": skill["capability_id"],
                                     "when": (
-                                        "the visible request matches the clarified "
-                                        "boundary cues"
+                                        "Route here when the visible request matches the clarified "
+                                        "boundary cues; preserve the parent boundary otherwise"
                                     ),
                                     "route_to": skill["capability_id"],
                                     "must_preserve_query_ids": protected,

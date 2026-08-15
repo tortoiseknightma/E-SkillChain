@@ -2793,6 +2793,18 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
     )
     assert invalid_candidate is None and invalid_rule is None
     first_engine.run(through="s2")
+    creator_intent = CallIntent.model_validate_json(
+        (
+            first_root / "calls" / "creator" / "s2r1-route-optimizer-once.intent.json"
+        ).read_bytes(),
+        strict=True,
+    )
+    assert creator_intent.payload["requirements"]["when_must_start_with"] == (
+        "Route here when"
+    )
+    assert (
+        creator_intent.payload["requirements"]["at_most_one_exclusion_clause"] is True
+    )
     first = first_engine._existing_decision("s2")
     assert first is not None and first.accepted
     assert first.parent_bank == _bank().bank_sha256
@@ -2806,6 +2818,8 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         )
     )
     assert rule["route_to"] == first_target
+    assert rule["when"].startswith("Route here when ")
+    assert rule["when"].count(";") == 1
     assert len(rule["must_preserve_query_ids"]) == 6
     first_selected = StaticBankArtifact.model_validate_json(
         (first_root / "banks" / "s2-selected.json").read_bytes(), strict=True

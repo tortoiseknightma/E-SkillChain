@@ -6429,7 +6429,9 @@ class CoreFastEngine:
             or not when.strip()
             or when != when.strip()
             or "\n" in when
-            or ";" in when
+            or len(when) > 700
+            or when.count(";") > 1
+            or not when.startswith("Route here when ")
             or any(token in when.casefold() for token in forbidden)
             or not isinstance(preserve, list)
             or sorted(preserve) != protected_ids
@@ -6440,7 +6442,7 @@ class CoreFastEngine:
         condition = when.rstrip(". ")
         description = (
             f"{parent_skill.description.rstrip()}\n"
-            f"If and only if {condition}, route this query to {target}. "
+            f"Conditional routing boundary: {condition}. "
             "Otherwise preserve the parent routing behavior for all other states."
         )
         bank = self._compile_candidate_payload(
@@ -6510,6 +6512,9 @@ class CoreFastEngine:
                     "description_only": True,
                     "preserve_body_operators_static_refs": True,
                     "conditional_minimal_edit": True,
+                    "when_must_start_with": "Route here when",
+                    "when_max_characters": 700,
+                    "at_most_one_exclusion_clause": True,
                 },
                 "output_schema": self._creator_schema("s2"),
             },

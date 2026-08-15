@@ -2201,6 +2201,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r2-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r2-exact-multi-boundary\calls\creator\s2r2-route-optimizer-once.result.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r3" data-status="rollback" data-capability="product.exact_match">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R3 · EXACT→MULTI BOUNDARY</div><h3>Creator 规则有效，但被过严的本地分号启发式拒绝</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Compiler stop</span><span class="tag">treatment 0</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / packet</dt><dd>R52 <code>67b92b61…55bc8</code>；Exact→Multi packet <code>15898cf7…959</code></dd></div>
+            <div><dt>Creator result</dt><dd>schema-valid typed rule；20,285 input / 348 output tokens；人民币 cost basis unavailable</dd></div>
+            <div><dt>Proposed boundary</dt><dd>单一产品即使含多个颜色、组件或结构约束仍归 Exact；只有分别请求至少两个不同产品才归 Multi</dd></div>
+            <div><dt>Unvisited</dt><dd>candidate Assistant、local replay200、route_gate75、S3、Judge、test300</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>Provider schema 闭合后，Creator 返回了单 capability、单条件且精确保留 6 个保护样本的合法 JSON。compiler 仅因规则包含一个用于排除 Multi 状态的分号而返回 null，decision 因此回滚到 R52。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>该规则与 Exact→Multi confusion 的观察证据一致，但尚未进入任何 route replay，不能报告路由增益或负增益；问题属于 typed-rule 正规化边界，而不是 S2 算法结果。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>不重写 R3。后续规则冻结为 <code>Route here when</code> 前缀、最多 700 字符、最多一个排除从句；继续拒绝私有标识、跨 capability 修改和保护集漂移。S2R4 在新 root 首次执行真实 treatment。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r3-exact-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r3-exact-multi-boundary\calls\creator\s2r3-route-optimizer-once.result.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
