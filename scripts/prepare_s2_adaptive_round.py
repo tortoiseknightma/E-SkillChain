@@ -136,6 +136,7 @@ def _bootstrap_spec(args: argparse.Namespace) -> dict[str, object]:
         "round_id": args.round_id,
         "cycle_id": args.cycle_id,
         "target_capability": args.target_capability,
+        "target_predicted_capability": args.target_predicted_capability,
         "proposal_mode": "single-description-counterfactual-v1",
         "failure_example_count": 3,
         "parent_success_example_count": 3,
@@ -200,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap.add_argument("--cycle-id", required=True)
     bootstrap.add_argument("--round-id", required=True)
     bootstrap.add_argument("--target-capability", choices=CAPABILITIES, required=True)
+    bootstrap.add_argument("--target-predicted-capability", choices=CAPABILITIES)
     bootstrap.add_argument(
         "--historical-regression-query-id", action="append", default=[]
     )

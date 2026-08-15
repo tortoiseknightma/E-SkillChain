@@ -498,7 +498,7 @@
         <div class="hero-stat"><strong>800 / 800</strong><span>fresh Static completed</span></div>
         <div class="hero-stat"><strong>30 / 30</strong><span>dual-policy rounds completed</span></div>
         <div class="hero-stat"><strong>+2.0833pp</strong><span>accepted body macro · R12</span></div>
-        <div class="hero-stat"><strong>21 / 30</strong><span>adaptive S2 attempts completed</span></div>
+        <div class="hero-stat"><strong>22 / 30</strong><span>adaptive S2 attempts completed</span></div>
       </div>
 
       <div class="hero-actions">
@@ -600,7 +600,7 @@
         ¥1.3534802、5 个 Creator 会话；R55–R60 新增 ¥1.85708305、5 个 Creator 会话；R61–R63
         新增 ¥1.24871935、2 个 Creator 会话。六个自适应阶段合计 ¥6.7237351、26 个 Creator 会话；
         一次性 test300 另计 ¥0.9376664。adaptive S2 截至 S2R17（含 R52 route800）新增可追踪
-        DashScope ¥0.9142208；21 个尝试中 20 个 Creator 会话，人民币 cost basis 不可得。
+        DashScope ¥1.1608158；22 个尝试中 21 个 Creator 会话，人民币 cost basis 不可得。
         Creator 人民币 cost basis 仍不可得。
       </div>
     </section>
@@ -2577,6 +2577,25 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
             <div class="finding decision"><span class="kind decision">DECISION</span><p>不降低三例资格、不合并 prediction cluster。R21 作为 preflight stop 计入 30 次尝试但不计 Creator；R22 转向 discovery 中具备 8 条 Style→Exact 同簇失败的 Style surface。</p></div>
           </div>
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\specs\s2r21-exact-residual.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\parent-profiles\s2r17\route800.jsonl</code></div></details>
+        </article>
+
+        <article class="experiment status-rollback" id="exp-20260815-s2r22" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R22 · STYLE LOCAL-REGRESSION PROTECTED</div><h3>Style 局部 1/0，正式门 corrected 1 / broken 2，继续回滚</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Formal gate rollback</span><span class="tag">second Style formal miss</span></div>
+          </div>
+          <dl class="experiment-meta">
+            <div><dt>Parent / candidate</dt><dd>S2R17 <code>3767a383…78a2</code> → rejected <code>a18f00df…799e</code></dd></div>
+            <div><dt>Packet / rule</dt><dd><code>a5a05d60…8770</code> / <code>9a8feda1…f74c</code></dd></div>
+            <div><dt>Local / formal</dt><dd>1/0；corrected 1 / broken 2；route macro-F1 0.9773→0.9638；GCS macro −0.0253pp</dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route-only + 150 Assistant outer + 1 Creator；priced DashScope ¥0.2465950</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>R22 修复 local <code>0431</code>、零 regression、六个显式保护例保持，因此进入正式门；但正式 paired route gate 破坏两条、只修正一条，并伴随 capability-macro GCS 微降，触发三项冻结拒绝条件。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p>Style→Exact 的两个独立 concise treatment 均能过 local、均不能过 formal，已形成一致的“开发信号不迁移”证据。继续重写同一最大簇价值下降；S2R17 profile 中第二大的 Style→Multi 簇仍未被单独检验。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R22 回滚到 S2R17。selector 增加可选、spec/SHA-bound 的 predicted-cluster 约束；默认仍选最大簇。R23 明确预注册 Style→Multi，避免再次把两个 failure mechanism 混为 Style 总体重试。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r22-style-local-regression-protected\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r22-style-local-regression-protected\artifacts\s2-conditional-route-rule.json</code></div></details>
         </article>
 
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->

@@ -232,6 +232,7 @@ class S2Settings(FrozenStrictModel):
     round_id: str = Field(pattern=r"^s2r[1-9][0-9]*$")
     cycle_id: str
     target_capability: str
+    target_predicted_capability: str | None = None
     proposal_mode: Literal["single-description-counterfactual-v1"] = (
         "single-description-counterfactual-v1"
     )
@@ -255,6 +256,11 @@ class S2Settings(FrozenStrictModel):
     def validate_settings(self) -> Self:
         if self.target_capability not in CAPABILITIES:
             raise ValueError("S2 target capability is invalid")
+        if self.target_predicted_capability is not None and (
+            self.target_predicted_capability not in CAPABILITIES
+            or self.target_predicted_capability == self.target_capability
+        ):
+            raise ValueError("S2 predicted cluster capability is invalid")
         if self.historical_regression_query_ids != tuple(
             sorted(set(self.historical_regression_query_ids))
         ):

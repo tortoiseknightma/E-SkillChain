@@ -2542,6 +2542,7 @@ def _prepare_adaptive_s2_spec(
     source_round_id: str,
     round_id: str,
     target: str,
+    target_predicted: str | None = None,
     route_results_path: Path,
     route_root: Path,
     output_spec: Path,
@@ -2575,6 +2576,8 @@ def _prepare_adaptive_s2_spec(
     ]
     if preparatory_binding_path is not None:
         bootstrap_args.extend(["--preparatory-binding", str(preparatory_binding_path)])
+    if target_predicted is not None:
+        bootstrap_args.extend(["--target-predicted-capability", target_predicted])
     for query_id in historical_regression_ids:
         bootstrap_args.extend(["--historical-regression-query-id", query_id])
     assert prepare_s2_cli.main(bootstrap_args) == 0
@@ -2739,6 +2742,7 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         source_round_id="r52",
         round_id="s2r1",
         target=first_target,
+        target_predicted="product.exact_match",
         route_results_path=tmp_path / "s2r1-parent-routes.jsonl",
         route_root=tmp_path / "s2r1-route-root",
         output_spec=first_spec_path,
@@ -2793,6 +2797,10 @@ def test_adaptive_s2_accepts_one_description_then_next_round_rolls_back_to_it(
         )
         == cross_capability_regressions
     )
+    assert packet["confusion_pair"] == {
+        "expected_capability": first_target,
+        "predicted_capability": "product.exact_match",
+    }
     invalid_candidate, invalid_rule = first_engine._compile_adaptive_s2_rule(
         result=CallResult(
             call_id="invalid-freeform-s2",

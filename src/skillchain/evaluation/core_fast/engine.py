@@ -6128,6 +6128,12 @@ class CoreFastEngine:
             for predicted, rows in failures_by_prediction.items()
             if len(rows) >= settings.failure_example_count
         ]
+        if settings.target_predicted_capability is not None:
+            eligible_clusters = [
+                item
+                for item in eligible_clusters
+                if item[0] == settings.target_predicted_capability
+            ]
         if not eligible_clusters:
             raise FastPathError("insufficient S2 route-failure cluster evidence")
         predicted, failures = sorted(
