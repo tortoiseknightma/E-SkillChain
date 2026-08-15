@@ -2322,6 +2322,26 @@ oop-qualification-v4untime-noop-qualification.json</code><code>diagnostic v2/v3
           <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r8-exact-explicit-identity\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r8-exact-explicit-identity\inputs\s2-evidence-packet.json</code></div></details>
         </article>
 
+        <article class="experiment status-rollback" id="exp-20260815-s2r9" data-status="rollback" data-capability="product.style_recommendation">
+          <div class="experiment-head">
+            <div><div class="experiment-id">ADAPTIVE S2 · S2R9 · STYLE→MULTI BOUNDARY</div><h3>Style Description 补齐意图后：6 gains / 3 regressions</h3></div>
+            <div class="experiment-labels"><span class="state rollback">Local screen rollback</span><span class="tag">first Style treatment</span></div>
+          </div>
+          <div class="result-grid"><div class="result-box"><strong>6</strong><span>global route gains</span></div><div class="result-box"><strong>3</strong><span>global regressions</span></div><div class="result-box"><strong>+3</strong><span>net gain</span></div><div class="result-box"><strong>1</strong><span>direct Style-cluster gain</span></div></div>
+          <dl class="experiment-meta">
+            <div><dt>Packet</dt><dd><code>c53280cc…683e</code>；dominant Style→Multi</dd></div>
+            <div><dt>Candidate / rule</dt><dd><code>fac44cc1…dd0d</code> / <code>07f8d8ad…1a9d</code></dd></div>
+            <div><dt>Calls / cost</dt><dd>206 route_only + 1 Creator；priced DashScope ¥0.0204244；Creator cost unavailable</dd></div>
+            <div><dt>Gate</dt><dd>regressions=3&gt;2 且 6&lt;4×3；保护 6 条无回退；route_gate75 未访问</dd></div>
+          </dl>
+          <div class="finding-stack">
+            <div class="finding"><span class="kind fact">FACT</span><p>目标 Style 的直接修复只有 <code>0761</code>（Multi→Style）。另 5 个 gains 是 Exact 的间接恢复。三条回退为 Multi→Style <code>0684</code>、Encyclopedia→Recipe <code>0766</code>、Exact→Multi <code>0956</code>。</p></div>
+            <div class="finding inference"><span class="kind inference">INFERENCE</span><p><code>0684</code> 暴露了可修的边界：多物品任务中的“同品牌同类型替代”不是风格推荐。另两条没有路由到被修改的 Style，更可能是 description-set 扰动下的全局采样变化，但仍按最坏风险计入。</p></div>
+            <div class="finding decision"><span class="kind decision">DECISION</span><p>R9 回滚。R10 保持 Style 单变量，把三条真实回退全部设为 historical regression；正向条件收窄到单一参考物的视觉风格替代或跨品类搭配，显式排除多物品 unresolved-item substitute。</p></div>
+          </div>
+          <details open><summary>Canonical evidence</summary><div class="artifact-list"><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r9-style-multi-boundary\decisions\s2.json</code><code>D:\athena\experiment-runs\portfolio-core-s2-r52-adaptive-v1-20260815\rounds\s2r9-style-multi-boundary\artifacts\s2-conditional-route-rule.json</code></div></details>
+        </article>
+
         <!-- LEDGER-APPEND-END: insert every new finalized experiment immediately above this marker. -->
       </div>
     </section>
