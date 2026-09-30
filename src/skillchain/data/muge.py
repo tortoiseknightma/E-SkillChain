@@ -59,7 +59,7 @@ from skillchain.data.fashion_queries import select_exact_match_products
 from skillchain.data.asset_catalog import DatasetAssetDraft
 from skillchain.synthesis.store import atomic_create_file
 
-RAW_DIR = config.DATA_DIR / "raw" / "muge"
+RAW_DIR = config.RAW_DATA_DIR / "muge"
 EXTRACT_DIR = RAW_DIR / "extracted"
 CLEAN_DIR = config.DATA_DIR / "clean"
 

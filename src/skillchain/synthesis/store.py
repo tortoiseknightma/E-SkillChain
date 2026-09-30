@@ -180,6 +180,38 @@ def _rename_directory_noreplace(staging: Path, destination: Path) -> None:
             ) from None
         raise OSError(error_number, os.strerror(error_number), str(destination))
 
+    if sys.platform == "darwin":
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        renamex_np = getattr(libc, "renamex_np", None)
+        if renamex_np is None:
+            raise RuntimeError(
+                "atomic create-only directory publish requires macOS renamex_np"
+            )
+        # RENAME_EXCL refuses every existing destination, matching
+        # renameat2(RENAME_NOREPLACE) semantics on Linux.
+        _RENAME_EXCL = 0x00000004
+        renamex_np.argtypes = (
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+            ctypes.c_uint,
+        )
+        renamex_np.restype = ctypes.c_int
+        result = renamex_np(
+            os.fsencode(staging),
+            os.fsencode(destination),
+            _RENAME_EXCL,
+        )
+        if result == 0:
+            return
+        error_number = ctypes.get_errno()
+        if error_number in {errno.EEXIST, errno.ENOTEMPTY}:
+            raise FileExistsError(
+                f"target directory already exists; refusing overwrite: {destination}"
+            ) from None
+        raise OSError(error_number, os.strerror(error_number), str(destination))
+
     raise RuntimeError(
         "atomic create-only directory publish is unsupported on this platform"
     )

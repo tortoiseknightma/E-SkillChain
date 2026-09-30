@@ -22,6 +22,7 @@ SOURCE_ROOT = REPOSITORY_ROOT / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
 
+from skillchain import config  # noqa: E402
 from skillchain.static_authoring import (  # noqa: E402
     BankCapabilityBinding,
     CompilerIdentity,
@@ -271,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         print("prepare-portfolio-runtime: output directory exists", file=sys.stderr)
         return 2
     clean = REPOSITORY_ROOT / "data" / "clean"
-    raw = REPOSITORY_ROOT / "data" / "raw"
+    raw = config.RAW_DATA_DIR
     staging = Path(
         tempfile.mkdtemp(
             prefix=f".{args.output_dir.name}.",

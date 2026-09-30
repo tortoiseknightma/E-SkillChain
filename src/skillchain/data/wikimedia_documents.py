@@ -48,7 +48,7 @@ CATEGORIES = (
     "Business cards",
     "Tickets",
 )
-RAW_FILE = config.DATA_DIR / "raw" / "wikimedia_documents" / "candidates.jsonl"
+RAW_FILE = config.RAW_DATA_DIR / "wikimedia_documents" / "candidates.jsonl"
 DESTINATION = config.DATA_DIR / "clean" / "query_images" / "utility_docs"
 CC_LICENSE = re.compile(
     r"^CC (?P<kind>BY|BY-SA) (?P<version>[1-4]\.\d)(?: [a-z]{2})?$",

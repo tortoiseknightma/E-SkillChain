@@ -30,7 +30,7 @@ from skillchain.data import (
 )
 from skillchain.data.muge import write_preview
 
-RAW_DIR = config.DATA_DIR / "raw" / "coco"
+RAW_DIR = config.RAW_DATA_DIR / "coco"
 ANNOTATION_PATH = RAW_DIR / "extracted" / "annotations" / "instances_val2017.json"
 ANNOTATION_ARCHIVE = RAW_DIR / "annotations_trainval2017.zip"
 IMAGE_ARCHIVE = RAW_DIR / "val2017.zip"

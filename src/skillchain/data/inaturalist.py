@@ -34,7 +34,7 @@ from skillchain.data import (
 from skillchain.data.muge import write_preview
 
 API_URL = "https://api.inaturalist.org/v1/observations"
-RAW_FILE = config.DATA_DIR / "raw" / "inaturalist" / "candidates.jsonl"
+RAW_FILE = config.RAW_DATA_DIR / "inaturalist" / "candidates.jsonl"
 DESTINATION = config.DATA_DIR / "clean" / "query_images" / "encyclopedia"
 ALLOWED_LICENSES = {"cc0", "cc-by", "cc-by-sa"}
 LICENSE_URLS = {

@@ -15,7 +15,7 @@ from skillchain import config
 DEFAULT_MANIFEST = (
     config.ROOT / "specs" / "data_sources" / "sroie-browser-acquisition-v1.json"
 )
-DEFAULT_RAW_ROOT = config.DATA_DIR / "raw"
+DEFAULT_RAW_ROOT = config.RAW_DATA_DIR
 COPY_SUFFIX = re.compile(r"\(\d+\)$")
 
 

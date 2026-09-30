@@ -41,7 +41,7 @@ from skillchain.data._kb_source_lock import (
 from skillchain.data.kb_catalog import KBEntryV2
 from skillchain.data.wiki_zh import console_safe
 
-RAW_ARCHIVE = config.DATA_DIR / "raw" / "recipes" / "xiachufang_recipe_corpus_full.zip"
+RAW_ARCHIVE = config.RAW_DATA_DIR / "recipes" / "xiachufang_recipe_corpus_full.zip"
 MEMBER = "recipe_corpus_full.json"
 OUTPUT_FILE = config.DATA_DIR / "kb" / "recipes.jsonl"
 DOWNLOAD_URL = (

@@ -12,6 +12,15 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
+# Raw public datasets live on the external skillchain-data volume (the former
+# E:\skillchain-data).  Override with SKILLCHAIN_RAW_DATA_DIR, e.g. to fall
+# back to the repo-local DATA_DIR / "raw".
+RAW_DATA_DIR = Path(
+    os.environ.get(
+        "SKILLCHAIN_RAW_DATA_DIR",
+        "/Volumes/TOSHIBA EXT/skillchain-data/raw",
+    )
+)
 QUERIES_DIR = DATA_DIR / "queries"
 RUNS_DIR = ROOT / "runs"
 SKILLS_BANK_DIR = ROOT / "skills_bank"

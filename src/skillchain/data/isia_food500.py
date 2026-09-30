@@ -38,7 +38,7 @@ SOURCE_PAGE = "http://123.57.42.89/FoodComputing-Dataset/ISIA-Food500.html"
 ARCHIVE_URL = (
     "http://123.57.42.89/Dataset_ict/ISIA_Food500_Dir/dataset/ISIA_Food500.zip"
 )
-RAW_DIR = config.DATA_DIR / "raw" / "isia_food500"
+RAW_DIR = config.RAW_DATA_DIR / "isia_food500"
 ARCHIVE_PATH = RAW_DIR / "ISIA_Food500.zip"
 DESTINATION = config.DATA_DIR / "clean" / "query_images" / "utility_food"
 ARCHIVE_SIZE = 636_880_932

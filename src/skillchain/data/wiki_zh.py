@@ -42,7 +42,7 @@ from skillchain.data._kb_source_lock import (
 )
 from skillchain.data.kb_catalog import KBEntryV2
 
-RAW_FILE = config.DATA_DIR / "raw" / "wiki_zh" / "wikipedia-cn-20230720-filtered.json"
+RAW_FILE = config.RAW_DATA_DIR / "wiki_zh" / "wikipedia-cn-20230720-filtered.json"
 OUTPUT_FILE = config.DATA_DIR / "kb" / "encyclopedia.jsonl"
 SOURCE_DATASET = "pleisto/wikipedia-cn-20230720-filtered"
 SOURCE_REVISION = "20230720-filtered-unpinned"

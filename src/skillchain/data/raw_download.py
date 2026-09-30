@@ -782,7 +782,7 @@ def _parser() -> argparse.ArgumentParser:
     for name in ("plan", "download", "verify"):
         child = subparsers.add_parser(name)
         child.add_argument("--profile", required=True)
-        child.add_argument("--root", type=Path, default=config.DATA_DIR / "raw")
+        child.add_argument("--root", type=Path, default=config.RAW_DATA_DIR)
         child.add_argument("--source", action="append", dest="sources")
         if name == "download":
             child.add_argument("--state-root", type=Path)
@@ -793,7 +793,7 @@ def _parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--state-root",
         type=Path,
-        default=config.DATA_DIR / "raw" / ".download-state",
+        default=config.RAW_DATA_DIR / ".download-state",
     )
     return parser
 
